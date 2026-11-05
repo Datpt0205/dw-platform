@@ -1,6 +1,6 @@
 """FOG-38 (discovery 08): what tenant roles cost at D12 scale, measured on head.
 
-Four questions, on the schema `alembic upgrade head` builds (tenant-rbac 02-04):
+Five questions, on the schema `alembic upgrade head` builds (tenant-rbac 02-04):
 
 1. `platform.effective_grants`, the access version read and the lookup behind
    every request, for a person in 10 workspaces holding 30 roles over 200
@@ -18,13 +18,16 @@ Four questions, on the schema `alembic upgrade head` builds (tenant-rbac 02-04):
    the function in this database (never in a repository file), which must leak.
 4. `session_user` over 1,000 borrows of the API's asyncpg pools, `SET LOCAL ROLE`
    included, and inside a SECURITY DEFINER function as a trigger sees it.
+5. `_STANDING` and `_HOLDERS` (tenant-rbac 10): `platform.scopes_in` in the select
+   list, frozen as it stood at `657ef4c6`, against the same call in FROM and the
+   modules' own text, one member and a whole workspace (25 and 5,000 members).
 
 Its own database, `dw_bench_rbac` plus `DW_TEST_DB_SUFFIX`, on the compose
 PostgreSQL that `.env` names; tenants are planted as `dw_migrator`, measured as
 `dw_app`. Not a test: nothing here is in `testpaths`.
 
     DW_TEST_DB_SUFFIX=_fog38 uv run python db/bench/rbac/bench_rbac.py setup
-    DW_TEST_DB_SUFFIX=_fog38 uv run python db/bench/rbac/bench_rbac.py q1 q1gc q2 q3 q4 --out DIR
+    DW_TEST_DB_SUFFIX=_fog38 uv run python db/bench/rbac/bench_rbac.py q1 q1gc q2 q3 q4 q5 --out DIR
     DW_TEST_DB_SUFFIX=_fog38 uv run python db/bench/rbac/bench_rbac.py drop
 """
 
@@ -78,10 +81,12 @@ from dw_api.main import create_app  # noqa: E402
 from dw_api.settings import ApiSettings  # noqa: E402
 from dw_platform.adapters.identity.dev_token import DEV_ISSUER, DevTokenVerifier  # noqa: E402
 from dw_platform.adapters.persistence.caching_lookup import _serialize  # noqa: E402
+from dw_platform.adapters.persistence.digital_workers_repo import _STANDING  # noqa: E402
 from dw_platform.adapters.persistence.membership_lookup import (  # noqa: E402
     _HELD,
     SqlMembershipLookup,
 )
+from dw_platform.adapters.persistence.scope_holders import _HOLDERS  # noqa: E402
 from dw_platform.testing.rbac import plant_tenant  # noqa: E402
 from dw_platform.testing.record_objects import plant_object  # noqa: E402
 
@@ -1599,7 +1604,285 @@ async def q1gc(u: Urls, world: World) -> dict[str, Any]:
     return out
 
 
-QUESTIONS = {"q1": q1, "q1gc": q1gc, "q2": q2, "q3": q3, "q4": q4}
+# -- question 5 (tenant-rbac 10) ----------------------------------------------------
+
+# `_STANDING` and `_HOLDERS` as they stood at `657ef4c6`, `platform.scopes_in` in
+# the select list, copied verbatim and frozen here: the baseline every later run
+# compares against, whatever the modules hold by then.
+_STANDING_SELECT_LIST = """
+    SELECT u.kind,
+           ARRAY(SELECT platform.scopes_in(CAST(:t AS uuid), u.id, CAST(:w AS uuid))) AS scopes
+    FROM platform.memberships m
+    JOIN platform.users u ON u.id = m.user_id
+    JOIN platform.tenant_members tm
+      ON tm.tenant_id = m.tenant_id AND tm.user_id = m.user_id AND tm.status = 'active'
+    WHERE m.workspace_id = CAST(:w AS uuid) AND m.user_id = CAST(:u AS uuid)
+    """
+_HOLDERS_SELECT_LIST = """
+    SELECT m.user_id,
+           ARRAY(SELECT platform.scopes_in(m.tenant_id, m.user_id, m.workspace_id)) AS scopes
+    FROM platform.memberships m
+    JOIN platform.users u ON u.id = m.user_id
+    WHERE m.tenant_id = CAST(:t AS uuid) AND m.workspace_id = CAST(:w AS uuid)
+      AND (CAST(:u AS uuid) IS NULL OR m.user_id = CAST(:u AS uuid))
+      AND (NOT CAST(:people AS boolean) OR u.kind = 'human')
+    ORDER BY m.user_id
+    """
+# The same two with the call in FROM, as `_HELD` makes it (tenant-rbac/07): same
+# three arguments in the same order, nothing else changed.
+_STANDING_FROM = """
+    SELECT u.kind,
+           ARRAY(
+               SELECT s.key
+               FROM platform.scopes_in(CAST(:t AS uuid), u.id, CAST(:w AS uuid)) AS s(key)
+           ) AS scopes
+    FROM platform.memberships m
+    JOIN platform.users u ON u.id = m.user_id
+    JOIN platform.tenant_members tm
+      ON tm.tenant_id = m.tenant_id AND tm.user_id = m.user_id AND tm.status = 'active'
+    WHERE m.workspace_id = CAST(:w AS uuid) AND m.user_id = CAST(:u AS uuid)
+    """
+_HOLDERS_FROM = """
+    SELECT m.user_id,
+           ARRAY(
+               SELECT s.key
+               FROM platform.scopes_in(m.tenant_id, m.user_id, m.workspace_id) AS s(key)
+           ) AS scopes
+    FROM platform.memberships m
+    JOIN platform.users u ON u.id = m.user_id
+    WHERE m.tenant_id = CAST(:t AS uuid) AND m.workspace_id = CAST(:w AS uuid)
+      AND (CAST(:u AS uuid) IS NULL OR m.user_id = CAST(:u AS uuid))
+      AND (NOT CAST(:people AS boolean) OR u.kind = 'human')
+    ORDER BY m.user_id
+    """
+Q5_TRIPS = 200
+Q5_WARM = 20
+
+
+async def _plant_q5_workspace(migrator: AsyncEngine, world: World) -> str:
+    """A workspace every one of the 5,000 people is a member of, each holding
+    `member` there, as the seed assigns it."""
+    workspace = str(uuid.uuid4())
+    async with migrator.begin() as conn:
+        await run(
+            conn,
+            "INSERT INTO platform.workspaces (id, tenant_id, slug, name)"
+            " VALUES (CAST(:w AS uuid), CAST(:t AS uuid), 'q5', 'q5')",
+            w=workspace,
+            t=world.tenant_id,
+        )
+        await run(
+            conn,
+            "INSERT INTO platform.memberships (id, tenant_id, workspace_id, user_id)"
+            " SELECT gen_random_uuid(), CAST(:t AS uuid), CAST(:w AS uuid), u"
+            " FROM unnest(CAST(:us AS uuid[])) u",
+            t=world.tenant_id,
+            w=workspace,
+            us=[p.user_id for p in world.people],
+        )
+        member = await _system_role(conn, world.tenant_id, "member")
+        await run(
+            conn,
+            "INSERT INTO platform.role_assignments (id, tenant_id, workspace_id, membership_id,"
+            " role_id) SELECT gen_random_uuid(), m.tenant_id, m.workspace_id, m.id,"
+            " CAST(:r AS uuid) FROM platform.memberships m WHERE m.workspace_id = CAST(:w AS uuid)",
+            r=member,
+            w=workspace,
+        )
+    return workspace
+
+
+async def _remove_q5_workspace(migrator: AsyncEngine, workspace: str) -> None:
+    async with migrator.begin() as conn:
+        await run(
+            conn,
+            "DELETE FROM platform.role_assignments WHERE workspace_id = CAST(:w AS uuid)",
+            w=workspace,
+        )
+        await run(
+            conn,
+            "DELETE FROM platform.memberships WHERE workspace_id = CAST(:w AS uuid)",
+            w=workspace,
+        )
+        await run(conn, "DELETE FROM platform.workspaces WHERE id = CAST(:w AS uuid)", w=workspace)
+
+
+async def _analyze(u: Urls) -> None:
+    admin = create_async_engine(
+        u.admin.rsplit("/", 1)[0] + f"/{u.name}", isolation_level="AUTOCOMMIT"
+    )
+    async with admin.connect() as conn:
+        await run(
+            conn, "ANALYZE platform.workspaces, platform.memberships, platform.role_assignments"
+        )
+    await admin.dispose()
+
+
+async def _explain(
+    conn: AsyncConnection, statement: str, values: dict[str, object]
+) -> dict[str, Any]:
+    plan = (await run(conn, f"EXPLAIN (ANALYZE, FORMAT JSON) {statement}", **values)).scalar_one()
+    return {
+        "execution": float(plan[0]["Execution Time"]),
+        "planning": float(plan[0]["Planning Time"]),
+    }
+
+
+def _answer(rows: Sequence[Any]) -> list[tuple[str, frozenset[str]]]:
+    return [(str(r[0]), frozenset(r[1])) for r in rows]
+
+
+async def q5(u: Urls, world: World) -> dict[str, Any]:
+    """`_STANDING` and `_HOLDERS`, `platform.scopes_in` in the select list (the
+    frozen baseline) against FROM, beside the modules' own text, one run, one
+    database, under `dw_app` bound as `tenant_session` binds it."""
+    out: dict[str, Any] = {"cells": {}, "plans": {}, "equal": {}}
+    forms = {
+        "standing": {
+            "select_list": _STANDING_SELECT_LIST,
+            "from": _STANDING_FROM,
+            "module": str(_STANDING.text),
+        },
+        "holders": {
+            "select_list": _HOLDERS_SELECT_LIST,
+            "from": _HOLDERS_FROM,
+            "module": str(_HOLDERS.text),
+        },
+    }
+    for query, texts in forms.items():
+        out[f"module_is_{query}"] = [
+            name
+            for name in ("select_list", "from")
+            if " ".join(texts[name].split()) == " ".join(texts["module"].split())
+        ]
+    t = world.tenant_id
+    migrator = engine(u.migrator)
+    workspace = await _plant_q5_workspace(migrator, world)
+    try:
+        await _analyze(u)
+        cells: dict[str, tuple[str, str, dict[str, object]]] = {}
+        for name, n in {"heavy": HEAVY, "owner": OWNER_1, "plain": PLAIN}.items():
+            p = world.person(n)
+            cells[f"standing:{name}"] = (
+                "standing",
+                p.workspace_id,
+                {"t": t, "w": p.workspace_id, "u": p.user_id},
+            )
+            cells[f"holders_one:{name}"] = (
+                "holders",
+                p.workspace_id,
+                {"t": t, "w": p.workspace_id, "u": p.user_id, "people": False},
+            )
+        heavy_ws = world.person(HEAVY).workspace_id
+        cells["holders_all:heavy_ws"] = (
+            "holders",
+            heavy_ws,
+            {"t": t, "w": heavy_ws, "u": None, "people": True},
+        )
+        cells["holders_all:q5_ws"] = (
+            "holders",
+            workspace,
+            {"t": t, "w": workspace, "u": None, "people": True},
+        )
+        app = engine(u.app)
+        async with app.connect() as conn:
+            await run(conn, "SELECT set_config('app.tenant_id', :t, false)", t=t)
+            for cell, (query, ws, values) in cells.items():
+                await run(conn, "SELECT set_config('app.workspace_id', :w, false)", w=ws)
+                texts = forms[query]
+                answers = {
+                    form: _answer((await run(conn, text, **values)).all())
+                    for form, text in texts.items()
+                }
+                if len({tuple(a) for a in answers.values()}) != 1 or not answers["select_list"]:
+                    raise RuntimeError(f"{cell}: forms disagree or answer nothing")
+                for text in texts.values():
+                    for _ in range(Q5_WARM):
+                        (await run(conn, text, **values)).all()
+                trips: dict[str, list[float]] = {form: [] for form in texts}
+                server: dict[str, list[dict[str, Any]]] = {form: [] for form in texts}
+                order = list(texts)
+                for i in range(Q5_TRIPS):
+                    # Rotated so no form always runs first after another's cache.
+                    for form in order[i % 3 :] + order[: i % 3]:
+                        start = time.perf_counter()
+                        (await run(conn, texts[form], **values)).all()
+                        trips[form].append(ms(start))
+                for i in range(Q5_TRIPS):
+                    for form in order[i % 3 :] + order[: i % 3]:
+                        server[form].append(await _explain(conn, texts[form], values))
+                out["cells"][cell] = {
+                    "rows": len(answers["select_list"]),
+                    "scopes": sum(len(s) for _, s in answers["select_list"]),
+                    **{
+                        form: {
+                            "round_trip_ms": summary(trips[form]),
+                            "execution_ms": summary([s["execution"] for s in server[form]]),
+                            "planning_ms": summary([s["planning"] for s in server[form]]),
+                        }
+                        for form in texts
+                    },
+                }
+                print(
+                    cell,
+                    {f: out["cells"][cell][f]["round_trip_ms"]["p50"] for f in texts},
+                    {f: out["cells"][cell][f]["round_trip_ms"]["p95"] for f in texts},
+                )
+            # The plans, the heavy person at their first workspace.
+            for cell in ("standing:heavy", "holders_one:heavy", "holders_all:heavy_ws"):
+                query, ws, values = cells[cell]
+                await run(conn, "SELECT set_config('app.workspace_id', :w, false)", w=ws)
+                for form, text in forms[query].items():
+                    plan = await run(conn, f"EXPLAIN (ANALYZE, VERBOSE) {text}", **values)
+                    lines = [r[0] for r in plan]
+                    body = "\n".join(lines)
+                    out["plans"][f"{cell}:{form}"] = {
+                        "project_set": "ProjectSet" in body,
+                        "function_scan_scopes_in": any(
+                            "Function Scan" in line and "scopes_in" in line for line in lines
+                        ),
+                        "calls_scopes_in": "platform.scopes_in" in body,
+                        "lines": lines,
+                    }
+            # Every membership of the company: `_STANDING` per membership, `_HOLDERS`
+            # per workspace (all members, people and not), the two forms equal.
+            memberships = (
+                await run(
+                    conn,
+                    "SELECT workspace_id, user_id FROM platform.memberships"
+                    " WHERE tenant_id = CAST(:t AS uuid) ORDER BY workspace_id, user_id",
+                    t=t,
+                )
+            ).all()
+            standing_diff = holders_diff = 0
+            for ws_id, user_id in memberships:
+                await run(conn, "SELECT set_config('app.workspace_id', :w, false)", w=str(ws_id))
+                values = {"t": t, "w": str(ws_id), "u": str(user_id)}
+                old = _answer((await run(conn, _STANDING_SELECT_LIST, **values)).all())
+                new = _answer((await run(conn, _STANDING_FROM, **values)).all())
+                standing_diff += old != new
+            for ws_id in sorted({ws for ws, _ in memberships}):
+                await run(conn, "SELECT set_config('app.workspace_id', :w, false)", w=str(ws_id))
+                values = {"t": t, "w": str(ws_id), "u": None, "people": False}
+                old = _answer((await run(conn, _HOLDERS_SELECT_LIST, **values)).all())
+                new = _answer((await run(conn, _HOLDERS_FROM, **values)).all())
+                holders_diff += old != new
+            out["equal"] = {
+                "memberships": len(memberships),
+                "standing_differ": standing_diff,
+                "workspaces": len({ws for ws, _ in memberships}),
+                "holders_differ": holders_diff,
+            }
+            print("equal", out["equal"])
+        await app.dispose()
+    finally:
+        await _remove_q5_workspace(migrator, workspace)
+        await migrator.dispose()
+        await _analyze(u)
+    return out
+
+
+QUESTIONS = {"q1": q1, "q1gc": q1gc, "q2": q2, "q3": q3, "q4": q4, "q5": q5}
 
 
 async def measure(questions: list[str], out_dir: Path) -> None:

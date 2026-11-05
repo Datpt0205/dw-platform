@@ -325,6 +325,89 @@ container và app giữ 419.529 đối tượng được theo dõi, một lần 
 `gc.freeze()`; worker 209.435 đối tượng, 101,4 ms (tối đa 106,0), 0,0 ms sau `gc.freeze()`. Worker không phục vụ request
 nào có ngân sách độ trễ, nên ticket này không sửa nó (lý do ở Comments của ticket 07).
 
+## Đo `_STANDING` và `_HOLDERS` (tenant-rbac/10): `scopes_in` trong FROM
+
+Ticket: [`tenant-rbac/10`](../../../.claude/plans/studio/tenant-rbac/issues/10-scopes-in-cua-standing-va-holders.md). Đo
+ngày 5/11/2026, cùng máy và cấu hình như trên (Python 3.12.15 của venv bản xuất; `SELECT 1` p50 0,94 ms), câu hỏi mới
+`q5` của harness: `setup` một lần, `q5` trước, `q5` sau, rồi `drop` (`DW_TEST_DB_SUFFIX=_fog38`, 0 dòng danh mục thử còn
+lại, database đã xóa). **Trước** chạy từ `git archive` của `d0faf4c` cộng harness mới, **sau** từ `git archive` của
+`87996f5` (commit sửa) cộng harness, cả hai trên cùng database gieo một lần. Mỗi lần ba dạng mỗi câu, xen kẽ trong cùng
+vòng lặp: mốc danh sách SELECT (câu ở `657ef4c6` chép nguyên văn vào harness, cố định), dạng FROM viết trong harness
+(`ARRAY(SELECT s.key FROM platform.scopes_in(...) AS s(key))`, cùng ba tham số) và câu nhập từ module. Đo dưới `dw_app`
+gắn `app.tenant_id` và `app.workspace_id` như `tenant_session`; mỗi dạng 20 lần làm nóng rồi 200 vòng đi về và 200 lần
+`EXPLAIN (ANALYZE)`. Vòng đi về là đường của app (asyncpg qua SQLAlchemy, cùng cache câu lệnh chuẩn bị mặc định);
+`EXPLAIN` lập kế hoạch lại mỗi lần, nên cột lập kế hoạch là chi phí của lần chạy đầu trên một kết nối, không phải của
+mỗi request. Ô một thành viên: người nặng, chủ sở hữu, người thường ở workspace của membership đầu (`people` sai, như
+`scopes_of`); ô cả workspace (`people_only` đúng, như `holding`): workspace của người nặng (25 thành viên) và workspace
+`q5` gieo dưới `dw_migrator` cho đúng lần đo, 5.000 membership, mỗi membership một lần gán `member`, xóa trong `finally`.
+
+Bằng nhau, cả hai lần: 10.009 membership của công ty (5.009 cùng 5.000 của workspace `q5`), `_STANDING` hai dạng 0 lệch;
+201 workspace, `_HOLDERS` cả workspace (người và không) hai dạng 0 lệch.
+
+**Lần trước** (câu của module bằng mốc danh sách SELECT), vòng đi về, ms:
+
+| Câu                       | Ô                    | Dòng  | SELECT p50 / p95 / p99         | FROM p50 / p95 / p99         | Module p50 / p95 / p99         |
+| ------------------------- | -------------------- | ----- | ------------------------------ | ---------------------------- | ------------------------------ |
+| `_STANDING`               | Nặng                 | 1     | 16,87 / 24,92 / 27,70          | 8,30 / 12,24 / 14,60         | 16,90 / 25,47 / 30,48          |
+| `_STANDING`               | Chủ sở hữu           | 1     | 15,75 / 20,31 / 26,23          | 5,83 / 7,72 / 9,11           | 15,58 / 21,13 / 25,66          |
+| `_STANDING`               | Thường               | 1     | 10,81 / 14,20 / 19,39          | 3,00 / 4,13 / 5,40           | 10,69 / 14,19 / 22,08          |
+| `_HOLDERS` một thành viên | Nặng                 | 1     | 16,61 / 22,96 / 30,64          | 8,09 / 11,77 / 15,11         | 16,54 / 22,43 / 30,17          |
+| `_HOLDERS` một thành viên | Chủ sở hữu           | 1     | 15,85 / 22,39 / 27,03          | 5,80 / 8,47 / 10,80          | 15,62 / 20,60 / 24,57          |
+| `_HOLDERS` một thành viên | Thường               | 1     | 11,09 / 15,18 / 17,12          | 3,06 / 4,08 / 4,99           | 11,08 / 14,61 / 19,93          |
+| `_HOLDERS` cả workspace   | Workspace người nặng | 25    | 47,07 / 81,95 / 96,16          | 13,14 / 21,75 / 27,96        | 46,80 / 79,60 / 94,39          |
+| `_HOLDERS` cả workspace   | Workspace `q5`       | 5.000 | 5.048,70 / 6.397,25 / 6.989,83 | 741,73 / 1.100,08 / 1.426,35 | 5.008,03 / 6.358,04 / 6.932,35 |
+
+Thời gian thực thi (`EXPLAIN (ANALYZE)`), ms, cùng lần; lập kế hoạch p50 của dạng SELECT 0,22-0,56 ms, của dạng FROM
+5,64-7,09 ms:
+
+| Câu                       | Ô                    | SELECT p50 / p95 / p99         | FROM p50 / p95 / p99         | Module p50 / p95 / p99         |
+| ------------------------- | -------------------- | ------------------------------ | ---------------------------- | ------------------------------ |
+| `_STANDING`               | Nặng                 | 14,61 / 20,87 / 26,66          | 7,83 / 11,75 / 13,57         | 14,63 / 21,45 / 23,64          |
+| `_STANDING`               | Chủ sở hữu           | 12,98 / 18,51 / 21,58          | 4,28 / 6,66 / 8,30           | 13,06 / 19,24 / 22,62          |
+| `_STANDING`               | Thường               | 10,33 / 14,89 / 16,70          | 1,76 / 2,81 / 3,25           | 10,53 / 15,97 / 18,20          |
+| `_HOLDERS` một thành viên | Nặng                 | 14,70 / 20,86 / 24,96          | 7,63 / 11,16 / 12,89         | 14,73 / 20,24 / 21,23          |
+| `_HOLDERS` một thành viên | Chủ sở hữu           | 13,44 / 19,88 / 22,93          | 4,23 / 6,67 / 8,32           | 13,68 / 21,22 / 25,46          |
+| `_HOLDERS` một thành viên | Thường               | 9,48 / 14,09 / 16,11           | 1,52 / 2,17 / 3,14           | 9,60 / 14,63 / 18,00           |
+| `_HOLDERS` cả workspace   | Workspace người nặng | 50,55 / 134,97 / 157,53        | 14,96 / 41,68 / 56,54        | 49,43 / 119,07 / 145,30        |
+| `_HOLDERS` cả workspace   | Workspace `q5`       | 4.939,51 / 6.070,29 / 7.150,27 | 981,48 / 1.212,37 / 1.409,37 | 4.978,82 / 6.379,53 / 6.612,90 |
+
+Kế hoạch (`EXPLAIN (ANALYZE, VERBOSE)`, người nặng): dạng SELECT của cả hai câu có `ProjectSet` với
+`Output: platform.scopes_in(...)`, một lời gọi hàm kín 13,9-14,7 ms cho 318 dòng (`_STANDING` thực thi 15,5 ms, lập kế
+hoạch 0,37 ms, 35 dòng kế hoạch); dạng FROM không còn nút `ProjectSet` hay `Function Scan` nào gọi `platform.scopes_in`,
+hàm được inline (`_STANDING` 7,1 ms, lập kế hoạch 5,5 ms, 284 dòng; `_HOLDERS` một thành viên 13,2 → 7,0 ms, 23 → 272
+dòng; cả workspace người nặng 34,8 → 12,0 ms).
+
+**Quyết định** (ngưỡng của ticket: (a) P50 vòng đi về của FROM thấp hơn SELECT ít nhất 20% và 1 ms ở ít nhất một ô một
+thành viên; (b) không ô nào của câu có P95 vòng đi về của FROM tệ hơn quá 20%): **chuyển cả hai câu**. `_STANDING` giảm
+50,8-72,2% và 7,81-9,92 ms P50 ở cả ba ô; `_HOLDERS` một thành viên 51,3-72,4% và 8,03-10,05 ms; P95 của FROM bằng
+0,27-0,51 lần mốc ở mọi ô, cả workspace 0,27 (25 người) và 0,17 (5.000 người).
+
+**Lần sau** (câu của module nay là dạng FROM), vòng đi về, ms:
+
+| Câu                       | Ô                    | Dòng  | SELECT p50 / p95 / p99         | FROM p50 / p95 / p99       | Module p50 / p95 / p99     |
+| ------------------------- | -------------------- | ----- | ------------------------------ | -------------------------- | -------------------------- |
+| `_STANDING`               | Nặng                 | 1     | 14,77 / 18,75 / 26,86          | 7,06 / 9,26 / 11,09        | 6,96 / 10,05 / 11,00       |
+| `_STANDING`               | Chủ sở hữu           | 1     | 14,56 / 19,11 / 25,00          | 5,26 / 7,05 / 9,31         | 5,25 / 7,05 / 7,84         |
+| `_STANDING`               | Thường               | 1     | 9,13 / 11,60 / 15,42           | 2,33 / 3,28 / 4,56         | 2,28 / 3,08 / 4,05         |
+| `_HOLDERS` một thành viên | Nặng                 | 1     | 14,95 / 19,16 / 21,13          | 6,98 / 9,23 / 10,67        | 6,92 / 9,48 / 11,09        |
+| `_HOLDERS` một thành viên | Chủ sở hữu           | 1     | 14,72 / 20,34 / 26,30          | 5,12 / 7,32 / 9,50         | 5,10 / 7,24 / 7,99         |
+| `_HOLDERS` một thành viên | Thường               | 1     | 9,38 / 13,12 / 18,99           | 2,32 / 3,62 / 5,49         | 2,30 / 3,20 / 4,17         |
+| `_HOLDERS` cả workspace   | Workspace người nặng | 25    | 35,16 / 50,28 / 59,85          | 9,95 / 15,08 / 17,84       | 9,94 / 14,16 / 16,12       |
+| `_HOLDERS` cả workspace   | Workspace `q5`       | 5.000 | 4.771,98 / 5.419,64 / 6.027,04 | 679,59 / 958,69 / 1.022,43 | 677,52 / 965,97 / 1.098,29 |
+
+Thời gian thực thi của câu module sau sửa, p50 / p95 / p99 (ms): `_STANDING` nặng 6,83 / 8,76 / 13,21, chủ sở hữu 3,77 /
+5,46 / 6,93, thường 1,36 / 1,91 / 2,17; `_HOLDERS` một thành viên 7,30 / 11,51 / 14,53, 3,83 / 5,51 / 6,33, 1,20 / 1,60 /
+1,77; cả workspace 25 người 10,37 / 14,36 / 18,32, 5.000 người 2.059,79 / 2.404,11 / 2.700,10 (dưới `EXPLAIN (ANALYZE)`
+dạng inline đắt hơn chính nó ở vòng đi về, 677,5 ms: đồng hồ của 5.000 lần chạy một kế hoạch con nhiều nút; vòng đi về
+mới là số của người gọi). Mốc SELECT cùng lần: 13,06, 11,72, 8,38; 13,66, 12,16, 8,30; 34,26, 4.861,72 ms p50. Kế hoạch
+của câu module sau sửa, người nặng: không `ProjectSet`, không `Function Scan` gọi `platform.scopes_in`, ở cả `_STANDING`
+(284 dòng) và `_HOLDERS` (272 và 273 dòng). Mọi ô: P95 vòng đi về của câu module bằng 0,18-0,54 lần mốc cùng lần, không ô
+nào tệ hơn.
+
+Còn lại: `_HOLDERS` cả workspace 5.000 người P95 966 ms sau sửa (6.358 ms trước), trên 300 ms của `latency.md`. Người gọi
+duy nhất của `holding` là một lane của worker (`SqlHeldRunAlerts.binding_needs_review` của workflow-engine/04, `c0eca510`),
+không phải route; ghi ở đây và ở Comments của ticket 10, không mở ticket (lý do ở đó).
+
 ## Chưa đo, và vì sao
 
 - **Máy tham chiếu.** Mọi số là của máy dev ở trên, PostgreSQL của compose không giới hạn và dùng chung với một làn khác.

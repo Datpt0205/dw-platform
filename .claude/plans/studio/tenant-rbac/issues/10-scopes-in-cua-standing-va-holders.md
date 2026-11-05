@@ -1,6 +1,6 @@
 # 10 — `scopes_in` của `_STANDING` và `_HOLDERS` ở cỡ D12: đo trước, chuyển vào FROM chỉ khi số đo cần
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 07
 Area: studio
 Yêu cầu: không (chi phí của hai câu đọc R2.2 ngoài đường `/me`, nợ từ MEDIUM (i) của gate ticket 07 và Comments của ticket 08; không đổi câu trả lời nào của spec, R2.2, R2.5 và RB5-RB7 giữ bằng test hiện có cộng test bằng nhau ở đây khi câu đổi)
@@ -77,22 +77,22 @@ Kiểm soát của ticket này, chỉ khi bước 3 đổi câu (mã K chỉ dù
 
 ## Tiêu chí chấp nhận
 
-- [ ] Số đo: P50/P95/P99 thời gian thực thi và vòng đi về của hai dạng mỗi câu, mọi dạng và người ở bước 1, cùng lần chạy,
+- [x] Số đo: P50/P95/P99 thời gian thực thi và vòng đi về của hai dạng mỗi câu, mọi dạng và người ở bước 1, cùng lần chạy,
       cùng máy, ở `RESULTS.md` và Comments, cùng kế hoạch `EXPLAIN` hai dạng cho người nặng; sai nếu thiếu một ô, một ô dưới
       200 lần đo, hay hai dạng đo ở hai lần chạy khác nhau.
-- [ ] Quyết định: mỗi câu một dòng Comments "chuyển" hay "giữ" kèm hai P50 và phép so ngưỡng của bước 2; sai nếu một câu
+- [x] Quyết định: mỗi câu một dòng Comments "chuyển" hay "giữ" kèm hai P50 và phép so ngưỡng của bước 2; sai nếu một câu
       được chuyển mà không dạng một thành viên nào đạt ngưỡng, một câu đạt ngưỡng mà không được chuyển, hay diff của ticket
       sửa `packages/` khi không câu nào được chuyển.
-- [ ] Khi một câu được chuyển, K1: test bằng nhau (`test_scope_reads_scopes_from.py`) xanh cho mọi membership của ba dạng người, và cả hai dạng của `_HOLDERS` khi `_HOLDERS` được chuyển;
+- [x] Khi một câu được chuyển, K1: test bằng nhau (`test_scope_reads_scopes_from.py`) xanh cho mọi membership của ba dạng người, và cả hai dạng của `_HOLDERS` khi `_HOLDERS` được chuyển;
       sai nếu một scope thêm hay mất ở bất kỳ membership nào, và đột biến của K1 làm test đỏ.
-- [ ] Khi một câu được chuyển, K2: ca hai tenant xanh cho câu đó; sai nếu đọc ở A trả khóa chỉ vai trò ở B cấp (hay ngược
+- [x] Khi một câu được chuyển, K2: ca hai tenant xanh cho câu đó; sai nếu đọc ở A trả khóa chỉ vai trò ở B cấp (hay ngược
       lại) hay thiếu khóa riêng của chính tenant đó, và đột biến của K2 làm chính test hai tenant đỏ.
-- [ ] Khi `_STANDING` được chuyển, K3: ca người `suspended` xanh; sai nếu `standing` trả khác `None`, và đột biến của K3
+- [x] Khi `_STANDING` được chuyển, K3: ca người `suspended` xanh; sai nếu `standing` trả khác `None`, và đột biến của K3
       làm test đỏ.
-- [ ] Khi một câu được chuyển, số đo sau (lần chạy `q5` sau khi sửa): kế hoạch của câu đó không còn nút `ProjectSet`
+- [x] Khi một câu được chuyển, số đo sau (lần chạy `q5` sau khi sửa): kế hoạch của câu đó không còn nút `ProjectSet`
       hay `Function Scan` trên `platform.scopes_in`, như ticket 07, và ở mọi ô của câu đó P95 vòng đi về không tệ hơn mốc
       danh sách SELECT quá 20%; sai nếu kế hoạch còn một trong hai nút hay một ô tệ hơn quá 20%.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_scope_holders.py packages/python/dw_platform/tests/integration/test_access_lookup_scopes_from.py packages/python/dw_platform/tests/integration/test_digital_workers_db.py packages/python/dw_platform/tests/integration/test_work_queue_db.py packages/python/dw_platform/tests/integration/test_support_grants.py packages/python/dw_platform/tests/integration/test_support_staff_access.py` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_scope_holders.py packages/python/dw_platform/tests/integration/test_access_lookup_scopes_from.py packages/python/dw_platform/tests/integration/test_digital_workers_db.py packages/python/dw_platform/tests/integration/test_work_queue_db.py packages/python/dw_platform/tests/integration/test_support_grants.py packages/python/dw_platform/tests/integration/test_support_staff_access.py` xanh.
 
 ## Nguồn
 
@@ -130,3 +130,44 @@ Kiểm soát của ticket này, chỉ khi bước 3 đổi câu (mã K chỉ dù
   và người gọi đầu tiên của nó sẽ thừa hưởng; Nếu sai thì: (b) chỉ xét ô có người gọi. Sửa sau lượt xác nhận không được
   người đọc mới đọc lại.
 - 2026-11-05 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): dựng xong, `resolved`. Hai câu được chuyển vào FROM (`87996f5a`); số ở
+  `db/bench/rbac/RESULTS.md` (mục "Đo `_STANDING` và `_HOLDERS` (tenant-rbac/10)"). `q5` mới trong harness, `setup` một
+  lần trên `dw_bench_rbac_fog38`, `q5` trước từ `git archive` của `d0faf4c` cộng harness, `q5` sau từ `git archive` của
+  `87996f5` cộng harness, rồi `drop` (0 dòng danh mục thử còn lại, database đã xóa). Mỗi lần ba dạng xen kẽ trong cùng
+  vòng lặp, 20 lần làm nóng, 200 vòng đi về và 200 lần `EXPLAIN (ANALYZE)` mỗi dạng mỗi ô.
+- `_STANDING`: **chuyển**. P50 vòng đi về SELECT → FROM, lần trước: người nặng 16,87 → 8,30 ms (−50,8%, −8,57 ms), chủ sở
+  hữu 15,75 → 5,83 (−63,0%, −9,92 ms), người thường 10,81 → 3,00 (−72,2%, −7,81 ms): (a) đạt ở cả ba ô (cần ≥ 20% và
+  ≥ 1 ms ở một ô). P95 FROM/SELECT 0,49, 0,38, 0,29: (b) đạt. Lần sau, câu của module (nay FROM) so với mốc cùng lần: P50
+  14,77 → 6,96, 14,56 → 5,25, 9,13 → 2,28 ms; P95 18,75 → 10,05, 19,11 → 7,05, 11,60 → 3,08 ms (0,27-0,54 lần mốc).
+- `_HOLDERS`: **chuyển**. Một thành viên, lần trước: người nặng 16,61 → 8,09 ms (−51,3%, −8,52 ms), chủ sở hữu 15,85 →
+  5,80 (−63,4%, −10,05 ms), người thường 11,09 → 3,06 (−72,4%, −8,03 ms): (a) đạt. (b): P95 FROM/SELECT 0,51, 0,38, 0,27
+  một thành viên, 0,27 cả workspace 25 người (81,95 → 21,75 ms), 0,17 cả workspace 5.000 người (6.397,25 → 1.100,08 ms):
+  đạt. Lần sau, câu module so với mốc cùng lần: P50 14,95 → 6,92, 14,72 → 5,10, 9,38 → 2,30 ms, cả workspace 35,16 →
+  9,94 và 4.771,98 → 677,52 ms; P95 0,18-0,49 lần mốc ở mọi ô, không ô nào tệ hơn nên không cần chạy thêm hai lần.
+- Kế hoạch, người nặng: dạng SELECT có `ProjectSet` với `Output: platform.scopes_in(...)` (318 dòng, 13,9-14,7 ms); câu
+  module sau sửa không còn `ProjectSet` hay `Function Scan` nào gọi `platform.scopes_in` (`_STANDING` 284 dòng kế hoạch,
+  `_HOLDERS` 272 và 273). Bằng nhau, cả hai lần: 10.009/10.009 membership `_STANDING` hai dạng 0 lệch, 201/201 workspace
+  `_HOLDERS` cả workspace 0 lệch. Test: `test_scope_reads_scopes_from.py` 10 xanh (K1 ba dạng người cho cả hai câu, cả
+  workspace người và không, `holding` theo từng khóa; K2 hai tenant bằng đúng `platform.scopes_in` của mỗi tenant, khác
+  rỗng; K3 người `suspended`); lệnh Xong cùng tệp mới 85 xanh. Phá bằng tay trên bản xuất, 5/5 đỏ: K1 `_STANDING` (đỏ 2
+  test), K1 `_HOLDERS` (3), K2 `_STANDING` (1), K2 `_HOLDERS` (1), K3 bỏ phép nối `tenant_members` (1);
+  `mutations/10.yaml` (5 đột biến) chạy lúc đóng hàng đợi.
+- (agent, theo ủy quyền 31/10/2026) `holding` có người gọi từ `c0eca510` (workflow-engine/04:
+  `SqlHeldRunAlerts.binding_needs_review`, lane `studio_runs` của worker khi giữ một run). Theo "Nếu sai thì" (2) của
+  Comments đầu, dạng cả workspace quyết như dạng một thành viên: nó cũng đạt (a) (−72,1% và −85,3% P50) nên kết quả
+  không đổi. P95 cả workspace 5.000 người sau sửa 966 ms, trên 300 ms: ghi ở `RESULTS.md`, không mở ticket, vì người gọi
+  là một lane của worker, không route hay trang nào (`latency.md` đặt ngân sách cho hai thứ đó), mỗi lần đổi grant một
+  thông báo (khóa UNIQUE của hộp thư), và câu đã nhanh hơn 6,6 lần. Nếu sai thì: một ticket `needs-triage` của spec này
+  cho dạng cả workspace (lọc trước bằng khóa cần hỏi thay vì chiếu đủ scope của mọi thành viên).
+- Làm khác ticket ở ba chỗ. (1) Lần sau dùng chính database của lần trước (một `setup`) thay vì gieo lại, để hai lần đo
+  trên cùng thế giới; bản xuất sau là `87996f5`, có migration `2611a825560d` của làn 1 mà database (gieo ở `d0faf4c`)
+  không có, nhưng `q5` không đọc bảng nào của migration đó. (2) `q5` thêm phép so bằng nhau trên mọi membership và mọi
+  workspace, ngoài ba ô của ticket. (3) Chú thích trên hai câu ghi P50 vòng đi về lần trước, như `membership_lookup.py`.
+- MEDIUM, ghi, không sửa: (i) vòng đi về đi qua cache câu lệnh chuẩn bị của asyncpg như app, còn `EXPLAIN` lập kế hoạch
+  lại mỗi lần: dạng FROM lập kế hoạch 5,5-7,1 ms p50 (SELECT 0,2-0,6), nên lần chạy đầu trên một kết nối mới của người
+  nặng gần ngang (thực thi cộng lập kế hoạch 7,8 + 6,2 so với 14,6 + 0,4 ms); người thường vẫn thấp hơn (1,8 + 6,9 so với
+  10,3 + 0,4). (ii) Dưới `EXPLAIN (ANALYZE)` dạng FROM cả workspace 5.000 người thực thi 2.060 ms p50, đắt hơn vòng đi về
+  của nó (678 ms): đồng hồ của 5.000 lần chạy kế hoạch con nhiều nút; vòng đi về là số của người gọi. (iii) Lệnh
+  `make bench-rbac` không chạy `q5` (ticket cấm sửa `Makefile`); `q5` ~85 phút trước sửa, ~58 phút sau, gần hết ở ô 5.000
+  người. Nợ lúc đóng hàng đợi: `scripts/mutate.py` của `mutations/10.yaml`; `_STANDING` (tạo, sửa DW, giao việc) và
+  `scopes_of` (mỗi request hỗ trợ) trong lượt đo độ trễ của hàng.
