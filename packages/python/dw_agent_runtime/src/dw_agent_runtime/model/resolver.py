@@ -42,7 +42,6 @@ from uuid import UUID
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.profiles import (
     PINNED_ROUTES,
-    ModelBudgets,
     ModelProfile,
     ModelProfileRegistry,
     ModelRoute,
@@ -91,9 +90,6 @@ class ResolvedRoute:
     route: ModelRoute
     # The profile's `fallback`, when it is a different model from `route`.
     fallbacks: tuple[ModelRoute, ...]
-    # The profile's per-run ceiling as loaded now; not pinned, because the
-    # ceiling is not a route and usage-and-limits/03 moves it to the plan.
-    budgets: ModelBudgets
 
     @property
     def attempts(self) -> tuple[ModelRoute, ...]:
@@ -144,7 +140,6 @@ def _answer(
     digest: str,
     routes: Mapping[str, ModelRoute],
     purpose: Purpose,
-    budgets: ModelBudgets,
 ) -> ResolvedRoute:
     route = _choose(routes, profile_id, purpose)
     fallback = routes.get("fallback")
@@ -154,7 +149,7 @@ def _answer(
         and (fallback.provider, fallback.model) != (route.provider, route.model)
         else ()
     )
-    return ResolvedRoute(profile_id, layer, version, digest, purpose, route, fallbacks, budgets)
+    return ResolvedRoute(profile_id, layer, version, digest, purpose, route, fallbacks)
 
 
 def _routes_of(profile: ModelProfile) -> dict[str, ModelRoute]:
@@ -212,7 +207,6 @@ class ModelResolver:
             profile_hash(profile),
             _routes_of(profile),
             purpose,
-            profile.budgets,
         )
 
     # ---- admission -------------------------------------------------------
@@ -295,9 +289,7 @@ class ModelResolver:
         if layer == "platform" and chosen not in await self.plans.allowed(run_context.plan_id):
             raise _unavailable(chosen, "plan")
         routes = {name: ModelRoute.model_validate(value) for name, value in pin["routes"].items()}
-        return _answer(
-            chosen, layer, pin["version"], pin["content_hash"], routes, purpose, current.budgets
-        )
+        return _answer(chosen, layer, pin["version"], pin["content_hash"], routes, purpose)
 
     async def _engine(self, tenant_id: UUID, run_manifest_hash: str) -> Mapping[str, Any]:
         key = (tenant_id, run_manifest_hash)

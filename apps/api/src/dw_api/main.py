@@ -55,6 +55,7 @@ from dw_api.routes.v1.health import build_health_router
 from dw_api.routes.v1.intake import router as intake_router
 from dw_api.routes.v1.integrations import router as integrations_router
 from dw_api.routes.v1.knowledge import router as knowledge_router
+from dw_api.routes.v1.limits import router as limits_router
 from dw_api.routes.v1.me import router as me_router
 from dw_api.routes.v1.memory import router as memory_router
 from dw_api.routes.v1.notifications import router as notifications_router
@@ -253,6 +254,7 @@ def create_app(
         approvals_router,
         runs_router,
         usage_router,
+        limits_router,
         audit_router,
         feedback_router,
         knowledge_router,

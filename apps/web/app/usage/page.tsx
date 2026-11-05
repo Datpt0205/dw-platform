@@ -29,6 +29,7 @@ import { formatDate } from "../../lib/dates";
 import { formatCount, formatUsd } from "../../lib/money";
 import { apiClient } from "../../lib/session";
 import { useCachedResource } from "../../lib/use-cached-resource";
+import { LimitsProgress, SCOPE_LABELS } from "./limits";
 
 /**
  * Mức độ sử dụng (usage-and-limits ticket 02, spec "Màn hình"): what the
@@ -37,7 +38,8 @@ import { useCachedResource } from "../../lib/use-cached-resource";
  * `GET /api/v1/usage/summary`, which answers 403 without `platform.usage.read`
  * whatever this page shows. Filters live in the URL, so a link from an agent's
  * or a workflow's page lands on its own figures. No chart library in v1
- * (DO-42.3); the plan's ceilings arrive with ticket 03.
+ * (DO-42.3). Each hard limit's progress this period reads `GET /api/v1/limits`
+ * (ticket 03); its settings are on `/usage/limits`.
  */
 
 const GROUPS: { value: UsageGroupBy; label: string }[] = [
@@ -128,6 +130,12 @@ function UsageSummaryPage() {
     `usage:summary:${search.toString()}`,
     useCallback(() => apiClient().getUsageSummary(query), [query]),
   );
+  // Same key as the summary (`platform.usage.read`); a refusal leaves the
+  // block out, the summary above says why.
+  const limits = useCachedResource(
+    "usage:limits",
+    useCallback(() => apiClient().listLimits(), []),
+  );
 
   const setParams = (changes: Record<string, string | null>) => {
     const next = new URLSearchParams(search.toString());
@@ -162,6 +170,7 @@ function UsageSummaryPage() {
                 })
               }
             />
+            <Link href="/usage/limits">Cấu hình hạn mức</Link>
             <Button
               icon={<ReloadOutlined aria-hidden />}
               aria-label="Tải lại"
@@ -233,6 +242,14 @@ function UsageSummaryPage() {
                       </div>
                     )}
                   </>
+                }
+              />
+            )}
+            {limits.data != null && (
+              <LimitsProgress
+                lines={limits.data}
+                scopeName={(line) =>
+                  SCOPE_LABELS[line.scope_type] ?? line.scope_type
                 }
               />
             )}

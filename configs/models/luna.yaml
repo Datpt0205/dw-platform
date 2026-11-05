@@ -74,6 +74,3 @@ fallback:
   capabilities:
     strict_tools: true
     numeric_bounds: true
-budgets:
-  max_input_tokens_per_run: 100000
-  max_cost_usd_per_run: 1.00

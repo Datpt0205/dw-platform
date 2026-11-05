@@ -212,6 +212,8 @@
       "dw_control_refusals_total",
       "dw_egress_blocked_total",
       "dw_egress_requests_total",
+      "dw_limit_late_settlements_total",
+      "dw_limit_refusals_total",
       "dw_model_cost_usd_total",
       "dw_model_tokens_total",
       "dw_node_failure_total",

@@ -47,10 +47,10 @@ from dw_agent_runtime.adapters.run_store import RunStatus, SqlWorkerRunStore, re
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor, RunHaltedError
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_observability.telemetry import RecordingTelemetry
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
@@ -287,8 +287,7 @@ class Stack:
             uow_factory=uow,
             clock=SystemClock(),
             id_generator=Uuid4Generator(),
-            allowance=_UnmeteredPlan(),
-            budget=RunBudgetLedger(),
+            limits=OpenLimits(),
             approval_policy=AutonomyApprovalPolicy(),
             run_control=self.control,
         )

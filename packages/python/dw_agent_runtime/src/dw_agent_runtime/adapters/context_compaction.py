@@ -44,12 +44,13 @@ found wrong for a multi-tenant platform; this class fixes exactly those things.
    chunk's summary to the next. A single message larger than that budget
    compacts nothing — never a placeholder.
 
-5. **Its spend is invisible to the run's ceiling.** The summariser is called
-   directly, not through the agent's model node, so `RunBudgetMiddleware` never
+5. **Its spend is invisible to the run's limits.** The summariser is called
+   directly, not through the agent's model node, so `LimitsMiddleware` never
    sees it. Measured: summariser called, one ledger entry — the agent's. A run
-   that kept tripping compaction would spend on summaries with no limit. Here the
-   ceiling is checked before every summary call and each call's tokens are added
-   to the same ledger after.
+   that kept tripping compaction would spend on summaries with no limit. Here
+   every summary call asks the run's lease for a permit first, is sent with the
+   permit's `max_tokens`, and is recorded keyed by it, which settles it into the
+   lease (usage-and-limits R5.2, R5.11).
 
 Two things measured and left alone because they were already right: a file the
 model cannot read never reaches the summariser (history is serialised to text
@@ -59,10 +60,12 @@ kept together).
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 from collections.abc import Iterator
+from dataclasses import replace
 from datetime import UTC
 from typing import Any
 
@@ -81,14 +84,16 @@ from langchain_core.messages.utils import get_buffer_string
 from langgraph.graph.message import REMOVE_ALL_MESSAGES
 from langgraph.runtime import Runtime
 
+from dw_agent_runtime.adapters.langchain_usage import claim_usage
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import RunBudgetLedger, route_cost
 from dw_agent_runtime.model.copy import RuntimeCopy
-from dw_agent_runtime.model.pricing import PricingPort
+from dw_agent_runtime.model.gateway import ModelUsage, UsageRecorderPort
+from dw_agent_runtime.model.limits import approximate_tokens, estimate_call
+from dw_agent_runtime.model.pricing import PricingPort, route_cost
 from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.model.resolver import ModelResolver
-from dw_agent_runtime.ports import RunControlPort
+from dw_agent_runtime.ports import CallPermit, LimitsPort, ModelRequest, RunControlPort
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.run_control import RunControlDoor
 from dw_kernel.errors import PriceNotFoundError
@@ -118,12 +123,16 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         uow_factory: PlatformUnitOfWorkFactory,
         clock: UtcClock,
         ids: IdGenerator,
-        budget: RunBudgetLedger,
+        # The run's lease, asked before every summary call (usage-and-limits
+        # R5.2), and where the summary's usage is recorded, which settles it.
+        limits: LimitsPort,
+        usage_recorder: UsageRecorderPort,
         # The price book a summary is priced by (usage-and-limits R2.1).
         pricing: PricingPort,
         # The one resolver every model door asks (model-connections R1.1).
         models: ModelResolver,
-        # The run's profile: its ceiling is the one a summary counts against.
+        # The run's profile, kept for what reads the spec; a summary is sent
+        # and priced on the summariser's own route.
         profile_id: str | None,
         # The summariser's own profile: its price is what a summary costs. A
         # separate argument because compaction is usually given a cheaper model
@@ -170,7 +179,8 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         self._uow_factory = uow_factory
         self._clock = clock
         self._ids = ids
-        self._budget = budget
+        self._limits = limits
+        self._usage_recorder = usage_recorder
         self._run_control = run_control
         self._residency = residency
         self._pricing = pricing
@@ -201,8 +211,7 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         removed, preserved = self._partition_messages(messages, cutoff)
         run_context = runtime.context
         # Per call, for the run's tenant and plan (or what a Studio run
-        # pinned): the run's ceiling and the summariser's route.
-        ceiling = (await self._models.resolve(run_context, self._profile_id, "chat")).budgets
+        # pinned): the summariser's route.
         summary_route = (
             await self._models.resolve(run_context, self._summary_profile_id, "chat")
         ).route
@@ -249,10 +258,30 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
             # run's history is content, and it is not sent where the run's
             # class does not allow (compliance-pdpl R2.2).
             await self._residency.check(run_context, summary_route)
-            self._budget.check(run_context.run_id, ceiling, task=COMPACTION_TASK)
+            rendered = self._render(anchor=anchor, messages=get_buffer_string(chunk, format="xml"))
+            # The run's lease, before every summary call, outside the fail-open
+            # block for the same reason: over its limits, the run stops.
+            lease = self._limits.lease(run_context)
+            permit = await lease.before_call(
+                run_context,
+                estimate_call(
+                    self._pricing,
+                    summary_route,
+                    tenant_id=run_context.tenant_id,
+                    input_tokens=approximate_tokens((rendered,)),
+                    max_output_tokens=None,
+                    at=self._clock.now(),
+                ),
+            )
             try:
-                summary, input_tokens, output_tokens = await self._summarise(anchor, chunk)
+                summary, input_tokens, output_tokens, model_name = await self._summarise(
+                    rendered, permit.max_output_tokens
+                )
+            except asyncio.CancelledError:
+                await lease.abandon(permit)
+                raise
             except Exception:
+                await lease.abandon(permit)
                 # Deliberately broad: the summariser is a model call and can fail
                 # in every way a provider can. Whatever it was, the answer is the
                 # same — leave the history intact and let the turn carry on. A
@@ -267,11 +296,8 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
                 return None
             # Recorded the moment it is known, per call, before the audit: the
             # tokens were spent whether or not the compaction goes ahead.
-            self._budget.record(
-                run_context.run_id,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                cost_usd=self._cost(run_context, summary_route, input_tokens, output_tokens),
+            await self._settle(
+                run_context, summary_route, permit, input_tokens, output_tokens, model_name
             )
             calls += 1
             anchor = summary
@@ -296,31 +322,72 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
             ]
         }
 
-    def _cost(
-        self, run_context: RunContext, route: ModelRoute, input_tokens: int, output_tokens: int
-    ) -> float:
-        """A summary's cost from the book. Unpriced, the summary still stands
-        and the run stops at its next call (R2.5): never a free summary."""
+    async def _settle(
+        self,
+        run_context: RunContext,
+        route: ModelRoute,
+        permit: CallPermit,
+        input_tokens: int,
+        output_tokens: int,
+        model_name: str | None,
+    ) -> None:
+        """A summary's usage, keyed by its permit, priced from the book.
+        Unpriced, the summary still stands and its record says so, which stops
+        the run at its next call (R2.5): never a free summary."""
+        usage = ModelUsage(
+            provider=str(route.provider),
+            model=route.model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            data_route_class=run_context.route_class,
+            data_location=route.data_location,
+            processor=route.processor,
+            permit=permit,
+        )
         try:
-            return float(
-                route_cost(
-                    self._pricing,
-                    route,
-                    tenant_id=run_context.tenant_id,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    at=self._clock.now(),
-                ).cost_usd
+            quote = route_cost(
+                self._pricing,
+                route,
+                tenant_id=run_context.tenant_id,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                at=self._clock.now(),
             )
-        except PriceNotFoundError:
+        except PriceNotFoundError as exc:
             logger.error(
                 "context summary could not be priced for run %s (%s %s)",
                 run_context.run_id,
                 route.provider,
                 route.model,
             )
-            self._budget.mark_unpriced(run_context.run_id)
-            return 0.0
+            usage = replace(
+                usage, cost_source="unpriced", price_book_version=exc.price_book_version
+            )
+        else:
+            usage = replace(
+                usage,
+                cost_usd=float(quote.cost_usd),
+                cost_source="computed",
+                price_book_version=quote.price_book_version,
+                price_entry_ids=quote.entry_ids,
+            )
+        if model_name:
+            # The summary call passed the run's usage meter too: claimed, so
+            # the meter does not record it a second time.
+            claim_usage(model_name, input_tokens, output_tokens)
+        try:
+            await self._usage_recorder.record(
+                run_context,
+                ModelRequest(
+                    task=COMPACTION_TASK,
+                    prompt_id=COMPACTION_TASK,
+                    prompt_version="1.0.0",
+                    model_profile=self._summary_profile_id,
+                ),
+                usage,
+            )
+        except Exception:
+            logger.warning("context summary usage not recorded", exc_info=True)
 
     def before_model(self, state: Any, runtime: Runtime[RunContext]) -> dict[str, Any] | None:  # type: ignore[override]
         """Refuse the synchronous path rather than silently take the library's.
@@ -348,21 +415,26 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         # up and adds a per-message overhead the joined text pays once.
         return self._tokens(get_buffer_string(unit, format="xml") + "\n")
 
-    async def _summarise(self, anchor: str, chunk: list[AnyMessage]) -> tuple[str, int, int]:
-        """One chunk's summary, updating the anchor, and what it cost.
+    async def _summarise(
+        self, rendered: str, max_output_tokens: int
+    ) -> tuple[str, int, int, str | None]:
+        """One chunk's summary, at most the permit's output, and what it cost.
 
         The library's own summary call discards the response once it has the
-        text, and with it the token counts the ceiling needs.
+        text, and with it the token counts the lease settles by.
         """
-        response = await self._summary_model.ainvoke(
-            self._render(anchor=anchor, messages=get_buffer_string(chunk, format="xml")),
+        response = await self._summary_model.bind(max_tokens=max_output_tokens).ainvoke(
+            rendered,
             config={"metadata": {"lc_source": "summarization", **internal_call_metadata()}},
         )
         usage = getattr(response, "usage_metadata", None) or {}
+        metadata = getattr(response, "response_metadata", None) or {}
+        name = metadata.get("model_name")
         return (
             response.text.strip(),
             int(usage.get("input_tokens", 0)),
             int(usage.get("output_tokens", 0)),
+            name if isinstance(name, str) and name else None,
         )
 
     async def _record(

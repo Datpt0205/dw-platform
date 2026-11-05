@@ -96,6 +96,3 @@ embedding:
   no_training: false
   dimensions: 3072
   timeout_seconds: 120
-budgets:
-  max_input_tokens_per_run: 200000
-  max_cost_usd_per_run: 2.00

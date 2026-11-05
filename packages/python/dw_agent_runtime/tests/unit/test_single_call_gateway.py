@@ -1,33 +1,30 @@
-"""Unit: a one-call run leaves nothing behind in the process's spend ledger,
-and is refused before the call once the tenant's plan has nothing left today.
+"""Unit: a one-call run takes its lease before the call and gives it back
+after, whatever the outcome; the gateway asks the run's lease before every
+attempt, after the residency gate (usage-and-limits R5.2, R5.5, R6.5).
 
-Against the real `RoutingModelGateway` sharing one `RunBudgetLedger` — the
-production shape — not a fake that records into the ledger on the test's
-behalf, which would prove only that the fake cooperates.
+Against the real `RoutingModelGateway` with the open limits port that keeps
+every question, so a test sees what was asked, in what order, and what was not.
 """
 
 import uuid
-from dataclasses import dataclass
-from datetime import UTC, date, datetime
-from decimal import Decimal
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 from pydantic import BaseModel
 
 from dw_agent_runtime.adapters.mock_model import MockModelAdapter
-from dw_agent_runtime.allowance import DailyAllowance
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import RunBudgetLedger
-from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, RoutingModelGateway
-from dw_agent_runtime.model.profiles import ModelProfileRegistry
-from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, ModelUsage, RoutingModelGateway
+from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute
+from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry, RenderedPrompt
 from dw_agent_runtime.model.single_call import SingleCallModelGateway
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
-from dw_kernel.errors import QuotaExceededError
+from dw_kernel.limits import LimitExceededError
 from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
@@ -39,57 +36,58 @@ class Answer(BaseModel):
     answer: str
 
 
-@dataclass(frozen=True)
-class _Plan:
-    runs: int | None = None
-    spend: Decimal | None = None
+@dataclass
+class _Spy:
+    """The mock adapter, keeping the `max_output_tokens` of every call."""
 
-    async def runs_per_day(self, plan_id: str) -> int | None:
-        return self.runs
+    inner: MockModelAdapter
+    asked: list[int | None] = field(default_factory=list)
 
-    async def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
-        return self.spend
+    @property
+    def provider_name(self) -> str:
+        return self.inner.provider_name
 
-
-@dataclass(frozen=True)
-class _Used:
-    runs: int = 0
-    spent: Decimal = Decimal(0)
-
-    async def started_since(self, tenant_id: uuid.UUID, since: datetime) -> int:
-        return self.runs
-
-    async def spend_today(self, tenant_id: uuid.UUID, day: date) -> Decimal:
-        return self.spent
-
-
-class _Clock:
-    def now(self) -> datetime:
-        return datetime(2026, 10, 7, 9, 0, tzinfo=UTC)
+    async def complete_json(
+        self,
+        prompt: RenderedPrompt,
+        json_schema: dict[str, object],
+        route: ModelRoute,
+        *,
+        max_output_tokens: int | None,
+    ) -> tuple[dict[str, object], ModelUsage, str | None]:
+        self.asked.append(max_output_tokens)
+        return await self.inner.complete_json(
+            prompt, json_schema, route, max_output_tokens=max_output_tokens
+        )
 
 
-def _allowance(plan: _Plan | None = None, used: _Used | None = None) -> DailyAllowance:
-    counts = used or _Used()
-    return DailyAllowance(allowance=plan or _Plan(), runs=counts, spend=counts, clock=_Clock())
+def _run_context(**overrides: object) -> RunContext:
+    fields: dict[str, object] = {
+        "run_id": uuid.uuid4(),
+        "tenant_id": uuid.uuid4(),
+        "workspace_id": uuid.uuid4(),
+        "actor_id": uuid.uuid4(),
+        "worker_id": "demo.one_call",
+        "worker_version": "1.0.0",
+        "channel": "web",
+        "plan_id": "professional",
+        "roles": frozenset({"member"}),
+        "scopes": frozenset(),
+        "trace_id": "trace-1",
+    }
+    fields.update(overrides)
+    return RunContext.model_validate(fields)
 
 
-def _run_context() -> RunContext:
-    return RunContext(
-        run_id=uuid.uuid4(),
-        tenant_id=uuid.uuid4(),
-        workspace_id=uuid.uuid4(),
-        actor_id=uuid.uuid4(),
-        worker_id="demo.one_call",
-        worker_version="1.0.0",
-        channel="web",
-        plan_id="professional",
-        roles=frozenset({"member"}),
-        scopes=frozenset(),
-        trace_id="trace-1",
-    )
+def _answering(answer: dict[str, object]) -> _Spy:
+    adapter = MockModelAdapter()
+    adapter.register_builder("demo.answer", "1.0.0", lambda prompt: answer)
+    return _Spy(adapter)
 
 
-def _gateways(adapter: MockModelAdapter) -> tuple[RoutingModelGateway, RunBudgetLedger]:
+def _gateway(
+    adapter: _Spy, limits: OpenLimits
+) -> tuple[RoutingModelGateway, InMemoryUsageRecorder]:
     profiles = ModelProfileRegistry()
     profiles.load_directory(REPO_ROOT / "configs" / "models")
     prompts = PromptRegistry()
@@ -105,18 +103,18 @@ def _gateways(adapter: MockModelAdapter) -> tuple[RoutingModelGateway, RunBudget
             }
         )
     )
-    ledger = RunBudgetLedger()
+    recorder = InMemoryUsageRecorder()
     gateway = RoutingModelGateway(
         residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter},
-        usage_recorder=InMemoryUsageRecorder(),
+        usage_recorder=recorder,
         pricing=FlatPricing(),
-        budget=ledger,
+        limits=limits,
         run_control=OpenRunControl(),
     )
-    return gateway, ledger
+    return gateway, recorder
 
 
 _REQUEST = ModelRequest(
@@ -127,80 +125,74 @@ _REQUEST = ModelRequest(
 )
 
 
-async def test_the_bare_gateway_keeps_one_entry_per_call() -> None:
-    """The leak this wrapper exists for — if this stops holding, the wrapper
-    may have become unnecessary and should be reconsidered, not kept by
-    habit."""
-    adapter = MockModelAdapter()
-    adapter.register_builder("demo.answer", "1.0.0", lambda prompt: {"answer": "ok"})
-    gateway, ledger = _gateways(adapter)
+async def test_a_one_call_run_takes_a_lease_that_counts_no_run_and_gives_it_back() -> None:
+    limits = OpenLimits()
+    gateway, _ = _gateway(_answering({"answer": "ok"}), limits)
+    single = SingleCallModelGateway(inner=gateway, limits=limits)
+    context = _run_context()
 
-    for _ in range(3):
-        await gateway.generate_structured(_REQUEST, Answer, run_context=_run_context())
-
-    assert len(ledger.spend) == 3
-
-
-async def test_a_one_call_run_is_forgotten_once_it_succeeds() -> None:
-    adapter = MockModelAdapter()
-    adapter.register_builder("demo.answer", "1.0.0", lambda prompt: {"answer": "ok"})
-    gateway, ledger = _gateways(adapter)
-    single = SingleCallModelGateway(inner=gateway, ledger=ledger, allowance=_allowance())
-
-    for _ in range(3):
-        result = await single.generate_structured(_REQUEST, Answer, run_context=_run_context())
-        assert result.answer == "ok"
-
-    assert ledger.spend == {}
-
-
-async def test_a_one_call_run_is_forgotten_when_the_call_fails() -> None:
-    """Every attempt spent (and recorded) before the schema refused it — the
-    entry must still go, or a failing prompt leaks faster than a working one."""
-    adapter = MockModelAdapter()
-    adapter.register_builder("demo.answer", "1.0.0", lambda prompt: {"wrong": True})
-    gateway, ledger = _gateways(adapter)
-    single = SingleCallModelGateway(inner=gateway, ledger=ledger, allowance=_allowance())
-
-    with pytest.raises(ModelOutputInvalidError):
-        await single.generate_structured(_REQUEST, Answer, run_context=_run_context())
-
-    assert ledger.spend == {}
-
-
-@pytest.mark.parametrize(
-    ("plan", "used", "quota"),
-    [
-        (_Plan(runs=5), _Used(runs=5), "runs_per_day"),
-        (_Plan(spend=Decimal(2)), _Used(spent=Decimal("2.5")), "spend_usd_per_day"),
-    ],
-)
-async def test_a_one_call_run_is_refused_before_the_call_when_the_plan_day_is_spent(
-    plan: _Plan, used: _Used, quota: str
-) -> None:
-    """The door a run's check never sees: no runner, so the plan is asked
-    here — and the provider is never reached."""
-    adapter = MockModelAdapter()
-    adapter.register_builder("demo.answer", "1.0.0", lambda prompt: {"answer": "ok"})
-    gateway, ledger = _gateways(adapter)
-    single = SingleCallModelGateway(inner=gateway, ledger=ledger, allowance=_allowance(plan, used))
-
-    with pytest.raises(QuotaExceededError) as raised:
-        await single.generate_structured(_REQUEST, Answer, run_context=_run_context())
-
-    assert raised.value.details["quota"] == quota
-    assert adapter.calls == []
-    assert ledger.spend == {}
-
-
-async def test_a_one_call_run_under_its_plan_reaches_the_model() -> None:
-    adapter = MockModelAdapter()
-    adapter.register_builder("demo.answer", "1.0.0", lambda prompt: {"answer": "ok"})
-    gateway, ledger = _gateways(adapter)
-    allowance = _allowance(_Plan(runs=5, spend=Decimal(2)), _Used(runs=4, spent=Decimal(1)))
-    single = SingleCallModelGateway(inner=gateway, ledger=ledger, allowance=allowance)
-
-    result = await single.generate_structured(_REQUEST, Answer, run_context=_run_context())
+    result = await single.generate_structured(_REQUEST, Answer, run_context=context)
 
     assert result.answer == "ok"
-    assert len(adapter.calls) == 1
+    assert limits.admitted == [(context.run_id, False)]
+    assert limits.released == [(context.run_id, "completed")]
+
+
+async def test_a_one_call_run_gives_its_lease_back_when_the_call_fails() -> None:
+    """Every attempt spent before the schema refused it; the lease still goes,
+    or a failing prompt would hold money until the reaper (failure-modes #6)."""
+    limits = OpenLimits()
+    gateway, _ = _gateway(_answering({"wrong": True}), limits)
+    single = SingleCallModelGateway(inner=gateway, limits=limits)
+    context = _run_context()
+
+    with pytest.raises(ModelOutputInvalidError):
+        await single.generate_structured(_REQUEST, Answer, run_context=context)
+
+    assert limits.released == [(context.run_id, "failed")]
+
+
+async def test_a_one_call_run_over_its_limits_never_reaches_the_model() -> None:
+    adapter = _answering({"answer": "ok"})
+    limits = OpenLimits(
+        refuse=LimitExceededError("spent", metric="cost_usd", scope_type="tenant", window="day")
+    )
+    gateway, recorder = _gateway(adapter, limits)
+    single = SingleCallModelGateway(inner=gateway, limits=limits)
+
+    with pytest.raises(LimitExceededError):
+        await single.generate_structured(_REQUEST, Answer, run_context=_run_context())
+
+    assert adapter.asked == []
+    assert recorder.records == []
+    assert limits.released == []
+
+
+async def test_every_attempt_is_sent_with_the_permits_max_tokens_and_settled_by_it() -> None:
+    """R5.2 (UL3): the call carries no more output than the lease permits, and
+    its usage carries the permit, which is what settles it into the lease."""
+    adapter = _answering({"answer": "ok"})
+    limits = OpenLimits(max_output_tokens=100)
+    gateway, recorder = _gateway(adapter, limits)
+
+    await gateway.generate_structured(_REQUEST, Answer, run_context=_run_context())
+
+    assert adapter.asked == [100]
+    ((_, usage),) = recorder.records
+    assert usage.permit == limits.permits[0]
+
+
+async def test_a_refused_call_falls_through_to_no_cheaper_route() -> None:
+    """R5.5 (UL13): the lease refused, nothing was sent, no fallback was tried."""
+    adapter = _answering({"answer": "ok"})
+    limits = OpenLimits(
+        refuse_calls=LimitExceededError("ceiling", metric="cost_usd", scope_type="run")
+    )
+    gateway, recorder = _gateway(adapter, limits)
+
+    with pytest.raises(LimitExceededError):
+        await gateway.generate_structured(_REQUEST, Answer, run_context=_run_context())
+
+    assert adapter.asked == []
+    assert len(limits.calls) == 1
+    assert recorder.records == []

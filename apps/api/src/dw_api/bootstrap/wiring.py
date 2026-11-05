@@ -40,10 +40,8 @@ from sqlalchemy.ext.asyncio import (
 from dw_agent_runtime.adapters.run_control import SqlRunControl
 from dw_agent_runtime.adapters.run_events import RunStateListener
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
-from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
 from dw_agent_runtime.adapters.wf_drafts import SqlWorkflowDrafts
 from dw_agent_runtime.adapters.wflite_host import build_pinned_workflows, load_handoff_copy
-from dw_agent_runtime.allowance import DailyAllowance
 from dw_agent_runtime.approval_codes import ApprovalViewService
 from dw_agent_runtime.model.run_policy import load_worker_run_policy
 from dw_agent_runtime.run_control import lane_actors
@@ -106,7 +104,6 @@ from dw_platform.adapters.persistence.marketing_send_repo import (
 from dw_platform.adapters.persistence.membership_admin import SqlMembershipAdminRepository
 from dw_platform.adapters.persistence.membership_lookup import SqlMembershipLookup
 from dw_platform.adapters.persistence.notifications import SqlNotificationRepository
-from dw_platform.adapters.persistence.plan_catalog import CachingPlanCatalog, SqlPlanCatalog
 from dw_platform.adapters.persistence.provisioning_repo import SqlProvisioningRepository
 from dw_platform.adapters.persistence.role_admin_repo import SqlRoleAdminRepository
 from dw_platform.adapters.persistence.role_assignments_repo import SqlRoleAssignmentRepository
@@ -179,8 +176,11 @@ from dw_platform.application.support_access import (
 from dw_platform.application.tenant_members import TenantMembersService
 from dw_platform.application.work_queue import WorkQueue
 from dw_studio.core.application.registry import ArtifactKindEntry
+from dw_usage.adapters.limit_policies_sql import SqlLimitPolicies
+from dw_usage.adapters.limits_sql import SqlLimits
 from dw_usage.adapters.sql import SqlTenantTimezones, SqlUsageReads
 from dw_usage.application.calendar import UsageCalendar
+from dw_usage.application.limits import LimitPolicyService
 from dw_usage.application.reads import UsageReads
 
 _LOG = logging.getLogger("dw_api.bootstrap")
@@ -291,10 +291,10 @@ def _build_container(
     session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     container.engine = engine
     container.health_service = _health_service(engine)
-    # The plan catalogue is `platform.plan_limits`, so it exists only past this
-    # gate: with no database there is no entitlement, and nothing that would ask
-    # it (the runner, the one-call gateway) is wired either (ticket 01, M6).
-    entitlement = PlanEntitlementService(CachingPlanCatalog(SqlPlanCatalog(session_factory), clock))
+    # Past this gate, as everything that reads a plan: with no database there
+    # is no entitlement, and nothing that would ask the plan's limits (the
+    # runner, the one-call gateway) is wired either (ticket 01, M6).
+    entitlement = PlanEntitlementService()
     container.entitlement = entitlement
 
     # Cache the membership lookup (the per-request AccessContext) so a burst
@@ -459,6 +459,13 @@ def _build_container(
         authz=authorization,
         clock=clock,
     )
+    # The company's limits (usage-and-limits R4): read and lowered through the
+    # API; the runner and every model door ask them through `limits`, one
+    # instance per process, read in each transaction, never cached (R4.8).
+    container.limits = LimitPolicyService(
+        store=SqlLimitPolicies(session_factory, clock=clock, ids=ids), authz=authorization
+    )
+    limits = SqlLimits(session_factory, clock=clock, ids=ids, telemetry=telemetry)
     # asyncpg directly: a listening connection never returns to a pool, and
     # SQLAlchemy's URL prefix is not a DSN asyncpg accepts.
     container.run_events = RunStateListener(_asyncpg_dsn(settings.database_url))
@@ -500,7 +507,7 @@ def _build_container(
         session_factory=session_factory,
         uow_factory=uow_factory,
         run_store=run_store,
-        allowance=entitlement,
+        limits=limits,
         object_storage=object_storage,
         packs=packs,
         work_queue=work_queue,
@@ -573,20 +580,13 @@ def _build_container(
         autonomy=DecisionAutonomy(SqlDecisionLevels(session_factory)),
         registry=build_node_registry(),
     )
-    # One call is the assistant's whole run: the plan's daily allowance first,
-    # the ledger entry freed after, through the runtime's own stack (wf-ai R1.6).
+    # One call is the assistant's whole run: its lease taken first and given
+    # back after, through the runtime's own stack (wf-ai R1.6).
     specs = ShippedToolSpecs.load(CONFIGS / "tools")
     container.workflow_assistant = WorkflowAssistant(
         workers=digital_workers,
         workflows=pinned_workflows,
-        gateway=wiring.model_stack.one_call(
-            DailyAllowance(
-                allowance=entitlement,
-                runs=run_store,
-                spend=SqlSpendGuardStore(session_factory=session_factory),
-                clock=clock,
-            )
-        ),
+        gateway=wiring.model_stack.one_call(),
         registry=build_node_registry(),
         tools=specs,
         run_context=container.run_context_for,

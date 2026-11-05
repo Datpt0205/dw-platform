@@ -23,6 +23,11 @@
       "version": "1.1.0"
     },
     {
+      "checksum": "5cd2208962b123878685d0b73cdea3e2f8f76e70bdf9814de9091dbdd9667d06",
+      "copy_id": "platform.audit_actions.usage_and_limits",
+      "version": "1.0.0"
+    },
+    {
       "checksum": "87a8c2295eca6785597bad36effe590393799c92c37424b3f57469c40a678915",
       "copy_id": "platform.audit_actions.workflow_engine",
       "version": "1.0.0"
@@ -30,6 +35,11 @@
     {
       "checksum": "157df89d9b16a646120c67b8ade1fb7cf6087424aec00a4d1e03e4fe1265554c",
       "copy_id": "marketing.leadcare_handoff",
+      "version": "1.0.0"
+    },
+    {
+      "checksum": "a72da4603bad6b61aaca550fa623e358936c68e27ac0c3d2119b16cc2a3833d0",
+      "copy_id": "platform.run_reason_codes.usage_and_limits",
       "version": "1.0.0"
     },
     {
@@ -75,37 +85,37 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "b0113f497919a2771aab4e40ef2fa54891e3a649",
+  "git_sha": "a1207f7f2d46a987170576aa829908026aa274a3",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "model_profiles": [
     {
-      "checksum": "1b3835fa641f757916f445950b73aab9a980f9e4208c4e5ed2a146a0eb66d927",
+      "checksum": "01dd66bd413a1c153441a5bd4928cdf933b35d78925a091a91b337b7cd0139d6",
       "profile_id": "balanced",
       "version": "1.1.0"
     },
     {
-      "checksum": "3dbdc67fb109e7687c5ba938056744f44035a757aeebe6ccec0eeebde9669b21",
+      "checksum": "1dd26395d44384717eaf4cc4137f5607ed3dd9ac963aa8918cfc014f0be1d94e",
       "profile_id": "deepseek",
       "version": "1.1.0"
     },
     {
-      "checksum": "9efbfbbc73ccc3db3192539ff651530549375fb0c068a7cedffb76da2035a1e1",
+      "checksum": "8e6a074abd0a0d1cd3cfc185ba9e29c7d24e3f783636c49f27691b0db5e4c26b",
       "profile_id": "gateway",
       "version": "2.1.0"
     },
     {
-      "checksum": "13bc718b959ef5048b46da2359d1988de8348377e70c457ba3ebdb74b8b4421f",
+      "checksum": "300b2f7d8869706b6e8114acb1dc00ea5ece153e018423ba42999ccf17c021f5",
       "profile_id": "low_cost",
       "version": "1.1.0"
     },
     {
-      "checksum": "9f25979f38c291dbae951dc6c4cec80310b69747894f37907b8b74352c5215b0",
+      "checksum": "22a3c5d0cbe263f6a293906c6c44f3edd9551861ad357348ea1cc41c74ce8443",
       "profile_id": "luna",
       "version": "1.1.0"
     },
     {
-      "checksum": "f07b2f18948489e831c8b7c9b432796f27b69a658e469352cf9dca2f99f6f6e3",
+      "checksum": "79ca084912f73e6a44240054d8510a90cad0fca4b73584f2a775cc8a85a4704c",
       "profile_id": "openai",
       "version": "1.1.0"
     }
@@ -133,7 +143,7 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "2b98c7b51e04da741bad5a1431b3d2c4e13416e4acd89345df4a1d4ddc9075f0",
+      "checksum": "0248d610a4981c1d88ec2de064f1222659683d07aabd7a3f39473d9d3885d525",
       "policy_id": "retention.d",
       "version": "fragments"
     }

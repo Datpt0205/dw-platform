@@ -45,9 +45,9 @@ from dw_agent_runtime.adapters.wflite_host import (
 )
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
@@ -60,7 +60,6 @@ from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDwMembershipCheck,
 )
 from dw_platform.adapters.persistence.marketing_send_repo import SqlConsentStore, SqlIntakeScopes
-from dw_platform.adapters.persistence.plan_catalog import SqlPlanCatalog
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.adapters.persistence.work_queue_repo import SqlWorkQueueRepository
 from dw_platform.application.authorization import ScopeAuthorizationService
@@ -69,7 +68,6 @@ from dw_platform.application.decision_gate import (
     DwDecisionAdmission,
     check_edited_proposal,
 )
-from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.intake import IntakeKeys, LeadIntake
 from dw_platform.application.marketing_send import ConsentLedger
 from dw_platform.application.work_queue import WorkQueue
@@ -327,8 +325,7 @@ def process(app: AsyncEngine) -> Process:
         clock=clock,
         id_generator=ids,
         # The seeded catalogue, as the worker root reads it (usage-and-limits R1.1).
-        allowance=PlanEntitlementService(SqlPlanCatalog(sessions)),
-        budget=RunBudgetLedger(),
+        limits=OpenLimits(),
         approval_policy=policy,
         run_waits=WorkQueueRunWaits(queue),
         run_control=OpenRunControl(),

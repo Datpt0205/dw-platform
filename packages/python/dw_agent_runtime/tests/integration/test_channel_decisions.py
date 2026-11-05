@@ -47,9 +47,9 @@ from dw_agent_runtime.channel_decisions import (
     Refusal,
 )
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import SystemClock, Uuid4Generator
 from dw_platform.adapters.persistence import tables
@@ -823,8 +823,7 @@ async def test_a_decision_from_zalo_resumes_the_run_with_channel_zalo(
         uow_factory=SqlPlatformUnitOfWorkFactory(sessions),
         clock=SystemClock(),
         id_generator=Uuid4Generator(),
-        allowance=_Unmetered(),
-        budget=RunBudgetLedger(),
+        limits=OpenLimits(),
         approval_policy=AutonomyApprovalPolicy(),
         run_control=OpenRunControl(),
     )

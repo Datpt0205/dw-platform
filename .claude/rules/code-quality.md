@@ -77,9 +77,10 @@ this one caller happens to use it today?
 `mark_read` and `mark_all_read` — what a reader of their own inbox does.
 `SqlNotificationRepository` also has `deliver`, but the inbox never sends,
 so the port does not carry it; a sender declares its own narrow Protocol
-for delivery. `RunAllowancePort` is the same shape across packages: the
-runtime declares the one question it asks ("may this tenant start a run?")
-and the platform answers it, so neither reads the other's tables.
+for delivery. `LimitsPort` is the same shape across packages: the runtime
+declares the questions it asks ("may this run begin, and how much may this
+call spend?") and `dw_usage` answers them, so neither reads the other's
+tables.
 
 **Ask:** does this Protocol have a method nothing outside this file
 calls? If so, it is either dead or belongs on a narrower Protocol.

@@ -114,9 +114,6 @@ def test_the_summary_route_keeps_its_input_budget_under_capabilities() -> None:
 
 
 def test_numbers_that_reach_a_hash_are_decimals_from_their_text() -> None:
-    profile = load_profile(MODELS / "gateway.yaml")
-    assert profile.budgets.max_cost_usd_per_run == Decimal("2.0")
-    assert isinstance(profile.budgets.max_cost_usd_per_run, Decimal)
     hot = ModelRoute.model_validate({**_shipped("balanced")["reasoning"], "temperature": 0.3})
     assert hot.temperature == Decimal("0.3")
 

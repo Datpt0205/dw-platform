@@ -16,11 +16,11 @@ from pydantic import BaseModel
 from dw_agent_runtime.adapters.mock_model import MockModelAdapter
 from dw_agent_runtime.adapters.usage_recorders import CompositeUsageRecorder
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import BudgetExceededError
 from dw_agent_runtime.model.gateway import ModelUsage, RoutingModelGateway
 from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry, RenderedPrompt
 from dw_agent_runtime.ports import ModelRequest
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import FixedClock, Uuid7Generator
@@ -139,6 +139,7 @@ def _gateway(
         price_book_version=book.version,
     )
     return RoutingModelGateway(
+        limits=OpenLimits(),
         residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
@@ -184,7 +185,16 @@ async def test_one_chat_call_writes_one_attributed_record() -> None:
         "vn",
         "mock",
     )
-    assert event.occurred_at == NOW
+    # Keyed by the permit the lease gave before the call: writing the record
+    # is the call's settlement (usage-and-limits R5.11).
+    limits = gateway.limits
+    assert isinstance(limits, OpenLimits)
+    (permit,) = limits.permits
+    assert (event.id, event.occurred_at, event.lease_id) == (
+        permit.call_id,
+        permit.occurred_at,
+        permit.lease_id,
+    )
 
 
 async def test_a_service_principal_s_call_names_no_person() -> None:
@@ -216,8 +226,9 @@ async def test_no_usage_reported_is_an_estimate_never_zero() -> None:
 
 async def test_an_unpriced_call_keeps_its_answer_and_stops_the_run_next() -> None:
     """R2.5: the book's earliest entry is after the call; the answer is returned,
-    the record is `unpriced` with no cost, the metric counts it, and the run's
-    next call is refused."""
+    the record is `unpriced` with no cost and the metric counts it. That record
+    marks the run's lease, so its next call is refused: on PostgreSQL in
+    `test_limits_db.test_an_unpriced_call_stops_the_runs_next_call`."""
     ledger, telemetry = FakeLedger(), RecordingTelemetry()
     gateway = _gateway(_book({"extraction-mock-1": "2027-01-01T00:00:00+00:00"}), ledger, telemetry)
     context = _context()
@@ -229,9 +240,6 @@ async def test_an_unpriced_call_keeps_its_answer_and_stops_the_run_next() -> Non
     assert (event.cost_source, event.cost_usd, event.price_entry_ids) == ("unpriced", None, ())
     assert event.price_book_version == "7.0.0"
     assert [name for name, *_ in telemetry.metrics] == [DW_USAGE_UNPRICED_TOTAL]
-    with pytest.raises(BudgetExceededError, match="could not be priced"):
-        await gateway.generate_structured(_REQUEST, Summary, run_context=context)
-    assert len(ledger.events) == 1, "the refused call made no call and wrote no record"
 
 
 async def test_the_same_record_settled_twice_is_one_record() -> None:

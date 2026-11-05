@@ -11,7 +11,7 @@ model's ``usage_metadata`` becomes one ledger row priced by the price book
 the same resolver and the same book the gateway
 prices from, so one bill speaks one currency. A call the book cannot price is
 recorded ``unpriced``, never at zero (usage-and-limits R2.5); the agent loop's
-budget middleware stops the run on it.
+``LimitsMiddleware`` stops the run on it.
 
 Trackers nest, and the ledger counts each token once anyway. LangChain
 propagates a parent's callbacks into every nested runnable — that is the
@@ -26,6 +26,11 @@ trackers inside it have already recorded, and the outermost one records only
 the remainder — the calls no inner tracker claimed. The inner rows keep their
 own task names, which is what makes a per-lane cost question answerable, and
 the totals add up to what was actually spent.
+
+A call ``LimitsMiddleware`` sent under a lease is recorded by the middleware
+itself, keyed by its permit, so its settlement is the lease's (usage-and-limits
+R5.11); it claims those tokens with :func:`claim_usage` the way an inner
+tracker does, and the outermost tracker records only what nobody claimed.
 
 Lives in ``adapters/`` because it imports ``langchain_core`` (import-linter
 boundary); the recorder port and pricing helpers come from ``model/``.
@@ -43,9 +48,8 @@ from dataclasses import dataclass, field, replace
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import PriceKey, route_cost
 from dw_agent_runtime.model.gateway import ModelUsage, UsageRecorderPort
-from dw_agent_runtime.model.pricing import PricingPort
+from dw_agent_runtime.model.pricing import PriceKey, PricingPort, route_cost
 from dw_agent_runtime.model.profiles import ModelRoute, Provider
 from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.ports import ModelRequest
@@ -66,6 +70,17 @@ _LOG = logging.getLogger("dw_agent_runtime.langchain_usage")
 _CLAIMED: ContextVar[dict[str, tuple[int, int]] | None] = ContextVar(
     "dw_langchain_usage_claimed", default=None
 )
+
+
+def claim_usage(model_name: str, input_tokens: int, output_tokens: int) -> None:
+    """Tell the trackers of this invocation that these tokens of `model_name`
+    are already on the ledger, so the outermost does not record them again.
+    Nothing to tell when no tracker is open."""
+    tally = _CLAIMED.get()
+    if tally is None:
+        return
+    seen_in, seen_out = tally.get(model_name, (0, 0))
+    tally[model_name] = (seen_in + input_tokens, seen_out + output_tokens)
 
 
 @dataclass(frozen=True)

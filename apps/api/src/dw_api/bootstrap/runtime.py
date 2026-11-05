@@ -22,7 +22,6 @@ from dw_agent_runtime.adapters.model_stack import (
 )
 from dw_agent_runtime.adapters.pack_tools import build_leadcare_tools, register_leadcare_tools
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
-from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
 from dw_agent_runtime.adapters.wflite_host import (
     RunTrailReader,
     build_send_floor,
@@ -36,7 +35,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.resolver import ModelResolver
-from dw_agent_runtime.ports import RunAllowancePort, RunControlPort
+from dw_agent_runtime.ports import LimitsPort, RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
@@ -114,8 +113,8 @@ class RuntimeWiring:
     document_indexing: KnowledgeDocumentIndexingAdapter
     memory_service: MemoryService
     tool_registry: ToolRegistry
-    # The gateway, ledger and recorders, as the shared builder made them; a
-    # context's one-call handlers take `model_stack.one_call(allowance)`.
+    # The gateway, limits and recorders, as the shared builder made them; a
+    # context's one-call handlers take `model_stack.one_call()`.
     model_stack: ModelStack
     # A work item's `trail`, from its run (wf-lite R6.13).
     run_trails: RunTrailReader
@@ -152,7 +151,7 @@ def build_runtime(
     session_factory: async_sessionmaker[AsyncSession],
     uow_factory: PlatformUnitOfWorkFactory,
     run_store: SqlWorkerRunStore,
-    allowance: RunAllowancePort,
+    limits: LimitsPort,
     object_storage: ObjectStoragePort,
     packs: PackCatalog,
     work_queue: WorkQueue,
@@ -199,11 +198,9 @@ def build_runtime(
 
     # ---- model gateway ---------------------------------------------------
     # Built by the one builder the worker uses too (`build_model_stack`): the
-    # gateway, ONE per-run spend ledger for the whole process — shared by the
-    # structured gateway, every agent's budget middleware (on the seam, below)
-    # and the runner that frees a run's entry when it ends — and the usage
-    # recorders (the daily spend guard and telemetry). Two ledgers would split
-    # a run's spend so neither half reaches the ceiling.
+    # gateway asking the process's one `limits` before every call, and the
+    # usage recorders whose write of a permitted call settles it into its
+    # lease (usage-and-limits R5.2, R5.11).
     model_stack = build_model_stack(
         model_provider_config(settings),
         models=models,
@@ -216,8 +213,8 @@ def build_runtime(
         ledger=ledger,
         run_control=run_control,
         residency=residency,
+        limits=limits,
     )
-    budget = model_stack.budget
     gateway = model_stack.gateway
     usage_recorder = model_stack.usage_recorder
     # The LangChain path (agent loops, structured output) bills into the same
@@ -347,14 +344,12 @@ def build_runtime(
         uow_factory=uow_factory,
         clock=clock,
         id_generator=ids,
-        allowance=allowance,
-        budget=budget,
+        limits=limits,
         approval_policy=approval_policy,
         run_control=run_control,
         release_manifest_ref=release_manifest_ref(),
         telemetry=telemetry,
         usage_meter=usage_meter,
-        spend_store=SqlSpendGuardStore(session_factory=session_factory),
         # A DW run's work item follows it: waiting, resumed, finished.
         run_waits=WorkQueueRunWaits(work_queue),
         run_graphs=tenant_graphs,
@@ -405,7 +400,8 @@ def build_runtime(
         gateway=gateway,
         chat_models=chat_models,
         usage_meter=usage_meter,
-        budget=budget,
+        limits=limits,
+        usage_recorder=usage_recorder,
         pricing=price_book,
         residency=residency,
         tools=tool_registry,

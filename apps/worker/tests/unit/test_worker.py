@@ -101,7 +101,7 @@ def test_a_host_with_no_infrastructure_wires_no_lane() -> None:
 
 
 def test_only_the_platform_lanes_are_wired() -> None:
-    """Eleven lanes a database alone is enough for, and no more.
+    """The lanes a database alone is enough for, and no more.
 
     The outbox, and retention twice. Retention joined the platform set the day
     memory got a lifecycle: `memory.items` is a platform table, so the platform
@@ -117,12 +117,12 @@ def test_only_the_platform_lanes_are_wired() -> None:
     but only ever creates ahead of need, never deletes, so it carries none of
     that risk.
 
-    `spend_guard_retention` is the fifth, and reads no policy file at all —
-    unlike audit/memory/knowledge, its window answers no compliance question,
-    so it is a technical constant in code, not a term in
-    `retention@1.8.0.yaml` (see `SqlSpendGuardRetention`'s docstring).
-    `notifications_retention` is the sixth, on the same footing: the in-app
-    inbox's 90 days live in `platform.prune_notifications()` itself.
+    `retention_limits` is the fifth: the limit counters of past periods and
+    leases closed long ago (usage-and-limits R5.7), on the terms of their two
+    retention fragments, never a number in code; it replaced the spend guard's
+    lane with the guard itself (ADR-0121 decision 7).
+    `notifications_retention` is the sixth: the in-app inbox's 90 days live in
+    `platform.prune_notifications()` itself.
     `checkpoint_retention` is the seventh, and reads the policy file again:
     a checkpoint holds a conversation verbatim, so how long it stays is a
     compliance answer like memory's (`checkpoints` in the same file).
@@ -147,6 +147,8 @@ def test_only_the_platform_lanes_are_wired() -> None:
     `usage_rollup` is the fifteenth: today and yesterday of each company with
     recent usage, recomputed into `platform.usage_daily` every five minutes
     (usage-and-limits R3.5).
+    `reaper` is the sixteenth, since it has a queue on every host with a
+    database: the leases of runs whose process died (usage-and-limits R5.4).
 
     Naming the whole set is the point: a context's lane arriving in this process
     becomes a visible change rather than a silent one.
@@ -157,7 +159,7 @@ def test_only_the_platform_lanes_are_wired() -> None:
         "retention",
         "retention_knowledge",
         "partitions",
-        "spend_guard_retention",
+        "retention_limits",
         "notifications_retention",
         "checkpoint_retention",
         "channel_link_nonces_retention",
@@ -168,6 +170,7 @@ def test_only_the_platform_lanes_are_wired() -> None:
         "dw_work",
         "dw_timers",
         "usage_rollup",
+        "reaper",
     }
 
 

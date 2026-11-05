@@ -89,35 +89,116 @@ class TracedModelGateway(ModelGateway, Protocol):
     ) -> tuple[OutputT, str]: ...
 
 
-class RunAllowancePort(Protocol):
-    """How many runs a day a plan grants — the limit, not the count.
+@dataclass(frozen=True, slots=True)
+class CallEstimate:
+    """What one model call may cost, asked before it is sent (usage-and-limits
+    R5.2, R5.10): the input it sends, counted and priced by the book, and the
+    book's price of one output token. A price the book does not hold is `None`:
+    the call is then bounded by tokens alone, and its settlement, `unpriced`,
+    stops the run at its next call (R2.5)."""
 
-    The split is deliberate and it is what keeps the two packages independent.
-    This package owns ``platform.worker_runs`` and can therefore count what a
-    tenant has started; it has no business knowing what a subscription includes.
-    The platform owns the plan catalogue and can answer the limit; it has no
-    business reading another context's table. So the consumer declares this,
-    the composition root satisfies it, and neither imports the other.
+    provider: str
+    model: str
+    input_tokens: int
+    input_cost_usd: Decimal | None
+    output_usd_per_token: Decimal | None
+    # The book the estimate was priced by, which the reaper's estimate of an
+    # unsettled call names (R5.4).
+    price_book_version: str
+    # What the caller asked for; None asks for as much as the lease allows.
+    max_output_tokens: int | None = None
 
-    ``None`` means this plan sets no limit, which is a real answer — an
-    unmetered internal tenant — and not the same as a limit of zero. Async
-    because the answer is a database read (`platform.plan_limits`, cached for
-    seconds); a catalogue that cannot be read raises and the run is not
-    admitted (usage-and-limits R1.2).
-    """
 
-    async def runs_per_day(self, plan_id: str) -> int | None: ...
+@dataclass(frozen=True, slots=True)
+class CallPermit:
+    """A call the lease let through: at most `max_output_tokens` of output, and
+    the usage record's key, set before the call (ADR-0121 decision 1), so the
+    settlement after it and the reaper's estimate are one record."""
 
-    async def spend_usd_per_day(self, plan_id: str) -> Decimal | None:
-        """The dollar ceiling a plan grants per tenant per day — the limit, not
-        the running total.
+    lease_id: UUID
+    call_id: UUID
+    occurred_at: datetime
+    max_output_tokens: int
 
-        Same split as ``runs_per_day``, same meaning for ``None``: no limit,
-        not a limit of zero. Unlike ``runs_per_day``, every plan ships this
-        unset today (`cost_usd_per_day` is NULL in `platform.plan_limits`) —
-        the numbers are a business decision nobody has made yet, and guessing
-        one into the catalogue is worse than leaving the gate open and saying so.
-        """
+
+class RunLease(Protocol):
+    """The open lease a run's tree spends against (usage-and-limits R5.1-R5.10;
+    ADR-0121 decision 5). Every method is a transaction of its own on the
+    lease row; none trusts state held in this process.
+
+    The settlement of a permitted call (`after_call` of the spec) is the usage
+    record the call's door writes with the permit on it: `dw_usage` writes the
+    record and moves the lease in one transaction, and a record whose key the
+    reaper already wrote is not counted twice (R5.11)."""
+
+    @property
+    def root_run_id(self) -> UUID: ...
+
+    async def before_call(self, run_context: RunContext, estimate: CallEstimate) -> CallPermit:
+        """A permit for one call, topped up from the counters when the lease
+        has too little left; `LimitExceededError` when even the call's input
+        does not fit (R5.10), when the lease is closed (`lease_expired`), or
+        when the run's own `cost_ceiling_usd` is spent."""
+        ...
+
+    async def abandon(self, permit: CallPermit) -> None:
+        """Give back a permit whose call never answered (the provider failed or
+        refused before it did): its hold leaves the lease unspent. A call that
+        answered is settled by its usage record instead, never abandoned."""
+        ...
+
+    async def beat(self) -> bool:
+        """The heartbeat (R5.9): `expires_at` 300 s on, and what was settled
+        since the last beat rolled into the counters, under the lease row's
+        lock. False when the lease is no longer open."""
+        ...
+
+    async def release(self, reason: str) -> bool:
+        """Close the lease and give back what it holds unspent; False when it
+        was already closed. `paused` only when no run of the tree still runs:
+        the runner asks that before it calls."""
+        ...
+
+
+class LimitsPort(Protocol):
+    """Every hard limit on the scope chain, answered where a run begins
+    (usage-and-limits R4, R5; ADR-0121 decisions 4-6; ADR-0113 decision 3).
+
+    Declared here and satisfied by `dw_usage`, so neither package reads the
+    other's tables (`CLAUDE.md`, Agent and tool rules). The runner is its one
+    caller of `admit` and `resume`. A refusal is `LimitExceededError`
+    (`limit_exceeded` with the metric, scope, window, limit, used and
+    `resets_at`), and nothing was reserved; limits that cannot be read are
+    `LimitsUnavailableError`, never an admission."""
+
+    async def admit(self, run_context: RunContext, *, counts_run: bool = True) -> RunLease:
+        """Open the tree's lease, or attach to the one already open; `runs`
+        counts once per root, at the first lease, and only for a `live` run
+        that `counts_run` (a call outside any run does not)."""
+        ...
+
+    async def resume(self, run_context: RunContext) -> RunLease:
+        """Take a lease again for a run going on after a wait (R5.3): attach to
+        the open one, or open a new one; `runs` is never counted again."""
+        ...
+
+    async def admit_gate(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        gate_run_id: UUID,
+        ceiling_usd: Decimal,
+        payer: Literal["tenant", "platform"],
+    ) -> RunLease:
+        """The `eval_offline` lease of a gate run (agent-lifecycle R4.4): no
+        `runs`; `ceiling_usd` in place of the plan's per-run ceiling; a
+        platform-paid gate touches no counter of the tenant (DO-29.2 (a))."""
+        ...
+
+    def lease(self, run_context: RunContext) -> RunLease:
+        """The lease of `run_context.lease_root`, for a model door: no admission,
+        and a call finds it open or is refused."""
         ...
 
 

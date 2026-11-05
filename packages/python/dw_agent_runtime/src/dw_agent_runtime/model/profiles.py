@@ -1,4 +1,4 @@
-"""Model profile configuration: routing, capabilities, data route, budgets.
+"""Model profile configuration: routing, capabilities, data route.
 
 `ModelProfile` v2 (model-connections R2.3, R3; ADR-0118 decision 2, ADR-0123
 decision 5). Every route declares where it processes (`data_location`,
@@ -136,18 +136,6 @@ class ModelRoute(BaseModel):
         return _decimal_text(value)
 
 
-class ModelBudgets(BaseModel):
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    max_input_tokens_per_run: int = Field(default=120_000, gt=0)
-    max_cost_usd_per_run: Decimal = Field(default=Decimal("2.0"), gt=0)
-
-    @field_validator("max_cost_usd_per_run", mode="before")
-    @classmethod
-    def _cost_text(cls, value: Any) -> Any:
-        return _decimal_text(value)
-
-
 class ModelProfile(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -164,7 +152,6 @@ class ModelProfile(BaseModel):
     # which is deliberate for the mock profiles: an embedding route that silently
     # fell back to a default would produce a collection nobody chose the width of.
     embedding: ModelRoute | None = None
-    budgets: ModelBudgets = ModelBudgets()
 
     @model_validator(mode="after")
     def _embedding_route_declares_its_width(self) -> ModelProfile:

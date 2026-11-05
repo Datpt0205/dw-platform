@@ -42,6 +42,7 @@ from urllib.parse import urlsplit
 from pydantic import BaseModel
 
 from dw_agent_runtime.model.profiles import ModelCapabilities, ModelRoute
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_platform.testing.residency import run_gate
 from dw_usage.adapters.price_book_file import load_price_book
@@ -169,6 +170,9 @@ async def probe(profile_id: str | None = None) -> int:
         run_control=OpenRunControl(),
         # Every model call passes the gate, the probe's too (ADR-0123 decision 4).
         residency=run_gate(),
+        # No database, so no lease: a probe or an eval run outside the platform's
+        # limits, bounded by the calls it makes (usage-and-limits/03).
+        limits=OpenLimits(),
     )
     host = urlsplit(settings.openai_base_url or "").hostname or "(no OPENAI_BASE_URL)"
     print(f"provider={settings.model_provider} profile={profile.profile_id} endpoint={host}")

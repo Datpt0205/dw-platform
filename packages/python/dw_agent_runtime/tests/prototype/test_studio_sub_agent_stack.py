@@ -43,8 +43,9 @@ from dw_agent_runtime.adapters.chat_model import MockChatModel
 from dw_agent_runtime.adapters.langchain_tools import platform_tools
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec
 from dw_agent_runtime.contracts import RunContext, model_facing_name
-from dw_agent_runtime.model.budget import RunBudgetLedger
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder
 from dw_agent_runtime.model.prompts import PromptRegistry
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.tools import ToolRegistry
 from dw_platform.testing.residency import run_gate
@@ -100,7 +101,8 @@ async def test_a_child_turn_passes_its_own_run_control_and_model_selection() -> 
         prompt_version=FRAME_VERSION,
         prompts=prompts,
         prompt_variables=lambda request: {"instructions": DOC.instructions},
-        budget=RunBudgetLedger(),
+        limits=OpenLimits(),
+        usage_recorder=InMemoryUsageRecorder(),
         pricing=FlatPricing(),
         models=models_for(DOC),
         profile_id=PARENT,

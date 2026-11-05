@@ -49,6 +49,12 @@ DW_CONTROL_REFUSALS_TOTAL: Final = "dw_control_refusals_total"  # labels: door, 
 # A failed attempt of a Studio step (workflow-engine R4.9; telemetry-and-audit
 # R1.3): `error_type` is `error_type_label(code)`, a closed set.
 DW_NODE_FAILURE_TOTAL: Final = "dw_node_failure_total"  # labels: error_type
+# A run, a call or a gate refused by a hard limit (usage-and-limits R4.10, R5.10):
+# `reason` is the metric that had nothing left (`cost_usd`, `tokens`, `runs`).
+DW_LIMIT_REFUSALS_TOTAL: Final = "dw_limit_refusals_total"  # labels: reason
+# A call's settlement that arrived after the reaper had written its estimate
+# (usage-and-limits R5.11): kept once, counted here.
+DW_LIMIT_LATE_SETTLEMENTS_TOTAL: Final = "dw_limit_late_settlements_total"
 
 ALL_METRICS: Final = (
     DW_RUN_TOTAL,
@@ -67,6 +73,8 @@ ALL_METRICS: Final = (
     DW_USAGE_UNPRICED_TOTAL,
     DW_CONTROL_REFUSALS_TOTAL,
     DW_NODE_FAILURE_TOTAL,
+    DW_LIMIT_REFUSALS_TOTAL,
+    DW_LIMIT_LATE_SETTLEMENTS_TOTAL,
 )
 
 # Bucket boundaries, in seconds, of each histogram (telemetry-and-audit spec,

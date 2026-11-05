@@ -25,6 +25,7 @@ from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, RoutingModelGa
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
@@ -213,6 +214,7 @@ async def test_a_malformed_answer_is_invalid_after_the_gateways_retries(
     prompts = PromptRegistry()
     prompts.load_directory(CONFIGS / "prompts")
     gateway = RoutingModelGateway(
+        limits=OpenLimits(),
         residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,

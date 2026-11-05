@@ -25,8 +25,6 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
-from dw_platform.adapters.persistence.plan_catalog import SqlPlanCatalog
-
 pytestmark = pytest.mark.integration
 
 _INSERT = (
@@ -75,7 +73,8 @@ async def test_the_seed_keeps_the_numbers_the_runtime_enforced(migrator: AsyncEn
         assert row.cost_usd_per_day is None and row.cost_usd_per_month is None
         assert row.tokens_per_month is None
         assert row.max_cost_usd_per_run == Decimal("2.0")
-        assert row.max_tokens_per_run == 120000
+        # Tokens in and out of one run, 200000 since usage-and-limits/03 (ticket 01 M2).
+        assert row.max_tokens_per_run == 200000
         assert row.max_steps_per_run == 50
         assert row.max_model_calls_per_run == 50
         assert row.max_tool_calls_per_run == 200
@@ -110,17 +109,6 @@ async def test_the_per_run_maxima_are_bounded_and_never_null(
             with pytest.raises(IntegrityError, match=refused_by):
                 await statement
         await conn.rollback()
-
-
-async def test_the_adapter_reads_a_row_as_the_application_and_none_for_no_row(
-    app_sessions: async_sessionmaker[AsyncSession],
-) -> None:
-    catalog = SqlPlanCatalog(app_sessions)
-    basic = await catalog.limits("basic")
-    assert basic is not None
-    assert (basic.plan_id, basic.runs_per_day, basic.cost_usd_per_day) == ("basic", 20, None)
-    assert basic.max_cost_usd_per_run == Decimal("2.0")
-    assert await catalog.limits("ghost") is None
 
 
 async def test_removing_a_plan_removes_its_limits(migrator: AsyncEngine) -> None:

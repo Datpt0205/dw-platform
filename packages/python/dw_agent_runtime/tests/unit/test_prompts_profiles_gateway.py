@@ -9,12 +9,13 @@ from pydantic import BaseModel
 
 from dw_agent_runtime.adapters.mock_model import MockModelAdapter
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import route_cost
 from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, RoutingModelGateway
+from dw_agent_runtime.model.pricing import route_cost
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.models import route as test_route
 from dw_agent_runtime.testing.pricing import FlatPricing
@@ -89,7 +90,6 @@ def test_model_profiles_load_from_repo_configs() -> None:
     balanced = profiles.layer("balanced", tenant_id=None)
     assert balanced is not None
     assert balanced.structured_extraction.provider == "mock"
-    assert balanced.budgets.max_cost_usd_per_run == Decimal("2.0")
     assert profiles.layer("premium", tenant_id=None) is None
 
 
@@ -99,6 +99,7 @@ def make_gateway(adapter: MockModelAdapter) -> RoutingModelGateway:
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     return RoutingModelGateway(
+        limits=OpenLimits(),
         residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
@@ -155,6 +156,7 @@ async def test_recorded_usage_carries_the_book_s_price() -> None:
     prompts.register(make_prompt())
     recorder = InMemoryUsageRecorder()
     gateway = RoutingModelGateway(
+        limits=OpenLimits(),
         residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
@@ -195,8 +197,6 @@ async def test_recorded_usage_carries_the_book_s_price() -> None:
     )
     assert expected > 0.0
     assert recorded.cost_usd == expected
-    spend = gateway.budget.spend[run_context.run_id]
-    assert spend.cost_usd == expected
 
 
 async def test_a_free_route_records_no_cost() -> None:
@@ -249,6 +249,7 @@ async def test_gateway_unknown_provider_fails_fast() -> None:
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     gateway = RoutingModelGateway(
+        limits=OpenLimits(),
         residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
@@ -305,7 +306,7 @@ async def test_gateway_retries_once_on_schema_invalid_output() -> None:
 
 
 async def test_gateway_uses_fallback_route_when_primary_provider_errors() -> None:
-    from dw_agent_runtime.model.profiles import ModelBudgets, ModelProfile
+    from dw_agent_runtime.model.profiles import ModelProfile
     from dw_kernel.errors import InfrastructureError
 
     class FailingAdapter:
@@ -329,12 +330,12 @@ async def test_gateway_uses_fallback_route_when_primary_provider_errors() -> Non
             structured_extraction=test_route(provider="flaky", model="primary-1"),
             reasoning=test_route(provider="flaky", model="primary-1"),
             fallback=test_route(provider="mock", model="fallback-1"),
-            budgets=ModelBudgets(),
         )
     )
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     gateway = RoutingModelGateway(
+        limits=OpenLimits(),
         residency=run_gate(),
         models=model_resolver(profiles, "with_fallback"),
         prompts=prompts,
@@ -380,6 +381,7 @@ def _asking_gateway(adapter: _SchemaSeen) -> RoutingModelGateway:
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     return RoutingModelGateway(
+        limits=OpenLimits(),
         residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
@@ -461,6 +463,7 @@ def _summarizing_gateway(
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     return RoutingModelGateway(
+        limits=OpenLimits(),
         residency=run_gate(),
         models=model_resolver(profiles, default_profile),
         prompts=prompts,

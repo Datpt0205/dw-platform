@@ -789,6 +789,14 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         " D1, ticket 03); workspace sở hữu là `owning_workspace_id`, giữ bởi khóa ghép RESTRICT"
     ),
     ("platform", "entitlements"): "what the tenant's plan includes, for the whole company",
+    ("platform", "limit_policies"): (
+        "một Hạn mức của công ty ở một phạm vi của chuỗi; phạm vi nằm ở cột có kiểu"
+        " `scope_workspace_id` hay `scope_artifact_id` (ADR-0121 quyết 4; usage-and-limits/03)"
+    ),
+    ("platform", "budget_counters"): (
+        "bộ đếm của một phạm vi theo kỳ, khóa `(scope_type, scope_id)`; workspace là một"
+        " phạm vi của chuỗi, không là cột (ADR-0121 quyết 4, 5; usage-and-limits/03)"
+    ),
     ("platform", "policy_overrides"): "a tenant's override of a platform policy, company-wide",
     ("platform", "secret_envelopes"): (
         "dòng con của chủ thể mang workspace (Kết nối: `owning_workspace_id`), chỉ tới qua"
@@ -816,7 +824,6 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "vai trò, quyền của vai trò và phiên bản quyền thuộc cả công ty; neo workspace nằm ở "
         "`platform.role_assignments` (tenant-rbac ticket 02, DO-01)"
     ),
-    ("platform", "tenant_daily_spend_guard"): "the tenant's spend for one day, all workspaces",
     ("platform", "tenant_members"): (
         "a person's standing belongs to the whole company, not to a workspace "
         "(org-and-principals R4.1); each membership in a workspace hangs from it"

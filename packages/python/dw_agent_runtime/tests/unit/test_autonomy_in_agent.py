@@ -31,9 +31,10 @@ from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AUTONOMY_POLICY_VERSION, AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition, WorkerDefinition
 from dw_agent_runtime.executor import ToolExecutor
-from dw_agent_runtime.model.budget import RunBudgetLedger
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
@@ -86,9 +87,10 @@ def _spec(
         copy=COPY,
         approval_type_prefix="sales_chat.",
         **prompt_fields("Trợ lý.", template=""),
-        budget=RunBudgetLedger(),
+        limits=OpenLimits(),
+        usage_recorder=InMemoryUsageRecorder(),
         pricing=FlatPricing(),
-        models=_models(ceiling_tokens=1_000_000),
+        models=_models(),
         profile_id=PROFILE_ID,
     )
 
@@ -270,8 +272,7 @@ def _runner(tmp_path: Path, store: _CapturingRunStore) -> LangGraphWorkflowRunne
         uow_factory=cast(Any, None),
         clock=cast(Any, FixedClock(NOW)),
         id_generator=cast(Any, None),
-        allowance=_UnmeteredPlan(),
-        budget=RunBudgetLedger(),
+        limits=OpenLimits(),
         approval_policy=AutonomyApprovalPolicy(),
         run_control=OpenRunControl(),
     )

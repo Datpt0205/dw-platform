@@ -38,19 +38,21 @@ from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
-from dw_agent_runtime.model.budget import BudgetExceededError, RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder
 from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor, RunHaltedError
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import pinned_default
 from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import TenantContextMissingError
+from dw_kernel.limits import LimitExceededError
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
 from dw_kernel.residency import ResidencyRefusedError
 from dw_platform.testing.residency import run_gate
@@ -138,13 +140,11 @@ PROFILE_ID = "agent_test"
 # The tenant whose own `PROFILE_ID` has a foreign chat route.
 ABROAD_TENANT = uuid.UUID("00000000-0000-0000-0000-00000000a6b0")
 # Small enough that a looping agent reaches it in a handful of steps, so a test
-# can tell "the budget stopped it" from "recursion_limit stopped it".
-LOOP_CEILING_TOKENS = 60
+# can tell "its lease stopped it" from "recursion_limit stopped it".
+LOOP_CEILING_CALLS = 6
 
 
-def _models(
-    ceiling_tokens: int = LOOP_CEILING_TOKENS, summary_input_tokens: int | None = 8000
-) -> ModelResolver:
+def _models(summary_input_tokens: int | None = 8000) -> ModelResolver:
     profiles = ModelProfileRegistry()
     route: dict[str, object] = {
         "provider": "mock",
@@ -168,10 +168,6 @@ def _models(
                 "structured_extraction": route,
                 "reasoning": route,
                 "chat": chat,
-                "budgets": {
-                    "max_input_tokens_per_run": ceiling_tokens,
-                    "max_cost_usd_per_run": 100.0,
-                },
             }
         )
 
@@ -218,7 +214,7 @@ def prompt_fields(
     }
 
 
-def _spec(model: MockChatModel, budget: RunBudgetLedger | None = None) -> AgentSpec:
+def _spec(model: MockChatModel, limits: OpenLimits | None = None) -> AgentSpec:
     registry, executor = _registry()
     return AgentSpec(
         residency=run_gate(),
@@ -229,7 +225,8 @@ def _spec(model: MockChatModel, budget: RunBudgetLedger | None = None) -> AgentS
         copy=COPY,
         approval_type_prefix="sales_chat.",
         **prompt_fields(),
-        budget=budget or RunBudgetLedger(),
+        limits=limits or OpenLimits(refuse_after_calls=LOOP_CEILING_CALLS),
+        usage_recorder=InMemoryUsageRecorder(),
         pricing=FlatPricing(),
         models=_models(),
         profile_id=PROFILE_ID,
@@ -478,7 +475,7 @@ async def _properties(middleware: list[AgentMiddleware[Any, Any]]) -> dict[str, 
         cards = 0
 
     # A model that calls a tool on every turn and never answers: the loop a
-    # ceiling exists for. Capped by recursion_limit too, so without the budget
+    # lease exists for. Capped by recursion_limit too, so without the limits
     # middleware the run still ends — and the test can tell which one ended it.
     looping = MockChatModel(
         responses=[
@@ -496,8 +493,8 @@ async def _properties(middleware: list[AgentMiddleware[Any, Any]]) -> dict[str, 
             context=_own_run(),
         )
         stopped_by = "nothing"
-    except BudgetExceededError:
-        stopped_by = "budget"
+    except LimitExceededError:
+        stopped_by = "limits"
     except Exception as exc:
         stopped_by = type(exc).__name__
 
@@ -528,7 +525,7 @@ async def _properties(middleware: list[AgentMiddleware[Any, Any]]) -> dict[str, 
     return {
         "frozen run refused": halted,
         "foreign route refused": refused_abroad,
-        "runaway stopped by budget": stopped_by == "budget",
+        "runaway stopped by its lease": stopped_by == "limits",
         "builtin hidden": "write_file" not in view.bound_tool_names,
         "out-of-scope hidden": "crm__purge" not in view.bound_tool_names,
         "prompt first": view.system_prompts[0].startswith(WORKER_PROMPT),
@@ -551,11 +548,11 @@ OWNS = (
     "failure survived",
     "frozen run refused",
     "foreign route refused",
-    "runaway stopped by budget",
+    "runaway stopped by its lease",
 )
 
-# Well above the handful of steps the budget needs to stop a loop at
-# LOOP_CEILING_TOKENS, so reaching it means the ceiling did not.
+# Well above the handful of steps the lease needs to stop a loop at
+# LOOP_CEILING_CALLS, so reaching it means the lease did not.
 RUNAWAY_STEP_CAP = 60
 
 
@@ -632,11 +629,9 @@ async def test_a_worker_that_asks_for_compaction_actually_compacts() -> None:
     spec = replace(
         base,
         copy=COMPACTING_COPY,
-        # A ceiling this test is not about. The default one is sized to stop a
-        # runaway in a handful of steps, and a 16-message history plus its
-        # summary crosses it — which proves the summary is counted, and is not
-        # what this test measures.
-        models=_models(ceiling_tokens=1_000_000),
+        # Limits this test is not about: the default ones stop a runaway in a
+        # handful of calls, and a summary is a call too.
+        limits=OpenLimits(),
         compaction=CompactionSpec(
             model=MockChatModel(responses=[AIMessage(content="TÓM TẮT")], mock_reply="TÓM TẮT"),
             summary_profile_id=PROFILE_ID,

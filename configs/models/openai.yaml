@@ -52,6 +52,3 @@ fallback:
   retention_days: null
   no_training: false
   timeout_seconds: 60
-budgets:
-  max_input_tokens_per_run: 100000
-  max_cost_usd_per_run: 1.00

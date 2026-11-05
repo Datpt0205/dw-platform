@@ -18,6 +18,3 @@ reasoning:
   retention_days: 0
   no_training: true
   timeout_seconds: 60
-budgets:
-  max_input_tokens_per_run: 40000
-  max_cost_usd_per_run: 0.50

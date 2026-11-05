@@ -1332,6 +1332,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/limits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Limits
+         * @description Every limit of the company: the plan's caps at the company and every
+         *     policy, each with its effective limit and the current period's counter.
+         */
+        get: operations["list_limits_api_v1_limits_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/limits/{scope_type}/{scope_id}/{metric}/{window_kind}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Put Limit
+         * @description Set a new limit or lower one, at once and audited (`limits.policy.set`).
+         */
+        put: operations["put_limit_api_v1_limits__scope_type___scope_id___metric___window_kind__put"];
+        post?: never;
+        /**
+         * Delete Limit
+         * @description Removing a limit loosens it: 409 `second_person_required` in W1, once
+         *     the policy and its `If-Match` are checked; nothing is changed.
+         */
+        delete: operations["delete_limit_api_v1_limits__scope_type___scope_id___metric___window_kind__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/me": {
         parameters: {
             query?: never;
@@ -4186,6 +4232,109 @@ export interface components {
             source_version: string;
             /** Title */
             title: string;
+        };
+        /** LimitBody */
+        LimitBody: {
+            /**
+             * Kind
+             * @description `hard`, the only kind of W1 (`soft` comes in W2).
+             */
+            kind: string;
+            /**
+             * Limit Value
+             * @description USD for `cost_usd`, a count otherwise; >= 0.
+             */
+            limit_value: number | string;
+        };
+        /**
+         * LimitLineView
+         * @description One limit of the company (usage-and-limits R4; `GET /api/v1/limits`):
+         *     the policy at its scope (`limit_value` `None` for the plan's cap alone),
+         *     the plan's cap at the company, the effective limit along the chain, and the
+         *     current period's counter, money and tokens as decimal strings.
+         */
+        LimitLineView: {
+            /** Effective Limit */
+            effective_limit: string;
+            /**
+             * Kind
+             * @default hard
+             * @constant
+             */
+            kind: "hard";
+            /**
+             * Limit Source
+             * @enum {string}
+             */
+            limit_source: "plan" | "policy";
+            /** Limit Value */
+            limit_value: string | null;
+            /**
+             * Metric
+             * @enum {string}
+             */
+            metric: "cost_usd" | "tokens" | "runs";
+            /** Plan Limit */
+            plan_limit: string | null;
+            /** Reserved */
+            reserved: string;
+            /**
+             * Resets At
+             * Format: date-time
+             */
+            resets_at: string;
+            /**
+             * Scope Id
+             * Format: uuid
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @enum {string}
+             */
+            scope_type: "tenant" | "workspace" | "agent" | "workflow";
+            /** Used */
+            used: string;
+            /** Version */
+            version: number | null;
+            /**
+             * Window Kind
+             * @enum {string}
+             */
+            window_kind: "day" | "month";
+        };
+        /** LimitPolicyView */
+        LimitPolicyView: {
+            /**
+             * Kind
+             * @default hard
+             * @constant
+             */
+            kind: "hard";
+            /** Limit Value */
+            limit_value: string;
+            /**
+             * Metric
+             * @enum {string}
+             */
+            metric: "cost_usd" | "tokens" | "runs";
+            /**
+             * Scope Id
+             * Format: uuid
+             */
+            scope_id: string;
+            /**
+             * Scope Type
+             * @enum {string}
+             */
+            scope_type: "tenant" | "workspace" | "agent" | "workflow";
+            /** Version */
+            version: number;
+            /**
+             * Window Kind
+             * @enum {string}
+             */
+            window_kind: "day" | "month";
         };
         /** MeResponse */
         MeResponse: {
@@ -10008,6 +10157,142 @@ export interface operations {
             header?: never;
             path: {
                 document_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_limits_api_v1_limits_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LimitLineView"][];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    put_limit_api_v1_limits__scope_type___scope_id___metric___window_kind__put: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+                /** @description The version of the policy as a strong ETag, for example "3": required once the policy exists (428 without it, 412 when stale); absent to set a new one. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                scope_type: string;
+                scope_id: string;
+                metric: string;
+                window_kind: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LimitBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LimitPolicyView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_limit_api_v1_limits__scope_type___scope_id___metric___window_kind__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+                /** @description The version of the policy as a strong ETag, for example "3": required once the policy exists (428 without it, 412 when stale); absent to set a new one. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                scope_type: string;
+                scope_id: string;
+                metric: string;
+                window_kind: string;
             };
             cookie?: never;
         };

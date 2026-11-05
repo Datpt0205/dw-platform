@@ -24,10 +24,10 @@ from dw_agent_runtime.adapters.langgraph_runner import GRAPH_CACHE_SIZE, LangGra
 from dw_agent_runtime.adapters.run_store import RunStatus
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.dispatch import OutcomeUnknownError
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.ports import StudioRun, StudioRunBlocked
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.testing.studio_runs import ScriptedDoor, StudioHarness, document, step
 from dw_agent_runtime.testing.workflow_types import fixture_node_registry
@@ -103,8 +103,7 @@ def runner_of(harness: StudioHarness, store: FakeTake) -> LangGraphWorkflowRunne
         uow_factory=cast(Any, None),
         clock=harness.clock,
         id_generator=cast(Any, None),
-        allowance=cast(Any, None),
-        budget=RunBudgetLedger(),
+        limits=OpenLimits(),
         approval_policy=AutonomyApprovalPolicy(),
         run_control=OpenRunControl(),
         studio=StudioRunPorts(nodes=harness.ports(), registry=fixture_node_registry()),

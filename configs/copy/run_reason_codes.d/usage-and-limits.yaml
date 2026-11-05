@@ -1,0 +1,17 @@
+# The reason codes usage-and-limits writes on a run or an answer, with their
+# Vietnamese labels: this spec's fragment of the reason-code catalogue
+# telemetry-and-audit merges (H-12; V4.36). Ticket 03 adds the codes of the
+# hard limits; tickets 04 and 06 add theirs here.
+schema_version: "1.0"
+copy_id: platform.run_reason_codes.usage_and_limits
+version: "1.0.0"
+codes:
+  # usage-and-limits/03, the leases and the policies.
+  limit_exceeded: "Đã dùng hết hạn mức của kỳ này hay của lượt chạy"
+  limits_unavailable: "Không đọc được hạn mức nên lượt chạy không được nhận"
+  lease_expired: "Phần giữ trước của lượt chạy đã hết hạn vì không còn tín hiệu"
+  lease_closed: "Lượt chạy không còn phần giữ trước nào đang mở"
+  cost_ceiling: "Lần thử đã dùng hết trần chi phí của chính nó"
+  unpriced_call: "Một lời gọi của lượt chạy chưa có giá nên lượt dừng"
+  limit_above_plan: "Hạn mức cao hơn Trần của gói"
+  scope_kind_mismatch: "Phạm vi không đúng loại thành phần trong đường dẫn"

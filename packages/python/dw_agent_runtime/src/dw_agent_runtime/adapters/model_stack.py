@@ -1,12 +1,10 @@
-"""The one place a process builds its model gateway, spend ledger and usage
-recorders.
+"""The one place a process builds its model gateway and usage recorders.
 
 The API calls models in its requests and runs; the worker calls them in lanes no
 request ever touched (the Zalo poll lane reads a chat message with one). Both
-must spend against the same per-run ceiling, record into the same daily spend
-guard, and refuse once the tenant's plan day is spent. Two builders agree only
-until one of them is edited, so there is one — the same reason
-`dw_knowledge.adapters.embedding_factory` exists for embedders.
+must ask the same limits before every call and record into the same ledger. Two
+builders agree only until one of them is edited, so there is one — the same
+reason `dw_knowledge.adapters.embedding_factory` exists for embedders.
 
 It takes a `ModelProviderConfig`, not a settings object: each process has its
 own settings class, and mapping it is the composition root's business.
@@ -19,17 +17,17 @@ What it builds:
   door asks for (model-connections R1.1);
 - the provider adapters (`build_model_adapters`), with the SSRF guard on the
   endpoint and the mock refused in a deployed profile;
-- ONE `RunBudgetLedger` for the process, shared by the gateway, an agent's
-  budget middleware and the runner that frees a run's entry;
 - the usage recorders: the usage ledger the composition root hands in (a
-  `dw_usage` recorder; usage-and-limits R3.1), the daily spend guard, the run's
-  cost and telemetry, behind the composite that lets no recorder take a call
-  down;
+  `dw_usage` recorder, whose write of a permitted call settles it into its
+  lease; usage-and-limits R3.1, R5.11), the run's cost and telemetry, behind
+  the composite that lets no recorder take a call down;
 - the gateway priced by the price book the composition root hands in
   (`PricingPort`, R2.1);
-- `ModelStack.one_call(allowance)`: the gateway for a caller whose run is one
-  call, which checks the plan's daily allowance first and frees its ledger
-  entry after (`SingleCallModelGateway`).
+- the gateway asking the `LimitsPort` the composition root hands in before
+  every call (R5.2);
+- `ModelStack.one_call()`: the gateway for a caller whose run is one call,
+  which takes the call's lease first and gives it back after
+  (`SingleCallModelGateway`).
 """
 
 from __future__ import annotations
@@ -43,11 +41,8 @@ from dw_agent_runtime.adapters.mock_model import MockModelAdapter
 from dw_agent_runtime.adapters.openai_compatible import OpenAICompatibleAdapter
 from dw_agent_runtime.adapters.openai_responses import OpenAIResponsesAdapter
 from dw_agent_runtime.adapters.run_cost_recorder import RunCostRecorder
-from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardRecorder
 from dw_agent_runtime.adapters.telemetry_usage import TelemetryUsageRecorder
 from dw_agent_runtime.adapters.usage_recorders import CompositeUsageRecorder
-from dw_agent_runtime.allowance import DailyAllowance
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.gateway import (
     ModelProviderAdapter,
     RoutingModelGateway,
@@ -58,7 +53,12 @@ from dw_agent_runtime.model.profiles import ModelProfileRegistry, Provider
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.model.single_call import SingleCallModelGateway
-from dw_agent_runtime.ports import PinnedEnginePort, PlanModelProfilesPort, RunControlPort
+from dw_agent_runtime.ports import (
+    LimitsPort,
+    PinnedEnginePort,
+    PlanModelProfilesPort,
+    RunControlPort,
+)
 from dw_kernel.net_guard import ensure_allowed_outbound_url
 from dw_kernel.ports import SystemClock, UtcClock
 from dw_kernel.residency import ResidencyGate
@@ -149,15 +149,14 @@ def build_model_adapters(
 @dataclass(frozen=True)
 class ModelStack:
     gateway: RoutingModelGateway
-    # ONE per process. Two ledgers would split a run's spend so neither half
-    # reaches the ceiling.
-    budget: RunBudgetLedger
     usage_recorder: UsageRecorderPort
+    # The process's one limits port, the gateway's and every agent's.
+    limits: LimitsPort
 
-    def one_call(self, allowance: DailyAllowance) -> SingleCallModelGateway:
-        """The gateway for a caller whose run is this one call: the plan's daily
-        allowance checked before it, the ledger entry freed after it."""
-        return SingleCallModelGateway(inner=self.gateway, ledger=self.budget, allowance=allowance)
+    def one_call(self) -> SingleCallModelGateway:
+        """The gateway for a caller whose run is this one call: its lease taken
+        before it and given back after it."""
+        return SingleCallModelGateway(inner=self.gateway, limits=self.limits)
 
 
 def build_model_stack(
@@ -173,24 +172,24 @@ def build_model_stack(
     ledger: UsageRecorderPort,
     run_control: RunControlPort,
     residency: ResidencyGate,
+    limits: LimitsPort,
 ) -> ModelStack:
-    """`pricing` and `ledger` come from `dw_usage`, which this package may not
-    import: the composition root builds both and passes them, so both processes
-    price by one book and write one ledger (usage-and-limits R2.1, R3.1)."""
-    # `tenant_daily_spend_guard` is one row per tenant per day, read by nothing
-    # but the plan's spend check. The composite stays because a recorder that
-    # raises must not take the call down.
+    """`pricing`, `ledger` and `limits` come from `dw_usage`, which this package
+    may not import: the composition root builds them and passes them, so both
+    processes price by one book, write one ledger and hold one set of limits
+    (usage-and-limits R2.1, R3.1, R5.1)."""
+    # The composite stays because a recorder that raises must not take the call
+    # down.
     recorder = CompositeUsageRecorder(
         [
-            # One row per call, the source of the usage screen (R3.1).
+            # One row per call, the source of the usage screen (R3.1), and the
+            # settlement of a permitted call into its lease (R5.11).
             ledger,
-            SqlSpendGuardRecorder(session_factory=session_factory, clock=clock),
             # A run's own spend, which a DW's scorecard reads (digital-worker R7.3).
             RunCostRecorder(session_factory=session_factory),
             TelemetryUsageRecorder(telemetry),
         ]
     )
-    budget = RunBudgetLedger()
     gateway = RoutingModelGateway(
         models=models,
         prompts=prompts,
@@ -202,7 +201,8 @@ def build_model_stack(
         # The process's one gate, after the freeze and before the limits
         # (compliance-pdpl R2.3).
         residency=residency,
-        budget=budget,
+        # Every call asks the run's lease first (R5.2).
+        limits=limits,
         clock=clock,
     )
-    return ModelStack(gateway=gateway, budget=budget, usage_recorder=recorder)
+    return ModelStack(gateway=gateway, usage_recorder=recorder, limits=limits)

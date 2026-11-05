@@ -42,9 +42,6 @@ EXEMPT: dict[str, str] = {
         "the tool-claim retention lane, which deletes expired claims of every tenant"
         " (runtime-hardening R6.7)"
     ),
-    "packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/spend_guard.py": (
-        "the spend-guard retention lane (`SqlSpendGuardRetention`) only"
-    ),
     "packages/python/dw_knowledge/src/dw_knowledge/ingest_jobs.py": (
         "the ingest lane's claim (`IngestJobQueue`) only; the API's store does not drain"
     ),
@@ -59,6 +56,15 @@ EXEMPT: dict[str, str] = {
     ),
     "packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py": (
         "the outbox relay, which publishes every tenant's events"
+    ),
+    "packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py": (
+        "the reaper's search for expired leases of every company"
+        " (`SqlBudgetLeaseReaper`) only; SELECT alone, each lease then closed under"
+        " its own tenant (usage-and-limits ticket 03)"
+    ),
+    "packages/python/dw_usage/src/dw_usage/adapters/limits_retention.py": (
+        "the `retention_limits` lane: past periods' counters deleted across companies,"
+        " and the companies with long-closed leases found (usage-and-limits ticket 03)"
     ),
     "packages/python/dw_usage/src/dw_usage/adapters/sql.py": (
         "the usage roll-up lane's search for companies with recent usage"

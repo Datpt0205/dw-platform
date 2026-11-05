@@ -21,9 +21,9 @@ from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
 from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.ports import RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.testing.step_recorder import FakeStepRecorder
 from dw_agent_runtime.testing.studio_runs import FakeClaims
@@ -105,8 +105,7 @@ def build_runner(
         uow_factory=cast(Any, None),
         clock=clock,
         id_generator=ids,
-        allowance=cast(Any, None),
-        budget=RunBudgetLedger(),
+        limits=OpenLimits(),
         approval_policy=AutonomyApprovalPolicy(),
         run_control=OpenRunControl(),
         studio=StudioRunPorts(nodes=nodes, registry=fixture_node_registry()),

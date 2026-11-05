@@ -4,15 +4,21 @@ usage record (usage-and-limits R3.1; ADR-0121 decision 1).
 It answers the runtime's `UsageRecorderPort`, and the composition roots of the
 API and the worker put it in the `CompositeUsageRecorder` the gateway and the
 LangChain meter record into, so every call through either writes a record from
-the first day. Ticket 03 moves the call to `RunLease.after_call`.
+the first day.
+
+A call a lease permitted carries its permit (usage-and-limits R5.2): the record
+takes the permit's key and lease, and writing it is the call's settlement into
+the lease (`after_call` of the spec, R5.11). A settlement whose key the reaper
+already wrote as an estimate is not counted twice: it is logged and counted in
+`dw_limit_late_settlements_total`.
 
 The call was priced where its route was known (the gateway, the meter); this
 class reads that price off the usage and never prices a second time. A call that
 reached it unpriced is stored `unpriced` with no cost, logged as an error and
 counted in `dw_usage_unpriced_total` (R2.5): the gap shows, it is never zero.
-A call with no lease or Studio component is `purpose = 'run'`, `payer =
-'platform'`, `root_run_id = run_id`, with NULL artifact, lease and node
-columns; the route columns are the usage's, which the sending door sets.
+A call is `purpose = 'run'`, `payer = 'platform'`, `root_run_id` its tree's
+root, with NULL artifact and node columns, and NULL lease when no permit came
+with it; the route columns are the usage's, which the sending door sets.
 """
 
 from __future__ import annotations
@@ -26,7 +32,7 @@ from dw_agent_runtime.model.gateway import ModelUsage
 from dw_agent_runtime.model.pricing import chat_quantities
 from dw_agent_runtime.ports import ModelRequest
 from dw_kernel.ports import IdGenerator, UtcClock
-from dw_observability.metrics import DW_USAGE_UNPRICED_TOTAL
+from dw_observability.metrics import DW_LIMIT_LATE_SETTLEMENTS_TOTAL, DW_USAGE_UNPRICED_TOTAL
 from dw_observability.telemetry import TelemetryPort
 from dw_usage.application.ports import UsageLedgerPort
 from dw_usage.domain.events import UsageEvent
@@ -75,13 +81,15 @@ class LedgerUsageRecorder:
         quantities = chat_quantities(
             input_tokens=usage.input_tokens, output_tokens=usage.output_tokens
         )
+        permit = usage.permit
         event = UsageEvent(
-            id=self.ids.new_uuid(),
-            occurred_at=self.clock.now(),
+            id=self.ids.new_uuid() if permit is None else permit.call_id,
+            occurred_at=self.clock.now() if permit is None else permit.occurred_at,
             tenant_id=run_context.tenant_id,
             workspace_id=run_context.workspace_id,
             run_id=run_context.run_id,
-            root_run_id=run_context.run_id,
+            root_run_id=run_context.root_run_id or run_context.run_id,
+            lease_id=None if permit is None else permit.lease_id,
             operation="chat",
             purpose="run",
             payer="platform",
@@ -103,7 +111,10 @@ class LedgerUsageRecorder:
             processor=usage.processor,
         )
         if not await self.ledger.settle(event):
-            # Same key, already settled: a retry that minted nothing new, or a
-            # second writer of the same key with other content (M2). Kept as the
-            # first one wrote it.
+            # Same key, already settled: a retry that minted nothing new, a
+            # second writer of the same key with other content (M2), or the
+            # reaper's estimate of a call whose process was presumed dead
+            # (R5.11). Kept as the first one wrote it.
             _LOG.warning("usage record %s was already settled", event.id)
+            if permit is not None:
+                self.telemetry.add_metric(DW_LIMIT_LATE_SETTLEMENTS_TOTAL, 1, {})

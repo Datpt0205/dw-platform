@@ -25,6 +25,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, ConfigDict
 
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_platform.testing.residency import run_gate
 from dw_usage.adapters.price_book_file import load_price_book
@@ -90,6 +91,9 @@ async def run() -> int:
         # The platform's eval runs `vn_only` (compliance-pdpl R2.3): a foreign
         # profile is refused until a route processed in Vietnam exists.
         residency=run_gate(),
+        # No database, so no lease: a probe or an eval run outside the platform's
+        # limits, bounded by the calls it makes (usage-and-limits/03).
+        limits=OpenLimits(),
     )
     context = RunContext(
         run_id=uuid.uuid4(),

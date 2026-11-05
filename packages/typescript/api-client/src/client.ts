@@ -373,6 +373,16 @@ export type UsageSummaryQuery = NonNullable<
 >;
 export type UsageGroupBy = NonNullable<UsageSummaryQuery["group_by"]>;
 
+// ---- limits (usage-and-limits ticket 03) ------------------------------------
+// One limit of the company with its counter of the current period, money and
+// tokens as decimal strings; `version` is the policy's ETag (`null` for the
+// plan's cap alone, which a first `PUT` without `If-Match` turns into a policy).
+export type LimitLine = Generated["LimitLineView"];
+export type LimitPolicy = Generated["LimitPolicyView"];
+export type LimitScope = LimitLine["scope_type"];
+export type LimitMetric = LimitLine["metric"];
+export type LimitWindow = LimitLine["window_kind"];
+
 const generated = <T>() =>
   z.custom<T>(
     (value) =>
@@ -1309,6 +1319,43 @@ export class ApiClient {
       "GET",
       `/api/v1/usage/summary${search ? `?${search}` : ""}`,
       generated<UsageSummary>(),
+    );
+  }
+
+  // ---- limits -------------------------------------------------------------
+  // 403 without `platform.usage.read` (the list) or `platform.limits.manage`
+  // (a write); a raise or a removal is 409 `second_person_required` in W1, a
+  // value above the plan's cap 422 `limit_above_plan`, an existing policy
+  // written without its version 428 and with a stale one 412.
+
+  listLimits(): Promise<LimitLine[]> {
+    return this.request(
+      "GET",
+      "/api/v1/limits",
+      z.array(generated<LimitLine>()),
+    );
+  }
+
+  /** Set a new limit (no `version`) or lower one (its `version`); the key is
+   * the caller's, kept across a retry of the same click. */
+  putLimit(
+    scope: LimitScope,
+    scopeId: string,
+    metric: LimitMetric,
+    windowKind: LimitWindow,
+    limitValue: string,
+    idempotencyKey: string,
+    version?: number,
+  ): Promise<LimitPolicy> {
+    return this.request(
+      "PUT",
+      `/api/v1/limits/${scope}/${encodeURIComponent(scopeId)}/${metric}/${windowKind}`,
+      generated<LimitPolicy>(),
+      {
+        body: { limit_value: limitValue, kind: "hard" },
+        ifMatch: version,
+        idempotencyKey,
+      },
     );
   }
 

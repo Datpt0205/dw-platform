@@ -15,12 +15,19 @@ from typing import Protocol
 from pydantic import ValidationError
 
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import RunBudgetLedger, route_cost
-from dw_agent_runtime.model.pricing import CostSource, PricingPort
+from dw_agent_runtime.model.limits import approximate_tokens, estimate_call
+from dw_agent_runtime.model.pricing import CostSource, PricingPort, route_cost
 from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.model.prompts import PromptRegistry, RenderedPrompt
 from dw_agent_runtime.model.resolver import ModelResolver, Purpose, ResolvedRoute
-from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest, OutputT, RunControlPort
+from dw_agent_runtime.ports import (
+    CallPermit,
+    LimitsPort,
+    ModelOutputInvalidError,
+    ModelRequest,
+    OutputT,
+    RunControlPort,
+)
 from dw_agent_runtime.run_control import RunControlDoor
 from dw_kernel.errors import InfrastructureError, NotFoundError, PriceNotFoundError
 from dw_kernel.ports import SystemClock, UtcClock
@@ -60,6 +67,10 @@ class ModelUsage:
     data_route_class: str | None = None
     data_location: str | None = None
     processor: str | None = None
+    # The lease's permit the call was sent under (usage-and-limits R5.2): the
+    # usage record's key and lease, so writing the record settles the call into
+    # its lease (R5.11). None for a call no lease permitted.
+    permit: CallPermit | None = None
 
 
 class ModelProviderAdapter(Protocol):
@@ -130,9 +141,10 @@ class RoutingModelGateway:
     # refused ones leave the attempt list, so a failing `vn` route never falls
     # through to a `foreign` fallback.
     residency: ResidencyGate
-    # Per-run ceiling from the profile's own `budgets`. Enforced here because
-    # this is the only place every model call passes through.
-    budget: RunBudgetLedger = field(default_factory=RunBudgetLedger)
+    # The hard limits (usage-and-limits R5.2, R5.5, R5.10): every attempt asks
+    # the run's lease for a permit before it is sent, after the residency gate,
+    # so a refused route holds nothing (R6.5). Injected, never defaulted.
+    limits: LimitsPort
     clock: UtcClock = field(default_factory=SystemClock)
 
     @staticmethod
@@ -199,8 +211,11 @@ class RoutingModelGateway:
         # nowhere, since none happened (R2.2).
         every_attempt = self._attempts(resolved)
         attempts = await self.residency.admitted(run_context, every_attempt)
-        # Checked before the call, not after: the point is to not make it.
-        self.budget.check(run_context.run_id, resolved.budgets, task=request.task)
+        # The run's lease, asked before each attempt, not after: the point is
+        # to not make a call the limits refuse. A refusal is not caught below,
+        # so it never falls through to a cheaper fallback (R5.5).
+        lease = self.limits.lease(run_context)
+        sent_tokens = approximate_tokens((prompt.system, prompt.user))
 
         asked = (
             request.output_schema
@@ -217,17 +232,32 @@ class RoutingModelGateway:
                         details={"provider": route.provider, "profile": profile_id},
                     )
                 continue  # fallback route pointing at an unwired provider
+            permit = await lease.before_call(
+                run_context,
+                estimate_call(
+                    self.pricing,
+                    route,
+                    tenant_id=run_context.tenant_id,
+                    input_tokens=sent_tokens,
+                    max_output_tokens=request.max_output_tokens,
+                    at=self.clock.now(),
+                ),
+            )
             started = perf_counter()
             try:
                 raw, usage, reasoning = await adapter.complete_json(
                     prompt,
                     asked,
                     route,
-                    max_output_tokens=request.max_output_tokens,
+                    max_output_tokens=permit.max_output_tokens,
                 )
             except InfrastructureError as exc:
+                await lease.abandon(permit)
                 last_error = exc
                 continue
+            except BaseException:
+                await lease.abandon(permit)
+                raise
             usage = replace(
                 usage,
                 latency_ms=(perf_counter() - started) * 1000,
@@ -237,8 +267,8 @@ class RoutingModelGateway:
             )
             if not usage.reported:
                 usage = _estimated(usage, prompt, raw)
-            priced = self._priced(route, usage, run_context)
-            self._spend(run_context, priced)
+            # Keyed by the permit: writing the record is the call's settlement.
+            priced = replace(self._priced(route, usage, run_context), permit=permit)
             await self._record(run_context, request, priced)
             try:
                 return output_type.model_validate(raw), reasoning or ""
@@ -272,9 +302,9 @@ class RoutingModelGateway:
         counts and no money. Pricing here rather than inside the budget check is
         what puts the same number in the ceiling and in the ledger.
 
-        A call the book cannot price keeps its answer, is recorded `unpriced`
-        and marks the run at its cost ceiling, so the next call is refused
-        (R2.5): an unknown cost is never zero.
+        A call the book cannot price keeps its answer and is recorded
+        `unpriced`; its settlement marks the lease, so the run's next call is
+        refused (R2.5): an unknown cost is never zero.
         """
         try:
             quote = route_cost(
@@ -292,7 +322,6 @@ class RoutingModelGateway:
                 route.provider,
                 route.model,
             )
-            self.budget.mark_unpriced(run_context.run_id)
             return replace(
                 usage,
                 cost_usd=0.0,
@@ -312,15 +341,6 @@ class RoutingModelGateway:
             cost_source=source,
             price_book_version=quote.price_book_version,
             price_entry_ids=quote.entry_ids,
-        )
-
-    def _spend(self, run_context: RunContext, usage: ModelUsage) -> None:
-        """Charge the run for a call that has already happened."""
-        self.budget.record(
-            run_context.run_id,
-            input_tokens=usage.input_tokens,
-            output_tokens=usage.output_tokens,
-            cost_usd=usage.cost_usd,
         )
 
     async def _record(

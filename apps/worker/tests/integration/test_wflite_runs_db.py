@@ -51,7 +51,6 @@ from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import DecisionCall, ToolExecutor
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
@@ -63,7 +62,6 @@ from dw_platform.adapters.persistence.digital_workers_repo import (
     SqlDigitalWorkerRepository,
     SqlDwMembershipCheck,
 )
-from dw_platform.adapters.persistence.plan_catalog import SqlPlanCatalog
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.adapters.persistence.work_queue_repo import SqlWorkQueueRepository
 from dw_platform.application.access_context import AccessContext
@@ -73,9 +71,9 @@ from dw_platform.application.decision_gate import (
     DwDecisionAdmission,
     check_edited_proposal,
 )
-from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.work_queue import WorkQueue, WorkScope
 from dw_platform.testing.members import add_tenant_member
+from dw_usage.adapters.limits_sql import SqlLimits
 from dw_worker.consumers.dw_timers import build_dw_timers_consumer
 from dw_worker.consumers.dw_work import build_dw_work_consumer
 
@@ -141,13 +139,9 @@ class Gateway:
 
     answer: dict[str, Any] = field(default_factory=lambda: dict(DRAFT))
     requests: list[Any] = field(default_factory=list)
-    # The process's ledger, which the real gateway records each call's spend in.
-    ledger: RunBudgetLedger | None = None
 
     async def generate_structured(self, request: Any, output_type: Any, *, run_context: Any) -> Any:
         self.requests.append(request)
-        if self.ledger is not None:
-            self.ledger.record(run_context.run_id, input_tokens=10, output_tokens=5, cost_usd=0.001)
         return output_type.model_validate(self.answer)
 
 
@@ -259,8 +253,6 @@ def build(
     )
     graphs = GraphRegistry()
     workers = WorkerRegistry(graph_registry=graphs)
-    budget = RunBudgetLedger()
-    gateway.ledger = budget
     run_store = SqlWorkerRunStore(sessions, stale_run_after_seconds=3600)
     checkpoints = SqlAlchemyCheckpointSaver(sessions, checkpoint_serializer())
     runner = LangGraphWorkflowRunner(
@@ -271,9 +263,9 @@ def build(
         uow_factory=uow,
         clock=clock,
         id_generator=ids,
-        # The seeded catalogue, as the worker root reads it (usage-and-limits R1.1).
-        allowance=PlanEntitlementService(SqlPlanCatalog(sessions)),
-        budget=budget,
+        # The leases on PostgreSQL, as the worker root wires them: the company's
+        # seeded plan read where the run begins (usage-and-limits R4.1, R5.1).
+        limits=SqlLimits(sessions, clock=clock, ids=ids),
         approval_policy=policy,
         run_waits=WorkQueueRunWaits(queue),
         run_control=OpenRunControl(),
@@ -624,9 +616,18 @@ async def test_a_run_waits_for_approval_sends_once_waits_and_finishes(
     # R6.21: the proposal's schema is email.send's input schema.
     assert row.payload["proposal_schema"] == EmailInput.model_json_schema()
     assert effects.sent == []
-    # The draft's spend is on this process's ledger until the pause, and freed
-    # at it: the decision may resume the run in another process.
-    assert run_id not in stack.runner.budget.spend
+    # The run's lease is given back at the pause (usage-and-limits R5.3): the
+    # decision may resume the run in another process, which takes it again.
+    async with migrator.connect() as conn:
+        leases = (
+            await conn.execute(
+                sa.text(
+                    "SELECT state, close_reason FROM platform.budget_leases WHERE root_run_id = :r"
+                ),
+                {"r": run_id},
+            )
+        ).all()
+    assert [(lease.state, lease.close_reason) for lease in leases] == [("closed", "paused")]
 
     await decide(stack, world, approval)
     assert effects.sent == [{k: DRAFT[k] for k in ("to", "subject", "body")}]

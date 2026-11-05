@@ -7,6 +7,7 @@ frozen and carry explicit version fields that feed the release manifest.
 from __future__ import annotations
 
 import re
+from decimal import Decimal
 from typing import Final, Literal
 from uuid import UUID
 
@@ -211,6 +212,25 @@ class RunContext(BaseModel):
     # value, as `clearance` is: a construction site that forgets it sends to
     # Vietnamese routes only, never abroad.
     route_class: RouteClass = "vn_only"
+    # The root of the run's tree (`platform.worker_runs.root_run_id`), whose
+    # one lease every run of the tree spends against (usage-and-limits R5.6;
+    # ADR-0113 decision 9). None: the run is its own root.
+    root_run_id: UUID | None = None
+    # The gate run an attempt of a gate or a trial gate belongs to
+    # (agent-lifecycle R4.4, R4.8): the attempt spends against that gate run's
+    # `eval_offline` lease, never admits one of its own. Set by
+    # agent-lifecycle/06; None for every other run.
+    gate_run_id: UUID | None = None
+    # The attempt's own spend ceiling inside its gate run's lease
+    # (agent-lifecycle R4.5): `before_call` clamps by what is left of it. None:
+    # no ceiling beyond the lease's.
+    cost_ceiling_usd: Decimal | None = Field(default=None, ge=0)
+
+    @property
+    def lease_root(self) -> UUID:
+        """Whose lease this run's model calls spend: its gate run's, else its
+        tree's root, else its own (usage-and-limits R5.6)."""
+        return self.gate_run_id or self.root_run_id or self.run_id
 
 
 class MessageSpec(BaseModel):

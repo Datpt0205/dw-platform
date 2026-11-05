@@ -22,10 +22,10 @@ from dw_agent_runtime.adapters.langchain_usage import LangchainUsageMeter
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.gateway import ModelUsage
 from dw_agent_runtime.ports import ModelRequest
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import route as test_route
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
@@ -70,8 +70,7 @@ def _runner(recorder: _Recorder) -> LangGraphWorkflowRunner:
         uow_factory=cast(Any, None),
         clock=cast(Any, None),
         id_generator=cast(Any, None),
-        allowance=cast(Any, None),
-        budget=RunBudgetLedger(),
+        limits=OpenLimits(),
         approval_policy=AutonomyApprovalPolicy(),
         usage_meter=LangchainUsageMeter(
             models=cast(Any, _Models()), recorder=recorder, pricing=FlatPricing()

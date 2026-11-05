@@ -1,7 +1,7 @@
 """`PlanModelProfilesPort` over `platform.plan_model_profiles`, and its
 in-process cache (model-connections R2.1, R2.2, R2.6; ADR-0118 decision 1).
 
-Beside `plan_catalog.py` and built the same way: the table is a global
+A global table like `platform.plan_limits`: the table is a global
 catalogue written by migrations only, with no RLS and no tenant setting needed
 to read it, so `dw_app` reads it on a session of its own. The answer is the set
 of platform profile ids a plan lists; a plan with no rows lists none, and the
@@ -25,9 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_kernel.ports import UtcClock
 from dw_platform.adapters.persistence import tables
-from dw_platform.adapters.persistence.plan_catalog import PLAN_LIMITS_TTL_SECONDS
 
-__all__ = ["CachingPlanModelProfiles", "SqlPlanModelProfiles"]
+__all__ = ["PLAN_PROFILES_TTL_SECONDS", "CachingPlanModelProfiles", "SqlPlanModelProfiles"]
+
+# Thirty seconds, as the membership cache's TTL: how long a migration that changes
+# which profiles a plan lists takes to reach every process (model-connections 02).
+PLAN_PROFILES_TTL_SECONDS = 30
 
 _TABLE = tables.plan_model_profiles
 
@@ -58,7 +61,7 @@ class CachingPlanModelProfiles:
 
     inner: _PlanProfiles
     clock: UtcClock
-    ttl_seconds: int = PLAN_LIMITS_TTL_SECONDS
+    ttl_seconds: int = PLAN_PROFILES_TTL_SECONDS
     _entries: dict[str, tuple[datetime, frozenset[str]]] = field(
         default_factory=dict, init=False, repr=False
     )

@@ -33,12 +33,12 @@ from dw_agent_runtime.approval_codes import ApprovalViewService
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.executor import ToolExecutor
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import RuntimeCopy
-from dw_agent_runtime.model.gateway import RoutingModelGateway
+from dw_agent_runtime.model.gateway import RoutingModelGateway, UsageRecorderPort
 from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.resolver import ModelResolver
+from dw_agent_runtime.ports import LimitsPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
@@ -110,6 +110,7 @@ from dw_platform.application.support_access import (
 )
 from dw_platform.application.tenant_members import TenantMembersService
 from dw_platform.application.work_queue import WorkQueue
+from dw_usage.application.limits import LimitPolicyService
 from dw_usage.application.reads import UsageReads
 
 
@@ -138,11 +139,11 @@ class RuntimeSeam:
     # one registers nothing rather than registering a graph that cannot run.
     chat_models: ChatModelFactory | None
     usage_meter: LangchainUsageMeter
-    # The process's one per-run spend ledger. A context building an `AgentSpec`
-    # passes THIS one, never a new `RunBudgetLedger()`: the runner frees entries
-    # in this instance, so spend recorded anywhere else is never bounded against
-    # the gateway's and never freed.
-    budget: RunBudgetLedger
+    # The process's one limits port (usage-and-limits R5): an `AgentSpec` takes
+    # it as `limits`, and `usage_recorder` as its `usage_recorder`, whose write
+    # of a permitted call settles it into the run's lease.
+    limits: LimitsPort
+    usage_recorder: UsageRecorderPort
     # The price book every call is priced by (usage-and-limits R2.1); a context
     # building an `AgentSpec` passes this one.
     pricing: PricingPort
@@ -179,6 +180,7 @@ class ApiContainer:
     # A run's usage and the company's usage summary (usage-and-limits R3.5,
     # R3.6), over the usage ledger; past the database gate.
     usage: UsageReads | None = None
+    limits: LimitPolicyService | None = None
     # Holds one LISTEN connection for the process; started and stopped by the
     # app's lifespan, never by a request.
     run_events: RunStateListener | None = None

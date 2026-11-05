@@ -25,14 +25,13 @@ from test_executor import make_run_context
 
 from dw_agent_runtime.adapters.agent_factory import platform_middleware
 from dw_agent_runtime.adapters.chat_model import MockChatModel
+from dw_agent_runtime.adapters.limits_middleware import LimitsMiddleware
 from dw_agent_runtime.adapters.model_retry import ModelRetryMiddleware
 from dw_agent_runtime.adapters.residency_middleware import ResidencyGateMiddleware
-from dw_agent_runtime.adapters.run_budget import RunBudgetMiddleware
 from dw_agent_runtime.adapters.run_control_middleware import RunControlMiddleware
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec, sub_agent_spec
 from dw_agent_runtime.adapters.telemetry_usage import TelemetryUsageRecorder
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.gateway import (
     InMemoryUsageRecorder,
     ModelUsage,
@@ -42,6 +41,7 @@ from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry, 
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry, RenderedPrompt
 from dw_agent_runtime.model.resolver import pin_entry
 from dw_agent_runtime.ports import ModelRequest
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import AnyManifest
 from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.pricing import FlatPricing
@@ -83,7 +83,6 @@ def _profile(primary: dict[str, object], fallback: dict[str, object] | None) -> 
         "structured_extraction": primary,
         "reasoning": primary,
         "chat": primary,
-        "budgets": {"max_input_tokens_per_run": 100_000, "max_cost_usd_per_run": 100.0},
     }
     if fallback is not None:
         body["fallback"] = fallback
@@ -132,7 +131,7 @@ class _World:
     vn: _Provider = field(default_factory=lambda: _Provider("vn_provider"))
     abroad: _Provider = field(default_factory=lambda: _Provider("abroad_provider"))
     recorder: InMemoryUsageRecorder = field(default_factory=InMemoryUsageRecorder)
-    budget: RunBudgetLedger = field(default_factory=RunBudgetLedger)
+    limits: OpenLimits = field(default_factory=OpenLimits)
 
     def gateway(self, profiles: Any, *, pinned: Any = None) -> RoutingModelGateway:
         prompts = PromptRegistry()
@@ -154,7 +153,7 @@ class _World:
             pricing=FlatPricing(prices={"vn-model": (Decimal("0"), Decimal("0"))}),
             run_control=OpenRunControl(),
             residency=run_gate(),
-            budget=self.budget,
+            limits=self.limits,
         )
 
 
@@ -199,7 +198,8 @@ async def test_a_vn_only_run_never_reaches_a_foreign_route() -> None:
     assert refused.value.details["reason_code"] == "residency_refused"
     assert world.abroad.calls == 0
     assert world.recorder.records == []
-    assert run.run_id not in world.budget.spend
+    # The gate stands before the lease: nothing was asked of the limits (R6.5).
+    assert world.limits.calls == []
 
 
 async def test_a_failing_vn_route_does_not_fall_through_to_a_foreign_fallback() -> None:
@@ -326,7 +326,7 @@ class _Failing(MockChatModel):
         raise _Status503Error("503")
 
 
-def _loop(model: MockChatModel, profiles: Any, budget: RunBudgetLedger) -> Any:
+def _loop(model: MockChatModel, profiles: Any, limits: OpenLimits) -> Any:
     models = model_resolver(profiles, PROFILE)
     return create_agent(
         model=model,
@@ -334,7 +334,7 @@ def _loop(model: MockChatModel, profiles: Any, budget: RunBudgetLedger) -> Any:
         middleware=[
             RunControlMiddleware(OpenRunControl()),
             ResidencyGateMiddleware(run_gate(), models, PROFILE),
-            RunBudgetMiddleware(budget, models, PROFILE, FlatPricing()),
+            LimitsMiddleware(limits, models, PROFILE, FlatPricing(), InMemoryUsageRecorder()),
             ModelRetryMiddleware(backoff_seconds=0),
         ],
         context_schema=RunContext,
@@ -343,23 +343,23 @@ def _loop(model: MockChatModel, profiles: Any, budget: RunBudgetLedger) -> Any:
 
 async def test_the_agent_loop_refuses_a_foreign_chat_route_before_the_model() -> None:
     """CP2 at the loop's own door: the chat model is never called and the
-    run's spend ledger is never charged (the gate sits before the limits)."""
+    run's lease is never asked (the gate sits before the limits, R6.5)."""
     model = MockChatModel(responses=[AIMessage(content="xong")], mock_reply="x")
-    budget = RunBudgetLedger()
+    limits = OpenLimits()
     run = _run("vn_only")
 
     with pytest.raises(ResidencyRefusedError):
-        await _loop(model, _registry(ABROAD), budget).ainvoke(
+        await _loop(model, _registry(ABROAD), limits).ainvoke(
             {"messages": [HumanMessage("x")]}, context=run
         )
 
     assert model.calls == []
-    assert run.run_id not in budget.spend
+    assert limits.calls == []
 
 
 async def test_the_agent_loop_admits_a_vn_chat_route() -> None:
     model = MockChatModel(responses=[AIMessage(content="xong")], mock_reply="x")
-    await _loop(model, _registry(VN), RunBudgetLedger()).ainvoke(
+    await _loop(model, _registry(VN), OpenLimits()).ainvoke(
         {"messages": [HumanMessage("x")]}, context=_run("vn_only")
     )
     assert len(model.calls) == 1
@@ -398,7 +398,7 @@ async def test_the_agent_loop_retries_only_the_admitted_route() -> None:
 
 
 def _order(stack: list[Any]) -> list[type]:
-    kinds = (RunControlMiddleware, ResidencyGateMiddleware, RunBudgetMiddleware)
+    kinds = (RunControlMiddleware, ResidencyGateMiddleware, LimitsMiddleware)
     return [type(m) for m in stack if isinstance(m, kinds)]
 
 
@@ -408,7 +408,7 @@ def test_the_platform_stack_puts_the_gate_after_the_freeze_and_before_the_limits
     assert _order(platform_middleware(spec)) == [
         RunControlMiddleware,
         ResidencyGateMiddleware,
-        RunBudgetMiddleware,
+        LimitsMiddleware,
     ]
 
 
@@ -421,7 +421,7 @@ async def test_a_delegated_turn_asks_the_gate_at_its_own_model_call() -> None:
     assert _order(built["middleware"]) == [
         RunControlMiddleware,
         ResidencyGateMiddleware,
-        RunBudgetMiddleware,
+        LimitsMiddleware,
     ]
 
     model = MockChatModel(responses=[AIMessage(content="xong")], mock_reply="x")

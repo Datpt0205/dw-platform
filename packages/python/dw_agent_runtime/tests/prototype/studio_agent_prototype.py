@@ -11,7 +11,7 @@ answers for that ticket:
   ticket changes no runner code): it compiles with the checkpointer it is
   given, and a test invokes the graph directly.
 * `StudioModelSelection`: the model a run pinned (spec R3.5) chosen per call
-  by a resolver, standing before `RunBudgetMiddleware` so the ceiling prices
+  by a resolver, standing before `LimitsMiddleware` so the lease prices
   the chosen model (M2, `tests/unit/test_library_contracts.py`).
 * `studio_sub_agents`: a child whose own stack carries the run control and its
   own model selection, because the parent's middleware does not wrap a child
@@ -48,20 +48,21 @@ from pydantic import BaseModel, create_model
 from dw_agent_runtime.adapters.agent_factory import AgentSpec, platform_middleware
 from dw_agent_runtime.adapters.chat_model import MockChatModel
 from dw_agent_runtime.adapters.langchain_tools import tool_call
-from dw_agent_runtime.adapters.run_budget import RunBudgetMiddleware
+from dw_agent_runtime.adapters.limits_middleware import LimitsMiddleware
 from dw_agent_runtime.adapters.studio_tools import PinnedTools
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec, sub_agent_spec
 from dw_agent_runtime.adapters.wflite_host import build_tool_executor_steps
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext, ToolDefinition, model_facing_name
 from dw_agent_runtime.executor import ToolExecutor
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder
 from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
 from dw_agent_runtime.model.resolver import ModelResolver as PlatformModelResolver
 from dw_agent_runtime.ports import RunControlPort
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
@@ -224,7 +225,6 @@ def models_for(document: AgentDocument) -> PlatformModelResolver:
                     "structured_extraction": route,
                     "reasoning": route,
                     "chat": route,
-                    "budgets": {"max_input_tokens_per_run": 100_000, "max_cost_usd_per_run": 100.0},
                 }
             )
         )
@@ -319,11 +319,11 @@ class StudioModelSelection(AgentMiddleware[Any, Any]):
 def before_the_ceiling(
     stack: Sequence[AgentMiddleware[Any, Any]], selection: StudioModelSelection
 ) -> list[AgentMiddleware[Any, Any]]:
-    """`stack` with `selection` directly before `RunBudgetMiddleware`: outer to
-    it, so the ceiling sees the chosen model (M2). The full order with
-    `ResidencyGate` and `LimitsMiddleware` is ticket 03's."""
+    """`stack` with `selection` directly before `LimitsMiddleware`: outer to
+    it, so the lease sees the chosen model (M2). The full order with
+    `ResidencyGate` is agent-builder/03's."""
     out = list(stack)
-    at = next(i for i, m in enumerate(out) if isinstance(m, RunBudgetMiddleware))
+    at = next(i for i, m in enumerate(out) if isinstance(m, LimitsMiddleware))
     out.insert(at, selection)
     return out
 
@@ -416,7 +416,8 @@ class StudioGraphSource:
             prompt_version=FRAME_VERSION,
             prompts=prompts,
             prompt_variables=lambda request: {"instructions": instructions},
-            budget=RunBudgetLedger(),
+            limits=OpenLimits(),
+            usage_recorder=InMemoryUsageRecorder(),
             pricing=FlatPricing(),
             models=models_for(document),
             profile_id=document.profile_id,

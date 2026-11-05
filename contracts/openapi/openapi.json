@@ -3781,6 +3781,212 @@
         "title": "KnowledgeDocumentView",
         "type": "object"
       },
+      "LimitBody": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "description": "`hard`, the only kind of W1 (`soft` comes in W2).",
+            "title": "Kind",
+            "type": "string"
+          },
+          "limit_value": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ],
+            "description": "USD for `cost_usd`, a count otherwise; >= 0.",
+            "title": "Limit Value"
+          }
+        },
+        "required": [
+          "limit_value",
+          "kind"
+        ],
+        "title": "LimitBody",
+        "type": "object"
+      },
+      "LimitLineView": {
+        "description": "One limit of the company (usage-and-limits R4; `GET /api/v1/limits`):\nthe policy at its scope (`limit_value` `None` for the plan's cap alone),\nthe plan's cap at the company, the effective limit along the chain, and the\ncurrent period's counter, money and tokens as decimal strings.",
+        "properties": {
+          "effective_limit": {
+            "title": "Effective Limit",
+            "type": "string"
+          },
+          "kind": {
+            "const": "hard",
+            "default": "hard",
+            "title": "Kind",
+            "type": "string"
+          },
+          "limit_source": {
+            "enum": [
+              "plan",
+              "policy"
+            ],
+            "title": "Limit Source",
+            "type": "string"
+          },
+          "limit_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit Value"
+          },
+          "metric": {
+            "enum": [
+              "cost_usd",
+              "tokens",
+              "runs"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "plan_limit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Plan Limit"
+          },
+          "reserved": {
+            "title": "Reserved",
+            "type": "string"
+          },
+          "resets_at": {
+            "format": "date-time",
+            "title": "Resets At",
+            "type": "string"
+          },
+          "scope_id": {
+            "format": "uuid",
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "scope_type": {
+            "enum": [
+              "tenant",
+              "workspace",
+              "agent",
+              "workflow"
+            ],
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "used": {
+            "title": "Used",
+            "type": "string"
+          },
+          "version": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version"
+          },
+          "window_kind": {
+            "enum": [
+              "day",
+              "month"
+            ],
+            "title": "Window Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope_type",
+          "scope_id",
+          "metric",
+          "window_kind",
+          "limit_value",
+          "version",
+          "plan_limit",
+          "effective_limit",
+          "limit_source",
+          "used",
+          "reserved",
+          "resets_at"
+        ],
+        "title": "LimitLineView",
+        "type": "object"
+      },
+      "LimitPolicyView": {
+        "properties": {
+          "kind": {
+            "const": "hard",
+            "default": "hard",
+            "title": "Kind",
+            "type": "string"
+          },
+          "limit_value": {
+            "title": "Limit Value",
+            "type": "string"
+          },
+          "metric": {
+            "enum": [
+              "cost_usd",
+              "tokens",
+              "runs"
+            ],
+            "title": "Metric",
+            "type": "string"
+          },
+          "scope_id": {
+            "format": "uuid",
+            "title": "Scope Id",
+            "type": "string"
+          },
+          "scope_type": {
+            "enum": [
+              "tenant",
+              "workspace",
+              "agent",
+              "workflow"
+            ],
+            "title": "Scope Type",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "window_kind": {
+            "enum": [
+              "day",
+              "month"
+            ],
+            "title": "Window Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope_type",
+          "scope_id",
+          "metric",
+          "window_kind",
+          "limit_value",
+          "version"
+        ],
+        "title": "LimitPolicyView",
+        "type": "object"
+      },
       "MeResponse": {
         "properties": {
           "access_version": {
@@ -14473,6 +14679,293 @@
         "summary": "Delete Document",
         "tags": [
           "knowledge"
+        ]
+      }
+    },
+    "/api/v1/limits": {
+      "get": {
+        "description": "Every limit of the company: the plan's caps at the company and every\npolicy, each with its effective limit and the current period's counter.",
+        "operationId": "list_limits_api_v1_limits_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LimitLineView"
+                  },
+                  "title": "Response List Limits Api V1 Limits Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Limits",
+        "tags": [
+          "limits"
+        ]
+      }
+    },
+    "/api/v1/limits/{scope_type}/{scope_id}/{metric}/{window_kind}": {
+      "delete": {
+        "description": "Removing a limit loosens it: 409 `second_person_required` in W1, once\nthe policy and its `If-Match` are checked; nothing is changed.",
+        "operationId": "delete_limit_api_v1_limits__scope_type___scope_id___metric___window_kind__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope_type",
+            "required": true,
+            "schema": {
+              "title": "Scope Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scope_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scope Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "metric",
+            "required": true,
+            "schema": {
+              "title": "Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "window_kind",
+            "required": true,
+            "schema": {
+              "title": "Window Kind",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "The version of the policy as a strong ETag, for example \"3\": required once the policy exists (428 without it, 412 when stale); absent to set a new one.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The version of the policy as a strong ETag, for example \"3\": required once the policy exists (428 without it, 412 when stale); absent to set a new one.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Delete Limit",
+        "tags": [
+          "limits"
+        ]
+      },
+      "put": {
+        "description": "Set a new limit or lower one, at once and audited (`limits.policy.set`).",
+        "operationId": "put_limit_api_v1_limits__scope_type___scope_id___metric___window_kind__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "scope_type",
+            "required": true,
+            "schema": {
+              "title": "Scope Type",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "scope_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Scope Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "metric",
+            "required": true,
+            "schema": {
+              "title": "Metric",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "window_kind",
+            "required": true,
+            "schema": {
+              "title": "Window Kind",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          },
+          {
+            "description": "The version of the policy as a strong ETag, for example \"3\": required once the policy exists (428 without it, 412 when stale); absent to set a new one.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "The version of the policy as a strong ETag, for example \"3\": required once the policy exists (428 without it, 412 when stale); absent to set a new one.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LimitBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LimitPolicyView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Put Limit",
+        "tags": [
+          "limits"
         ]
       }
     },

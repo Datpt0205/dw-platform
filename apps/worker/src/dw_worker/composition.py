@@ -32,7 +32,6 @@ from dw_agent_runtime.adapters.model_stack import (
 from dw_agent_runtime.adapters.pack_tools import build_leadcare_tools, register_leadcare_tools
 from dw_agent_runtime.adapters.release_manifest import read_release_manifest_ref
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
-from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
 from dw_agent_runtime.adapters.wflite_host import (
     build_run_starter,
     build_send_floor,
@@ -69,15 +68,14 @@ from dw_knowledge.ingest_jobs import IngestJobQueue, IngestJobStore
 from dw_knowledge.ports import DocumentParserPort, EmbeddingPort, ObjectStoragePort, VectorIndexPort
 from dw_observability.telemetry import TelemetryPort
 from dw_platform.adapters.persistence.egress_allowlist_repo import SqlAllowedHosts
-from dw_platform.adapters.persistence.plan_catalog import CachingPlanCatalog, SqlPlanCatalog
 from dw_platform.adapters.persistence.plan_model_profiles import (
     CachingPlanModelProfiles,
     SqlPlanModelProfiles,
 )
 from dw_platform.adapters.persistence.residency import SqlRouteClasses
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
-from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.work_queue import WorkQueue
+from dw_usage.adapters.limits_sql import SqlLimits
 from dw_usage.adapters.price_book_file import enforce_price_coverage, load_price_book
 from dw_usage.adapters.sql import SqlUsageLedger
 from dw_usage.application.recorder import LedgerUsageRecorder
@@ -311,13 +309,13 @@ def build_model_stack_for(
     telemetry: TelemetryPort,
     run_control: RunControlPort,
 ) -> ModelStack:
-    """The worker's model gateway, spend ledger and usage recorders, built by
-    the same `build_model_stack` the API builds its own with: the profiles,
-    the shipped prompts, the daily spend guard. A chat command's model call
-    therefore spends against the same per-run ceiling and the same daily
-    guard as a request's, priced by the same book and written to the same
-    usage ledger (usage-and-limits R2.1, R3.1); a deployed profile with a paid
-    route the book does not price refuses to start (R2.3)."""
+    """The worker's model gateway, limits and usage recorders, built by the
+    same `build_model_stack` the API builds its own with: the profiles, the
+    shipped prompts, the limits on PostgreSQL. A chat command's model call
+    therefore asks the same leases as a request's, priced by the same book and
+    written to the same usage ledger (usage-and-limits R2.1, R3.1, R5.2); a
+    deployed profile with a paid route the book does not price refuses to
+    start (R2.3)."""
     # The one resolver every model door of this process asks (model-connections
     # R1.1), filtered by the plan catalogue. No Studio run is taken here yet, so
     # no manifest reader: such a run's every call would be refused.
@@ -353,6 +351,8 @@ def build_model_stack_for(
         ),
         run_control=run_control,
         residency=build_residency_gate(sessions, telemetry),
+        # The process's one limits port, read in each transaction (R4.8).
+        limits=SqlLimits(sessions, clock=clock, ids=Uuid7Generator(clock), telemetry=telemetry),
     )
 
 
@@ -386,7 +386,7 @@ def build_wflite_runtime(
 
     No usage meter: it bills an agent loop's LangChain calls, and a workflow's
     model calls go through the gateway, which records its own usage into the
-    daily spend guard and the usage ledger."""
+    usage ledger, each call settled into its run's lease."""
     stack = build_model_stack_for(
         settings, sessions, clock=clock, telemetry=telemetry, run_control=run_control
     )
@@ -458,15 +458,13 @@ def build_wflite_runtime(
         uow_factory=SqlPlatformUnitOfWorkFactory(sessions),
         clock=clock,
         id_generator=ids,
-        # The same plan catalogue the API's runner refuses a run's start with:
-        # `platform.plan_limits`, cached in this process (usage-and-limits R1.1).
-        allowance=PlanEntitlementService(CachingPlanCatalog(SqlPlanCatalog(sessions), clock)),
-        budget=stack.budget,
+        # The same limits the API's runner admits a run with: the plan's caps
+        # and the company's policies, read where the run begins (R4.1, R5.1).
+        limits=stack.limits,
         approval_policy=approval_policy,
         run_control=run_control,
         release_manifest_ref=read_release_manifest_ref(REPO_ROOT),
         telemetry=telemetry,
-        spend_store=SqlSpendGuardStore(session_factory=sessions),
         run_waits=WorkQueueRunWaits(queue),
         run_graphs=tenant_graphs,
     )

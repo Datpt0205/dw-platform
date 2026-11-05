@@ -4,9 +4,11 @@
 closed was a dict, `DEFAULT_PLANS`, that the runtime read while the database
 held the same plans with its own copy (failure-modes #2). So the source is
 read with `ast`: the name `DEFAULT_PLANS` anywhere, or a call building a
-`Plan` or a `PlanLimits` outside the adapter that reads the table, is a
+`Plan` or a `PlanCaps` outside the adapter that reads the table, is a
 second catalogue. A dict renamed and built of plain numbers is not seen; a
-`PlanLimits` built from one is.
+`PlanCaps` built from one is. The reader is `dw_usage`'s limits, which read
+`platform.plan_limits` in the transaction that admits a run (usage-and-limits
+ticket 03).
 
 Every package under `packages/python/*/src` and `apps/*/src` is scanned at
 the place Python imports it from, not only at its path in the tree, so a
@@ -26,10 +28,10 @@ pytestmark = pytest.mark.unit
 
 REPO = Path(__file__).resolve().parents[5]
 _ROOTS = ("packages/python/*/src/*/__init__.py", "apps/*/src/*/__init__.py")
-_BUILDERS = frozenset({"Plan", "PlanLimits"})
+_BUILDERS = frozenset({"Plan", "PlanCaps"})
 _NAME = "DEFAULT_PLANS"
-# The one module that builds `PlanLimits`, from a row of the table.
-OWNER = ("dw_platform", "adapters/persistence/plan_catalog.py")
+# The one module that builds `PlanCaps`, from a row of the table.
+OWNER = ("dw_usage", "adapters/limits_sql.py")
 
 
 def offences(source: str) -> list[str]:
@@ -93,10 +95,10 @@ def test_the_source_tree_holds_no_plan_catalogue() -> None:
     assert violations(roots) == []
 
 
-def test_the_owner_builds_plan_limits_and_is_the_only_exemption() -> None:
-    owner = packages(REPO)["dw_platform"] / OWNER[1]
+def test_the_owner_builds_plan_caps_and_is_the_only_exemption() -> None:
+    owner = packages(REPO)["dw_usage"] / OWNER[1]
     assert offences(owner.read_text(encoding="utf-8")), "the adapter is where rows become limits"
-    assert violations({"dw_platform": owner.parent}, owner=("dw_platform", "elsewhere.py"))
+    assert violations({"dw_usage": owner.parent}, owner=("dw_usage", "elsewhere.py"))
 
 
 @pytest.mark.parametrize(
@@ -108,9 +110,9 @@ def test_the_owner_builds_plan_limits_and_is_the_only_exemption() -> None:
         "import catalogue as DEFAULT_PLANS",
         "service(entitlement.DEFAULT_PLANS)",
         "x = Plan(plan_id='basic', name='Basic', features=frozenset())",
-        "x = PlanLimits(plan_id='basic', runs_per_day=20)",
-        "x = plan_catalog.PlanLimits(plan_id='basic')",
-        "def build():\n    return {'basic': PlanLimits(**row)}",
+        "x = PlanCaps(plan_id='basic', periods={}, max_cost_usd_per_run=2)",
+        "x = limits.PlanCaps(plan_id='basic')",
+        "def build():\n    return {'basic': PlanCaps(**row)}",
     ],
 )
 def test_each_shape_of_a_second_catalogue_is_named(source: str) -> None:
@@ -120,8 +122,8 @@ def test_each_shape_of_a_second_catalogue_is_named(source: str) -> None:
 @pytest.mark.parametrize(
     "source",
     [
-        "from dw_platform.application.plan_catalog import PlanLimits",
-        "def f(limits: PlanLimits) -> PlanLimits:\n    return limits",
+        "from dw_usage.domain.limits import PlanCaps",
+        "def f(limits: PlanCaps) -> PlanCaps:\n    return limits",
         "PLANS_SEEN = {'basic'}",
         "plan = catalogue.limits('basic')",
     ],

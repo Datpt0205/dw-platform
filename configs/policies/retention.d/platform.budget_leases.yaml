@@ -1,0 +1,10 @@
+# Lease giữ trước của lượt chạy (`platform.budget_leases`), usage-and-limits ticket 03.
+#
+# 30 ngày sau khi đóng, số tạm UNVERIFIED (ADR-0121 quyết 5; ADR-0122). `row_delete`:
+# lane `retention_limits` xóa lease đóng quá thời hạn, chỉ khi lượt gốc của nó đã ở
+# trạng thái cuối, để phần đã tiêu của một lượt còn chờ không bị xóa. Dòng vận hành:
+# bộ xóa ghi số dòng vào log, không ghi audit.
+days: 30
+purger: row_delete
+enforced: true
+description: Lease giữ trước tiền và token của lượt chạy, đã đóng

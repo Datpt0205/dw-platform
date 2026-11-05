@@ -26,7 +26,6 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
 from test_agent_factory import (
     ABROAD_TENANT,
-    LOOP_CEILING_TOKENS,
     PROFILE_ID,
     THREAD,
     _models,
@@ -42,12 +41,14 @@ from dw_agent_runtime.adapters.context_compaction import (
 )
 from dw_agent_runtime.adapters.langchain_tools import platform_tools
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import BudgetExceededError, RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor, RunHaltedError
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
+from dw_kernel.limits import LimitExceededError
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
 from dw_kernel.residency import ResidencyRefusedError
 from dw_platform.domain.audit import AuditEvent
@@ -89,10 +90,10 @@ class _FailingAudit(FakeAuditRepo):
 def _compactor(
     summariser: MockChatModel,
     audit: FakeAuditRepo | None = None,
-    budget: RunBudgetLedger | None = None,
+    limits: OpenLimits | None = None,
     summary_input_tokens: int = 8000,
-    ceiling_tokens: int = LOOP_CEILING_TOKENS,
     control: OpenRunControl | None = None,
+    recorder: InMemoryUsageRecorder | None = None,
 ) -> tuple[PlatformSummarizationMiddleware, FakeAuditRepo]:
     repo = audit if audit is not None else FakeAuditRepo()
     middleware = PlatformSummarizationMiddleware(
@@ -102,9 +103,10 @@ def _compactor(
         uow_factory=FakeUoWFactory(audit_repo=repo),
         clock=FixedClock(NOW),
         ids=SequentialIdGenerator(),
-        budget=budget if budget is not None else RunBudgetLedger(),
+        limits=limits if limits is not None else OpenLimits(),
+        usage_recorder=recorder if recorder is not None else InMemoryUsageRecorder(),
         pricing=FlatPricing(),
-        models=_models(ceiling_tokens=ceiling_tokens, summary_input_tokens=summary_input_tokens),
+        models=_models(summary_input_tokens=summary_input_tokens),
         profile_id=PROFILE_ID,
         summary_profile_id=PROFILE_ID,
         trigger=("messages", TRIGGER_MESSAGES),
@@ -232,11 +234,13 @@ async def test_history_too_large_to_summarise_is_not_traded_for_a_placeholder() 
 # --------------------------------------------------- 5. counted and bounded --
 
 
-async def test_a_summarys_tokens_count_against_the_runs_ceiling() -> None:
+async def test_a_summary_asks_the_runs_lease_and_is_settled_by_its_permit() -> None:
     """Measured before this existed: the summariser ran and the ledger held one
-    entry — the agent's. A run that kept compacting spent on summaries unbounded."""
-    ledger = RunBudgetLedger()
-    middleware, _ = _compactor(_summariser(), budget=ledger)
+    entry — the agent's. A run that kept compacting spent on summaries unbounded.
+    Now every summary asks the run's lease first and its usage carries the
+    permit, which settles it (usage-and-limits R5.2, R5.11)."""
+    limits, recorder = OpenLimits(), InMemoryUsageRecorder()
+    middleware, _ = _compactor(_summariser(), limits=limits, recorder=recorder)
     context = make_run_context().model_copy(update={"run_id": uuid.uuid4()})
     agent: Any = create_agent(
         model=MockChatModel(responses=[AIMessage(content="xong")], mock_reply="xong"),
@@ -248,19 +252,22 @@ async def test_a_summarys_tokens_count_against_the_runs_ceiling() -> None:
 
     await agent.ainvoke({"messages": _history(8)}, THREAD, context=context)
 
-    spend = ledger.spend[context.run_id]
-    assert spend.calls == 1
-    assert spend.input_tokens > 0
+    assert [run for run, _ in limits.calls] == [context.run_id]
+    ((recorded_run, usage),) = recorder.records
+    assert recorded_run == str(context.run_id)
+    assert usage.permit == limits.permits[0]
+    assert usage.input_tokens > 0
 
 
-async def test_a_run_over_its_ceiling_is_stopped_not_waved_through_as_a_failed_summary() -> None:
+async def test_a_run_over_its_limits_is_stopped_not_waved_through_as_a_failed_summary() -> None:
     """The refusal must escape. Checked inside the fail-open block it would read as
-    "the summariser failed, carry on", and the ceiling would stop nothing."""
-    ledger = RunBudgetLedger()
+    "the summariser failed, carry on", and the lease would stop nothing."""
+    limits = OpenLimits(
+        refuse_calls=LimitExceededError("spent", metric="cost_usd", scope_type="run")
+    )
     context = make_run_context().model_copy(update={"run_id": uuid.uuid4()})
-    # Already past the ceiling before this step.
-    ledger.record(context.run_id, input_tokens=10_000, output_tokens=0, cost_usd=0.0)
-    middleware, audit = _compactor(_summariser(), budget=ledger)
+    summariser = _summariser()
+    middleware, audit = _compactor(summariser, limits=limits)
     agent: Any = create_agent(
         model=MockChatModel(responses=[AIMessage(content="xong")], mock_reply="xong"),
         tools=[],
@@ -269,8 +276,9 @@ async def test_a_run_over_its_ceiling_is_stopped_not_waved_through_as_a_failed_s
         checkpointer=InMemorySaver(),
     )
 
-    with pytest.raises(BudgetExceededError):
+    with pytest.raises(LimitExceededError):
         await agent.ainvoke({"messages": _history(8)}, THREAD, context=context)
+    assert summariser.calls == []
     assert audit.events == []
 
 
@@ -406,7 +414,8 @@ def test_it_refuses_a_copy_without_the_summary_text(older: str) -> None:
             uow_factory=FakeUoWFactory(),
             clock=FixedClock(NOW),
             ids=SequentialIdGenerator(),
-            budget=RunBudgetLedger(),
+            limits=OpenLimits(),
+            usage_recorder=InMemoryUsageRecorder(),
             pricing=FlatPricing(),
             models=_models(),
             profile_id=PROFILE_ID,
@@ -479,7 +488,7 @@ async def test_a_long_tool_loop_inside_one_turn_is_compacted() -> None:
     only human message was older than that, so it returned nothing and the
     step compacted nothing at all."""
     summariser = _summariser()
-    middleware, audit = _compactor(summariser, ceiling_tokens=1_000_000)
+    middleware, audit = _compactor(summariser)
 
     messages = await _run_history(middleware, _tool_loop(14))
 
@@ -492,7 +501,7 @@ async def test_the_previous_summary_reaches_the_summariser_as_its_anchor() -> No
     """Measured by the audit: the old summary and the first 17 turns never reached
     the summariser, so each compaction dropped what the last one had kept."""
     summariser = _summariser()
-    middleware, _ = _compactor(summariser, ceiling_tokens=1_000_000)
+    middleware, _ = _compactor(summariser)
 
     await _run_history(middleware, _long_thread(22))
 
@@ -506,12 +515,10 @@ async def test_the_previous_summary_reaches_the_summariser_as_its_anchor() -> No
 # ------------------------------------------------- bounded by the profile --
 
 
-async def _calls_at(budget: int) -> tuple[list[int], int, RunBudgetLedger, uuid.UUID]:
+async def _calls_at(budget: int) -> tuple[list[int], int, OpenLimits, uuid.UUID]:
     summariser = _summariser()
-    ledger = RunBudgetLedger()
-    middleware, audit = _compactor(
-        summariser, budget=ledger, summary_input_tokens=budget, ceiling_tokens=1_000_000
-    )
+    limits = OpenLimits()
+    middleware, audit = _compactor(summariser, limits=limits, summary_input_tokens=budget)
     context = make_run_context().model_copy(update={"run_id": uuid.uuid4()})
     agent: Any = create_agent(
         model=MockChatModel(responses=[AIMessage(content="xong")], mock_reply="xong"),
@@ -526,7 +533,7 @@ async def _calls_at(budget: int) -> tuple[list[int], int, RunBudgetLedger, uuid.
     return (
         [middleware.token_counter(call) for call in summariser.calls],
         len(summariser.calls),
-        ledger,
+        limits,
         context.run_id,
     )
 
@@ -543,11 +550,11 @@ async def test_the_summary_routes_budget_bounds_every_call() -> None:
     assert small_calls > large_calls
 
 
-async def test_every_chunk_counts_against_the_runs_ceiling() -> None:
-    _, calls, ledger, run_id = await _calls_at(2000)
+async def test_every_chunk_asks_the_runs_lease() -> None:
+    _, calls, limits, run_id = await _calls_at(2000)
 
     assert calls > 1
-    assert ledger.spend[run_id].calls == calls
+    assert [run for run, _ in limits.calls] == [run_id] * calls
 
 
 async def test_each_chunk_carries_the_summary_so_far() -> None:
@@ -555,7 +562,7 @@ async def test_each_chunk_carries_the_summary_so_far() -> None:
     summariser = MockChatModel(
         responses=[AIMessage(content="BẢN-TÓM-TẮT-KHÚC")], mock_reply="BẢN-TÓM-TẮT-KHÚC"
     )
-    middleware, _ = _compactor(summariser, summary_input_tokens=2000, ceiling_tokens=1_000_000)
+    middleware, _ = _compactor(summariser, summary_input_tokens=2000)
 
     await _run_history(middleware, _long_thread(22))
 
@@ -567,7 +574,7 @@ async def test_each_chunk_carries_the_summary_so_far() -> None:
 
 async def test_a_tool_call_and_its_result_land_in_the_same_chunk() -> None:
     summariser = _summariser()
-    middleware, _ = _compactor(summariser, summary_input_tokens=2000, ceiling_tokens=1_000_000)
+    middleware, _ = _compactor(summariser, summary_input_tokens=2000)
 
     await _run_history(middleware, _tool_loop(14))
 
@@ -596,7 +603,6 @@ async def test_a_failing_chunk_abandons_the_whole_compaction() -> None:
     middleware, audit = _compactor(
         _FailsAfterFirst(responses=[AIMessage(content=SUMMARY)], mock_reply=SUMMARY),
         summary_input_tokens=2000,
-        ceiling_tokens=1_000_000,
     )
 
     messages = await _run_history(middleware, _long_thread(22))
@@ -614,7 +620,8 @@ def test_a_summary_route_without_an_input_budget_is_refused_at_build() -> None:
             uow_factory=FakeUoWFactory(),
             clock=FixedClock(NOW),
             ids=SequentialIdGenerator(),
-            budget=RunBudgetLedger(),
+            limits=OpenLimits(),
+            usage_recorder=InMemoryUsageRecorder(),
             pricing=FlatPricing(),
             models=_models(summary_input_tokens=None),
             profile_id=PROFILE_ID,
@@ -625,15 +632,13 @@ def test_a_summary_route_without_an_input_budget_is_refused_at_build() -> None:
         )
 
 
-async def test_a_chunk_past_the_ceiling_is_stopped_too() -> None:
+async def test_a_chunk_past_the_lease_is_stopped_too() -> None:
     """Checked before every chunk, not once: a compaction long enough to need
-    many calls is exactly the one that can cross the ceiling half way."""
+    many calls is exactly the one that can spend its lease half way."""
     summariser = _summariser()
-    ledger = RunBudgetLedger()
-    # Room for the first chunk's ~1.7k input tokens, not for a second chunk.
-    middleware, audit = _compactor(
-        summariser, budget=ledger, summary_input_tokens=2000, ceiling_tokens=1500
-    )
+    # Room for the first chunk's call, not for a second one.
+    limits = OpenLimits(refuse_after_calls=1)
+    middleware, audit = _compactor(summariser, limits=limits, summary_input_tokens=2000)
     context = make_run_context().model_copy(update={"run_id": uuid.uuid4()})
     agent: Any = create_agent(
         model=MockChatModel(responses=[AIMessage(content="xong")], mock_reply="xong"),
@@ -643,7 +648,7 @@ async def test_a_chunk_past_the_ceiling_is_stopped_too() -> None:
         checkpointer=InMemorySaver(),
     )
 
-    with pytest.raises(BudgetExceededError):
+    with pytest.raises(LimitExceededError):
         await agent.ainvoke({"messages": _long_thread(22)}, THREAD, context=context)
     assert len(summariser.calls) == 1
     assert audit.events == []

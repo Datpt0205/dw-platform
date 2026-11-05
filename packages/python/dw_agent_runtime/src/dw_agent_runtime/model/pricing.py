@@ -25,10 +25,12 @@ from dw_kernel.errors import PriceNotFoundError
 
 __all__ = [
     "CostSource",
+    "PriceKey",
     "PriceNotFoundError",
     "PriceQuote",
     "PricingPort",
     "chat_quantities",
+    "route_cost",
 ]
 
 # How a call's cost was arrived at, as the usage ledger stores it.
@@ -87,3 +89,37 @@ def chat_quantities(
         "cache_write_1h": cache_write_1h_tokens,
         "output": output_tokens,
     }
+
+
+class PriceKey(Protocol):
+    """What a call is priced by: the route's (`provider`, `model`), the price
+    reference of a `ModelRoute` (ADR-0118 decision 2, Amendments 2026-11-04)."""
+
+    @property
+    def provider(self) -> str: ...
+
+    @property
+    def model(self) -> str: ...
+
+
+def route_cost(
+    pricing: PricingPort,
+    route: PriceKey,
+    *,
+    tenant_id: UUID,
+    input_tokens: int,
+    output_tokens: int,
+    at: datetime,
+) -> PriceQuote:
+    """What one call on `route` cost, from the price book.
+
+    `PriceNotFoundError` propagates: a caller decides what an unpriced call
+    means for it, and none of them may read it as zero (R2.5).
+    """
+    return pricing.price(
+        tenant_id,
+        chat_quantities(input_tokens=input_tokens, output_tokens=output_tokens),
+        route.provider,
+        route.model,
+        at,
+    )

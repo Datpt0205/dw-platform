@@ -35,9 +35,9 @@ from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, DemoState
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import NotFoundError, PermissionDeniedError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
@@ -115,8 +115,7 @@ class Stack:
             uow_factory=self.uow_factory,
             clock=SystemClock(),
             id_generator=Uuid4Generator(),
-            allowance=_UnmeteredPlan(),
-            budget=RunBudgetLedger(),
+            limits=OpenLimits(),
             approval_policy=AutonomyApprovalPolicy(),
             run_control=OpenRunControl(),
         )

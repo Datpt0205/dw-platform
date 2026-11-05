@@ -32,7 +32,6 @@ from dw_agent_runtime.adapters.checkpoint_retention import SqlCheckpointRetentio
 from dw_agent_runtime.adapters.killed_runs import SqlKilledRuns
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.run_control import SqlRunControl
-from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardRetention
 from dw_agent_runtime.adapters.tool_claim_retention import SqlToolClaimRetention
 from dw_agent_runtime.adapters.wf_drafts import SqlWorkflowDrafts
 from dw_agent_runtime.adapters.wflite_host import build_pinned_workflows
@@ -146,6 +145,8 @@ from dw_studio.records.adapters.record_store import (
     RECORD_WRITE_KEYS,
     SqlRecordWriteKeyRetention,
 )
+from dw_usage.adapters.limits_retention import BUDGET_COUNTERS, BUDGET_LEASES, SqlLimitsRetention
+from dw_usage.adapters.limits_sql import SqlBudgetLeaseReaper
 from dw_usage.adapters.sql import SqlTenantTimezones, SqlUsageRollupStore
 from dw_usage.application.calendar import UsageCalendar
 from dw_usage.application.rollup import UsageRollup
@@ -428,6 +429,14 @@ def build_retention_purgers(
     # custom-objects 03: a definer function, since the lane sees no other
     # principal's key through the table's RESTRICTIVE policy (gate (p)).
     purgers.register(RECORD_WRITE_KEYS, SqlRecordWriteKeyRetention(session_factory).purge)
+    # usage-and-limits 03 (R5.7): the two limit tables, on their fragments'
+    # terms; the `retention_limits` lane runs the same class until this
+    # registry has a lane of its own.
+    limits = SqlLimitsRetention(
+        session_factory=session_factory, policy=load_retention_policy(), clock=SystemClock()
+    )
+    purgers.register(BUDGET_COUNTERS, limits.purge_counters)
+    purgers.register(BUDGET_LEASES, limits.purge_leases)
     return purgers.freeze()
 
 
@@ -480,10 +489,9 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
     # Tool claims past `expires_at` (runtime-hardening R6.7): nothing left to
     # guard, so no term; its own lane, like every pruner.
     tool_claims_retention: RetentionPrunePort | None = None
-    # The spend guard's own housekeeping (Ops hardening Phase 3) — a technical
-    # constant, not a legal term, so it is not on retention_policy's cadence
-    # or file; see SqlSpendGuardRetention's docstring.
-    spend_guard_retention: RetentionPrunePort | None = None
+    # Past periods' counters and long-closed leases (usage-and-limits R5.7),
+    # on the terms of their two retention fragments.
+    limits_retention: RetentionPrunePort | None = None
     # The in-app inbox's own bound: 90 days, the database's constant.
     notifications_retention: RetentionPrunePort | None = None
     # One-time channel link nonces: a day past expiry, then gone.
@@ -669,7 +677,19 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
             session_factory=sessions, policy=retention_policy, clock=clock
         )
         tool_claims_retention = SqlToolClaimRetention(session_factory=sessions)
-        spend_guard_retention = SqlSpendGuardRetention(session_factory=sessions, clock=clock)
+        limits_retention = SqlLimitsRetention(
+            session_factory=sessions, policy=retention_policy, clock=clock
+        )
+        # Every open lease past `expires_at`, of every company, closed `expired`
+        # as `system:reaper` (usage-and-limits R5.4, R5.9). The lease names its
+        # own expiry, so the lane's window is nought.
+        reap_targets.append(
+            ReapTarget(
+                name="budget_leases",
+                queue=SqlBudgetLeaseReaper(sessions, clock=clock, ids=ids),
+                stale_after=timedelta(0),
+            )
+        )
         notifications_retention = SqlNotificationRetention(session_factory=sessions)
         channel_link_nonces_retention = SqlChannelLinkNonceRetention(session_factory=sessions)
         channel_inbound_messages_retention = SqlChannelInboundRetention(session_factory=sessions)
@@ -820,10 +840,10 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
             build_retention_consumer(tool_claims_retention),
             interval_seconds=RETENTION_INTERVAL_SECONDS,
         )
-    if spend_guard_retention is not None:
+    if limits_retention is not None:
         registry.register(
-            "spend_guard_retention",
-            build_retention_consumer(spend_guard_retention),
+            "retention_limits",
+            build_retention_consumer(limits_retention),
             interval_seconds=RETENTION_INTERVAL_SECONDS,
         )
     if notifications_retention is not None:

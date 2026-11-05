@@ -197,15 +197,15 @@ async def _count(
 async def test_catalog_discovery_sees_a_table_added_after_this_class_was_written(
     sessions: async_sessionmaker[AsyncSession],
 ) -> None:
-    """`tenant_daily_spend_guard` (Ops hardening Phase 3) is not named anywhere
-    in offboarding.py — proof the discovery is real, not a list that happens
-    to be current today."""
+    """`budget_leases` (usage-and-limits ticket 03) is not named anywhere in
+    offboarding.py — proof the discovery is real, not a list that happens to be
+    current today."""
     offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
     async with sessions() as session, session.begin():
         exportable = await offboarding._exportable_tables(session)
         purgeable = await offboarding._purgeable_tables(session)
-    assert ("platform", "tenant_daily_spend_guard") in exportable
-    assert ("platform", "tenant_daily_spend_guard") in purgeable
+    assert ("platform", "budget_leases") in exportable
+    assert ("platform", "budget_leases") in purgeable
     assert ("platform", "tenant_offboarding_requests") not in exportable, (
         "the request row IS the job; it must never purge itself"
     )

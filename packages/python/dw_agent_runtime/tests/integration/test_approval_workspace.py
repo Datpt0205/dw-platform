@@ -29,10 +29,10 @@ from dw_agent_runtime.adapters.run_store import RunStatus, SqlWorkerRunStore
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.ports import WorkflowRunnerPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import NotFoundError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
@@ -105,8 +105,7 @@ class Stack:
             uow_factory=self.uow_factory,
             clock=SystemClock(),
             id_generator=Uuid4Generator(),
-            allowance=_UnmeteredPlan(),
-            budget=RunBudgetLedger(),
+            limits=OpenLimits(),
             approval_policy=AutonomyApprovalPolicy(),
             run_control=OpenRunControl(),
         )

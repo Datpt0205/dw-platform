@@ -1,0 +1,10 @@
+# Bộ đếm hạn mức theo kỳ (`platform.budget_counters`), usage-and-limits ticket 03.
+#
+# 13 tháng (395 ngày) sau `window_end`, bằng Sổ sử dụng, số tạm UNVERIFIED
+# (ADR-0121 quyết 5; ADR-0122). `row_delete`: lane `retention_limits` xóa dòng có
+# `window_end` quá thời hạn. Dòng vận hành, không là bản ghi của ai: bộ xóa ghi số
+# dòng vào log, không ghi audit (`CLAUDE.md` "Agent and tool rules").
+days: 395
+purger: row_delete
+enforced: true
+description: Bộ đếm hạn mức của từng phạm vi theo ngày, tháng — đã dùng và đang giữ trước

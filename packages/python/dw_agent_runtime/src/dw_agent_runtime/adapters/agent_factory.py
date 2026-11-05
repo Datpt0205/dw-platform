@@ -60,21 +60,22 @@ from dw_agent_runtime.adapters.langchain_tools import (
     UnreadableFilesMiddleware,
     platform_tools,
 )
+from dw_agent_runtime.adapters.limits_middleware import LimitsMiddleware
 from dw_agent_runtime.adapters.model_retry import ModelRetryMiddleware
 from dw_agent_runtime.adapters.recalled_memory import MemoryRecallPort, RecalledMemoryMiddleware
 from dw_agent_runtime.adapters.residency_middleware import ResidencyGateMiddleware
-from dw_agent_runtime.adapters.run_budget import RunBudgetMiddleware
 from dw_agent_runtime.adapters.run_control_middleware import RunControlMiddleware
 from dw_agent_runtime.adapters.studio_tools import PinnedTools, StrictToolsMiddleware
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec, sub_agent_middleware
 from dw_agent_runtime.adapters.system_prompt import WorkerSystemPrompt
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import RuntimeCopy
+from dw_agent_runtime.model.gateway import UsageRecorderPort
 from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.resolver import ModelResolver
+from dw_agent_runtime.ports import LimitsPort
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.tools import ToolRegistry
 from dw_kernel.ports import IdGenerator, UtcClock
@@ -147,9 +148,12 @@ class AgentSpec:
     # Rendered per model call, not once at build: the prompt names today's date
     # and the screen in view, and the agent is compiled once per process.
     prompt_variables: Callable[[ModelRequest[Any]], dict[str, str]]
-    # The process's one spend ledger — `RuntimeSeam.budget`, never a fresh one —
-    # and the profile whose ceiling and price this worker's calls are held to.
-    budget: RunBudgetLedger
+    # The hard limits every model call of this agent asks first
+    # (usage-and-limits R5.2): `RuntimeSeam.limits`, the process's one port.
+    limits: LimitsPort
+    # Where a permitted call's usage is recorded, which settles it into its
+    # lease (R5.11): `RuntimeSeam.usage_recorder`, the gateway's own recorders.
+    usage_recorder: UsageRecorderPort
     # The price book every call of this worker is priced by (usage-and-limits
     # R2.1): the composition root's one instance, `RuntimeSeam.pricing`.
     pricing: PricingPort
@@ -252,15 +256,18 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
         # before the limits, so a refused call holds and spends nothing
         # (usage-and-limits R6.5).
         ResidencyGateMiddleware(spec.residency, spec.models, spec.profile_id),
-        # The only ceiling on the path that can loop. Without it an agent run is
+        # The hard limits on the path that can loop (usage-and-limits R5.2):
+        # every call asks the run's lease first. Without it an agent run is
         # bounded by `recursion_limit`, which counts steps and not money.
-        RunBudgetMiddleware(spec.budget, spec.models, spec.profile_id, spec.pricing),
+        LimitsMiddleware(
+            spec.limits, spec.models, spec.profile_id, spec.pricing, spec.usage_recorder
+        ),
         # A Studio agent's strict schemas go with `strict=True` on the provider's
         # tool definitions, and only with them (tools-and-skills R4.4).
         *([StrictToolsMiddleware()] if spec.pinned is not None and spec.pinned.strict else []),
         # Last, so it sits closest to the model: a retry re-runs only the call
         # that failed. A failed attempt produces no response and therefore no
-        # usage, so the ceiling above is not charged for one.
+        # usage, so the lease above settles nothing for one.
         ModelRetryMiddleware(),
     ]
     if spec.sub_agents:
@@ -276,9 +283,10 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
                 uow_factory=spec.compaction.uow_factory,
                 clock=spec.compaction.clock,
                 ids=spec.compaction.ids,
-                # The SAME ledger the budget middleware above holds, so a summary
-                # and an agent step spend against one ceiling.
-                budget=spec.budget,
+                # The same lease the limits middleware above asks, so a summary
+                # and an agent step spend against one run's limits.
+                limits=spec.limits,
+                usage_recorder=spec.usage_recorder,
                 pricing=spec.pricing,
                 models=spec.models,
                 profile_id=spec.profile_id,

@@ -1,7 +1,7 @@
 """`ModelResolver`: one answer for every model door (model-connections ticket 02:
 R1.1, R1.2, R1.4-R1.6, R2.1, R2.2, R2.6; MR1, MR3, MR4, MR6).
 
-The four doors are driven for real (the structured gateway, the budget
+The four doors are driven for real (the structured gateway, the limits
 middleware and compaction inside an agent, the meter around a chat model), for
 a company that has its own profile under the id the platform also ships. Each
 door's route is read from what it priced, so a door that stops asking with the
@@ -31,12 +31,10 @@ from test_prompts_profiles_gateway import SummaryOutput, make_prompt
 from dw_agent_runtime.adapters.chat_model import MockChatModel
 from dw_agent_runtime.adapters.context_compaction import PlatformSummarizationMiddleware
 from dw_agent_runtime.adapters.langchain_usage import LangchainUsageMeter
-from dw_agent_runtime.adapters.run_budget import RunBudgetMiddleware
+from dw_agent_runtime.adapters.limits_middleware import LimitsMiddleware
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, ModelUsage, RoutingModelGateway
 from dw_agent_runtime.model.profiles import (
-    ModelBudgets,
     ModelProfile,
     ModelProfileRegistry,
     ModelRoute,
@@ -51,6 +49,7 @@ from dw_agent_runtime.model.resolver import (
 )
 from dw_agent_runtime.ports import ModelRequest
 from dw_agent_runtime.registry import ConfigError
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import AnyManifest, route
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
@@ -67,7 +66,7 @@ SHARED = "shared"
 REPO_ROOT = Path(__file__).resolve().parents[5]
 
 
-def _profile(prefix: str, *, budget_tokens: int = 1_000_000) -> ModelProfile:
+def _profile(prefix: str) -> ModelProfile:
     def r(name: str) -> ModelRoute:
         return route(model=f"{prefix}-{name}", capabilities={"max_input_tokens": 8000})
 
@@ -79,7 +78,6 @@ def _profile(prefix: str, *, budget_tokens: int = 1_000_000) -> ModelProfile:
         reasoning=r("reason"),
         chat=r("chat"),
         fallback=r("fallback"),
-        budgets=ModelBudgets(max_input_tokens_per_run=budget_tokens),
     )
 
 
@@ -155,6 +153,7 @@ def _gateway(models: ModelResolver, adapter: _Seen, pricing: FlatPricing) -> Rou
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     return RoutingModelGateway(
+        limits=OpenLimits(),
         residency=run_gate(),
         models=models,
         prompts=prompts,
@@ -183,12 +182,12 @@ async def _through_the_gateway(models: ModelResolver, run: RunContext) -> list[s
     return [r.model for r in adapter.routes] + [model for _t, _p, model, _a in book.calls]
 
 
-async def _through_the_budget(models: ModelResolver, run: RunContext) -> list[str]:
+async def _through_the_limits(models: ModelResolver, run: RunContext) -> list[str]:
     book = FlatPricing()
     agent: Any = create_agent(
         model=MockChatModel(responses=[AIMessage(content="ok")], mock_reply="ok"),
         tools=[],
-        middleware=[RunBudgetMiddleware(RunBudgetLedger(), models, SHARED, book)],
+        middleware=[LimitsMiddleware(OpenLimits(), models, SHARED, book, InMemoryUsageRecorder())],
         context_schema=RunContext,
     )
     await agent.ainvoke({"messages": [HumanMessage("x")]}, context=run)
@@ -216,7 +215,8 @@ async def _through_compaction(models: ModelResolver, run: RunContext) -> list[st
         uow_factory=FakeUoWFactory(audit_repo=FakeAuditRepo()),
         clock=FixedClock(NOW),
         ids=SequentialIdGenerator(),
-        budget=RunBudgetLedger(),
+        limits=OpenLimits(),
+        usage_recorder=InMemoryUsageRecorder(),
         pricing=book,
         models=models,
         profile_id=SHARED,
@@ -239,7 +239,7 @@ async def _through_compaction(models: ModelResolver, run: RunContext) -> list[st
 
 DOORS = {
     "gateway": _through_the_gateway,
-    "budget": _through_the_budget,
+    "limits": _through_the_limits,
     "meter": _through_the_meter,
     "compaction": _through_compaction,
 }
@@ -352,17 +352,18 @@ async def test_a_catalogue_that_cannot_be_read_refuses_and_is_never_every_profil
     assert adapter.routes == []
 
 
-async def test_the_budget_door_refuses_a_profile_outside_the_plan_before_the_model() -> None:
+async def test_the_limits_door_refuses_a_profile_outside_the_plan_before_the_model() -> None:
     model = MockChatModel(responses=[AIMessage(content="ok")], mock_reply="ok")
     agent: Any = create_agent(
         model=model,
         tools=[],
         middleware=[
-            RunBudgetMiddleware(
-                RunBudgetLedger(),
+            LimitsMiddleware(
+                OpenLimits(),
                 _models(plans=StaticPlanModelProfiles({})),
                 SHARED,
                 FlatPricing(),
+                InMemoryUsageRecorder(),
             )
         ],
         context_schema=RunContext,

@@ -3,7 +3,7 @@
 RLS on `worker_runs` narrows by tenant only. A read on behalf of a person
 (`get`, `thread_belongs_to`) also narrows by workspace here, so a member never
 reads or stops another workspace's run (platform-runtime/approval-audit-and-
-workspace/02). Tenant-wide questions (`started_since` for the plan quota, the
+workspace/02). Tenant-wide questions (`tree_running` for the lease of a tree, the
 claim path's own thread) stay tenant-wide on purpose.
 """
 
@@ -391,27 +391,23 @@ class SqlWorkerRunStore:
         )
         return result.first() is not None
 
-    async def started_since(self, tenant_id: uuid.UUID, since: datetime) -> int:
-        """How many runs this tenant has started since ``since``.
-
-        Every run, whatever its outcome: a run that failed still spent the
-        model calls the quota is there to bound, and counting only successes
-        would make a failing worker free to loop.
-
-        The boundary is passed in rather than computed here as
-        ``date_trunc('day', now())``: that function reads the session's
-        ``TimeZone``, so the same tenant's day would start at a different
-        instant on a connection whose timezone happened to differ. The caller
-        holds a ``UtcClock`` and states the instant.
-        """
+    async def tree_running(
+        self, tenant_id: uuid.UUID, root_run_id: uuid.UUID, *, except_run_id: uuid.UUID
+    ) -> bool:
+        """Whether a run of `root_run_id`'s tree other than `except_run_id` is
+        `running`: the tree's one lease is not given back at a wait while one
+        is (usage-and-limits R5.3)."""
         result = await self._execute_for_tenant(
             tenant_id,
-            sa.select(sa.func.count())
-            .select_from(worker_runs)
-            .where(worker_runs.c.created_at >= since),
+            sa.select(worker_runs.c.id)
+            .where(
+                worker_runs.c.root_run_id == root_run_id,
+                worker_runs.c.id != except_run_id,
+                worker_runs.c.status == RunStatus.RUNNING.value,
+            )
+            .limit(1),
         )
-        count: int = result.scalar_one()
-        return count
+        return result.first() is not None
 
     async def active_since(
         self,

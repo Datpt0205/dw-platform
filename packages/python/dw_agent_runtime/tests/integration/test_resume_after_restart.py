@@ -25,9 +25,9 @@ from dw_agent_runtime.adapters.run_store import RunStatus, SqlWorkerRunStore
 from dw_agent_runtime.adapters.runtime_tables import run_checkpoints
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.context import access_context_from_run
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.demo_graph import DEMO_WORKER_YAML, build_demo_graph
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import ConflictError
 from dw_kernel.pagination import PageQuery, PageRequest
@@ -84,8 +84,7 @@ class RunnerStack:
             uow_factory=self.uow_factory,
             clock=SystemClock(),
             id_generator=Uuid4Generator(),
-            allowance=_UnmeteredPlan(),
-            budget=RunBudgetLedger(),
+            limits=OpenLimits(),
             approval_policy=AutonomyApprovalPolicy(),
             run_control=OpenRunControl(),
         )

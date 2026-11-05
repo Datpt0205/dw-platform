@@ -25,7 +25,8 @@ from dw_agent_runtime.adapters.chat_model import MockChatModel
 from dw_agent_runtime.adapters.langchain_tools import model_facing_name
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec, sub_agent_spec
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
-from dw_agent_runtime.model.budget import RunBudgetLedger
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_platform.testing.residency import run_gate
@@ -38,7 +39,7 @@ WORKER_PROMPT = "Trợ lý."
 def _spec(
     model: MockChatModel,
     *,
-    budget: RunBudgetLedger | None = None,
+    limits: OpenLimits | None = None,
     children: tuple[SubAgentSpec, ...] = (),
 ) -> AgentSpec:
     registry, executor = _registry()
@@ -51,7 +52,8 @@ def _spec(
         copy=COPY,
         approval_type_prefix="sales_chat.",
         **prompt_fields(WORKER_PROMPT, template=""),
-        budget=budget or RunBudgetLedger(),
+        limits=limits or OpenLimits(),
+        usage_recorder=InMemoryUsageRecorder(),
         pricing=FlatPricing(),
         models=_models(),
         profile_id=PROFILE_ID,
@@ -69,20 +71,21 @@ def _child(**overrides: Any) -> SubAgentSpec:
     return SubAgentSpec(**fields)
 
 
-def test_a_sub_agent_spends_against_its_callers_ledger() -> None:
+def test_a_sub_agent_spends_against_its_callers_limits() -> None:
     """The escape this module exists to close. The child's middleware must hold
-    the SAME ledger object — a copy would let a delegated turn spend a second
-    ceiling that nobody set."""
-    budget = RunBudgetLedger()
+    the SAME limits port, so a delegated turn's call asks the run's one lease
+    (usage-and-limits R5.6); another port would be a second set of limits that
+    nobody set."""
+    limits = OpenLimits()
     parent = _spec(
-        MockChatModel(responses=[AIMessage(content="x")], mock_reply="[m]"), budget=budget
+        MockChatModel(responses=[AIMessage(content="x")], mock_reply="[m]"), limits=limits
     )
 
     built = sub_agent_spec(parent, _child())
 
-    ledgers = [getattr(m, "_ledger", getattr(m, "ledger", None)) for m in built["middleware"]]
-    assert any(ledger is budget for ledger in ledgers), (
-        "the child must hold the parent's ledger object itself, not an equal one"
+    held = [getattr(m, "_limits", None) for m in built["middleware"]]
+    assert any(port is limits for port in held), (
+        "the child must hold the parent's limits port itself, not an equal one"
     )
 
 
@@ -133,7 +136,7 @@ def test_the_child_carries_the_same_gates_the_parent_does() -> None:
         "ScopedToolsMiddleware",
         "OneApprovalPerStepMiddleware",
         "PlatformToolErrorsMiddleware",
-        "RunBudgetMiddleware",
+        "LimitsMiddleware",
     } <= kinds
 
 

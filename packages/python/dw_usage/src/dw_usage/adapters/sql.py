@@ -14,16 +14,16 @@ never names a partition.
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Any, Final
+from typing import Final
 from uuid import UUID
 
 import sqlalchemy as sa
-from sqlalchemy.dialects import postgresql
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dw_usage.adapters.ledger_rows import insert_usage_event
+from dw_usage.adapters.limits_sql import settle_into_lease
 from dw_usage.application.ports import RunUsageRow, SummaryFilter, SummaryRow
 from dw_usage.domain.events import UsageEvent
 
@@ -37,73 +37,26 @@ __all__ = [
 _SET_TENANT = sa.text("SELECT set_config('app.tenant_id', :t, true)")
 _SET_DRAIN = sa.text("SELECT set_config('app.worker_drain', 'on', true)")
 
-_COLUMNS: Final = (
-    "id",
-    "occurred_at",
-    "tenant_id",
-    "workspace_id",
-    "run_id",
-    "root_run_id",
-    "lease_id",
-    "node_id",
-    "artifact_kind",
-    "artifact_id",
-    "artifact_version",
-    "user_id",
-    "actor_kind",
-    "trigger_kind",
-    "operation",
-    "purpose",
-    "payer",
-    "provider",
-    "model",
-    "input_tokens",
-    "output_tokens",
-    "cache_read_tokens",
-    "cache_write_tokens",
-    "reasoning_tokens",
-    "units",
-    "cost_usd",
-    "cost_source",
-    "price_book_version",
-    "price_entry_ids",
-    "data_route_class",
-    "data_location",
-    "processor",
-)
-
-
-def _value(column: str) -> str:
-    if column == "units":
-        return "CAST(:units AS jsonb)"
-    return f":{column}"
-
-
-_SETTLE = sa.text(
-    f"INSERT INTO platform.usage_events ({', '.join(_COLUMNS)})"  # nosec B608 - fixed names
-    f" VALUES ({', '.join(_value(c) for c in _COLUMNS)})"
-    " ON CONFLICT (id, occurred_at) DO NOTHING RETURNING id"
-).bindparams(sa.bindparam("price_entry_ids", type_=postgresql.ARRAY(sa.Text())))
-
-
-def _params(event: UsageEvent) -> dict[str, Any]:
-    params: dict[str, Any] = {column: getattr(event, column) for column in _COLUMNS}
-    params["units"] = json.dumps(dict(event.units), sort_keys=True)
-    params["price_entry_ids"] = list(event.price_entry_ids)
-    return params
-
 
 @dataclass(frozen=True)
 class SqlUsageLedger:
-    """Implements `UsageLedgerPort`: one record per `(id, occurred_at)`."""
+    """Implements `UsageLedgerPort`: one record per `(id, occurred_at)`.
+
+    A record carrying a lease (a call its permit let through) moves that lease
+    in the same transaction (`settle_into_lease`, usage-and-limits R5.11): the
+    record and the settlement are one fact, written once. A record the reaper
+    already wrote under the same key is not written again and settles nothing.
+    """
 
     session_factory: async_sessionmaker[AsyncSession]
 
     async def settle(self, event: UsageEvent) -> bool:
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_TENANT, {"t": str(event.tenant_id)})
-            written = await session.scalar(_SETTLE, _params(event))
-        return written is not None
+            written = await insert_usage_event(session, event)
+            if written:
+                await settle_into_lease(session, event)
+        return written
 
 
 @dataclass(frozen=True)

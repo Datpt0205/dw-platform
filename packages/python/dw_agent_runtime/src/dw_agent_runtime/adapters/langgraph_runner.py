@@ -40,16 +40,14 @@ from dw_agent_runtime.adapters.run_store import (
     RunStatus,
     SqlWorkerRunStore,
 )
-from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardStore
-from dw_agent_runtime.allowance import DailyAllowance
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy, lower_autonomy
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.ports import (
-    RunAllowancePort,
+    LimitsPort,
     RunControlPort,
     RunGraphsPort,
+    RunLease,
     RunWaitsPort,
     StudioRun,
     StudioRunBlocked,
@@ -71,6 +69,7 @@ from dw_kernel.errors import (
     NotFoundError,
 )
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
+from dw_kernel.limits import LIMIT_EXCEEDED, LimitExceededError
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_kernel.residency import RESIDENCY_REFUSED, ResidencyRefusedError
 from dw_observability.metrics import DW_RUN_DURATION_SECONDS, DW_RUN_TOTAL
@@ -78,7 +77,7 @@ from dw_observability.semconv import invoke_workflow_span_name
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.domain.approval import ApprovalRequest
-from dw_platform.domain.audit import AuditEvent
+from dw_platform.domain.audit import AuditEvent, lane_audit_event
 
 logger = logging.getLogger(__name__)
 
@@ -97,6 +96,12 @@ _STREAM_BACKLOG_LIMIT = 256
 # used goes first.
 GRAPH_CACHE_SIZE: Final = 256
 _DURABILITIES: Final = frozenset({"sync", "async", "exit"})
+# The lease heartbeat (usage-and-limits R5.9; ADR-0121 decision 5): every
+# 60 seconds a process running a run of the tree moves `expires_at` 300 s on.
+LEASE_BEAT_SECONDS: Final = 60.0
+# The lane a Studio run is admitted in (ADR-0113 decision 3), whose name a
+# refusal's audit stands under.
+_STUDIO_LANE: Final = "studio_runs"
 
 
 class ResumeInterrupted(Exception):  # noqa: N818 - names what the row records
@@ -139,21 +144,18 @@ class LangGraphWorkflowRunner:
     uow_factory: PlatformUnitOfWorkFactory
     clock: UtcClock
     id_generator: IdGenerator
-    # Injected, never defaulted, for the same reason `stale_run_after_seconds`
-    # is: a default would be "unlimited", and a metering hole that ships quietly
-    # is the one bug in this file a customer finds before we do.
-    allowance: RunAllowancePort
-    # The SAME ledger the gateway and every agent's budget middleware hold.
-    # Required rather than defaulted: a default would be a second ledger, and the
-    # runner would free entries in one while spend accumulated in the other.
-    budget: RunBudgetLedger
+    # Every hard limit on the scope chain (usage-and-limits R4.1, R5.1;
+    # ADR-0121 decision 6): asked here, where a run begins and where it goes on
+    # after a wait, and nowhere else. Injected, never defaulted: a default would
+    # be "unlimited", the one bug in this file a customer finds before we do.
+    limits: LimitsPort
     # Whose version is stamped on every run. The SAME instance the executor and
     # the agent's middleware decide with, so the stamp names the rules that
     # were actually applied.
     approval_policy: AutonomyApprovalPolicy
     # The freeze, the kill and the run's principal and company, asked where a
     # run starts and resumes (agent-lifecycle R7, R9). Injected, never
-    # defaulted, as `allowance` is: a default would be a door left open.
+    # defaulted, as `limits` is: a default would be a door left open.
     run_control: RunControlPort
     store: BaseStore | None = None
     release_manifest_ref: str | None = None
@@ -161,10 +163,8 @@ class LangGraphWorkflowRunner:
     # F6: what the graph's model calls cost. None keeps old wirings valid;
     # a run under None simply stays off the ledger, as every run did before.
     usage_meter: LangchainUsageMeter | None = None
-    # The daily spend guard (Ops hardening Phase 3). Same shape as usage_meter:
-    # None keeps every wiring that predates this field valid, and a run without
-    # it simply stays off the guard, as every run did before this existed.
-    spend_store: SqlSpendGuardStore | None = None
+    # How often a running tree's lease is beaten (R5.9); a test shortens it.
+    lease_beat_seconds: float = LEASE_BEAT_SECONDS
     # A Digital Worker's work item follows its run: waiting, resumed, finished
     # (wf-lite R6.3, R6.5, R6.7). None keeps every wiring that predates it.
     run_waits: RunWaitsPort | None = None
@@ -359,25 +359,65 @@ class LangGraphWorkflowRunner:
             }
         )
 
-    async def _require_allowance(self, run_context: RunContext) -> None:
-        """Refuse a run the tenant's plan has no runs or spend left for today.
+    async def _admit(self, run_context: RunContext) -> RunLease:
+        """The tree's lease, taken where the run begins (usage-and-limits R4.1,
+        R5.1; ADR-0121 decision 6).
 
         Here rather than at the API, because the API is not the only door: a
-        worker reacting to an inbound event starts runs nobody clicked. The
-        check itself is `DailyAllowance`, the same object a single model call
-        outside a run is checked with (`SingleCallModelGateway`), so the two
-        doors answer the plan's limits one way.
-
-        A resume does not pass through here at all: the run was already counted
-        when it started, and charging it again would let an approval a manager
-        signs on Tuesday be refused by Tuesday's quota.
+        worker reacting to an inbound event starts runs nobody clicked. A root
+        is admitted; a child run, and an attempt of a gate run, spends against
+        the lease of its root or its gate run and is never admitted again
+        (R5.6). A refusal is audited `limits.refused` in the run's actor's name
+        on this inline path and raised: nothing was reserved, no row written.
         """
-        await DailyAllowance(
-            allowance=self.allowance,
-            runs=self.run_store,
-            spend=self.spend_store,
-            clock=self.clock,
-        ).require(run_context)
+        if run_context.lease_root != run_context.run_id:
+            return self.limits.lease(run_context)
+        try:
+            return await self.limits.admit(run_context)
+        except LimitExceededError as refused:
+            await self._audit(
+                run_context, "limits.refused", str(run_context.run_id), details=refused.details
+            )
+            raise
+
+    async def _release(self, run_context: RunContext, run_id: uuid.UUID, reason: str) -> None:
+        """Give the tree's lease back when the run ends or waits (R5.3; failure-
+        modes #6): only by the run that took it, and at a wait only when no
+        other run of its tree still runs, since they share it. A release that
+        fails is logged: the lease expires and the reaper settles it."""
+        if run_context.lease_root != run_id:
+            return
+        try:
+            if reason == "paused" and await self.run_store.tree_running(
+                run_context.tenant_id, run_context.lease_root, except_run_id=run_id
+            ):
+                return
+            await self.limits.lease(run_context).release(reason)
+        except Exception:
+            logger.exception("could not release a run's lease", extra={"run_id": str(run_id)})
+
+    @contextlib.asynccontextmanager
+    async def _beating(self, lease: RunLease) -> AsyncIterator[None]:
+        """The lease's heartbeat for as long as this process runs a run of its
+        tree (R5.9): stopped on every way out, so a finished run beats nothing."""
+        task = asyncio.create_task(self._beat(lease))
+        try:
+            yield
+        finally:
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
+
+    async def _beat(self, lease: RunLease) -> None:
+        while True:
+            await asyncio.sleep(self.lease_beat_seconds)
+            try:
+                if not await lease.beat():
+                    return
+            except Exception:
+                # A missed beat is retried on the next; five missed in a row
+                # and the reaper settles the lease as if the process had died.
+                logger.warning("a lease heartbeat failed", exc_info=True)
 
     async def start(
         self,
@@ -393,17 +433,22 @@ class LangGraphWorkflowRunner:
         )
         worker = self.worker_registry.resolve(run_context.worker_id, run_context.worker_version)
         run_context = self._with_autonomy(run_context, worker.definition)
-        await self._require_allowance(run_context)
+        lease = await self._admit(run_context)
         graph = self._graph(worker.definition.worker_id, worker.definition.graph_version)
 
         # Admission: the row and the context carry the run's data route class
         # from here on (compliance-pdpl R2.1).
-        run_context = await self.run_store.create(
-            run_context,
-            worker=worker.definition,
-            input_payload=input_payload,
-            release_manifest_ref=self.release_manifest_ref,
-        )
+        try:
+            run_context = await self.run_store.create(
+                run_context,
+                worker=worker.definition,
+                input_payload=input_payload,
+                release_manifest_ref=self.release_manifest_ref,
+            )
+        except BaseException:
+            # No run, so nothing will ever spend the lease or release it.
+            await self._release(run_context, run_context.run_id, "failed")
+            raise
         await self._audit(
             run_context,
             "run.started",
@@ -420,7 +465,10 @@ class LangGraphWorkflowRunner:
         with self._invocation(run_context, attributes):
             try:
                 await self.run_control.require_open(run_context, door=RunControlDoor.START)
-                async with self._metered(run_context, worker.definition) as callbacks:
+                async with (
+                    self._beating(lease),
+                    self._metered(run_context, worker.definition) as callbacks,
+                ):
                     state = await graph.ainvoke(
                         input_payload,
                         self._config(
@@ -467,6 +515,14 @@ class LangGraphWorkflowRunner:
             return RunStatus.FAILED
         graph = self._studio_graph(studio, taken)
         run = _studio_run_context(taken)
+        try:
+            lease = await self._admit_studio(run)
+        except LimitExceededError as refused:
+            # The answer of `LimitsPort.admit` (R4.10); how each trigger kind is
+            # refused (ended, held `queued`, skipped) is the `studio_runs`
+            # lane's, workflow-engine/04, which reads this code.
+            await runs.finish(tenant_id, run_id, "failed", error=dict(refused.details))
+            return RunStatus.FAILED
         decisions = taken.input.get("approval_decisions")
         context = StudioRunContext(
             run=run,
@@ -486,14 +542,17 @@ class LangGraphWorkflowRunner:
                 "workspace_id": str(taken.workspace_id),
             },
         }
-        snapshot = await graph.aget_state(config)
-        work = {k: v for k, v in taken.input.items() if k != "approval_decisions"}
-        payload = None if snapshot.next else {"work": work}
         try:
-            state = await graph.ainvoke(payload, config, context=context, durability=durability)
+            snapshot = await graph.aget_state(config)
+            work = {k: v for k, v in taken.input.items() if k != "approval_decisions"}
+            payload = None if snapshot.next else {"work": work}
+            async with self._beating(lease):
+                state = await graph.ainvoke(payload, config, context=context, durability=durability)
         except RunDeadlineExceededError:
+            await self._release(run, run_id, "cancelled")
             return RunStatus.CANCELLED
         except StudioRunFailedError as failed:
+            await self._release(run, run_id, "failed")
             await runs.finish(
                 tenant_id,
                 run_id,
@@ -502,6 +561,7 @@ class LangGraphWorkflowRunner:
             )
             return RunStatus.FAILED
         except RunHaltedError as halted:
+            await self._release(run, run_id, "cancelled")
             await runs.finish(
                 tenant_id,
                 run_id,
@@ -512,9 +572,19 @@ class LangGraphWorkflowRunner:
         except ResidencyRefusedError:
             # A policy refusal before anything was sent, not a step's failure:
             # no error lane takes it (compliance-pdpl R2.2).
+            await self._release(run, run_id, "failed")
             await runs.finish(tenant_id, run_id, "failed", error={"code": RESIDENCY_REFUSED})
             return RunStatus.FAILED
-        except Exception as exc:
+        except LimitExceededError as stopped:
+            # A limit spent mid-run stops it at the next call (R5.5): no error
+            # lane, no retry, no cheaper model.
+            await self._release(run, run_id, "failed")
+            await runs.finish(tenant_id, run_id, "failed", error=dict(stopped.details))
+            return RunStatus.FAILED
+        except BaseException as exc:
+            await self._release(run, run_id, "failed")
+            if not isinstance(exc, Exception):
+                raise
             logger.exception("a Studio run failed", extra={"run_id": str(run_id)})
             await runs.finish(
                 tenant_id,
@@ -523,8 +593,21 @@ class LangGraphWorkflowRunner:
                 error={"code": "step_failed", "type": type(exc).__name__},
             )
             return RunStatus.FAILED
+        await self._release(run, run_id, "completed")
         await runs.finish(tenant_id, run_id, "completed", result=_jsonable(state))
         return RunStatus.COMPLETED
+
+    async def _admit_studio(self, run: RunContext) -> RunLease:
+        """A Studio run's lease, taken when the `studio_runs` lane hands the run
+        over (ADR-0113 decision 3); a refusal is audited once, in the lane's
+        name (ADR 0011), and the run is never taken on a guess."""
+        if run.lease_root != run.run_id:
+            return self.limits.lease(run)
+        try:
+            return await self.limits.admit(run)
+        except LimitExceededError as refused:
+            await self._lane_audit(run, "limits.refused", details=refused.details)
+            raise
 
     async def stream(
         self,
@@ -545,17 +628,21 @@ class LangGraphWorkflowRunner:
         """
         worker = self.worker_registry.resolve(run_context.worker_id, run_context.worker_version)
         run_context = self._with_autonomy(run_context, worker.definition)
-        await self._require_allowance(run_context)
+        lease = await self._admit(run_context)
         graph = self._graph(worker.definition.worker_id, worker.definition.graph_version)
 
         # Admission: the row and the context carry the run's data route class
         # from here on (compliance-pdpl R2.1).
-        run_context = await self.run_store.create(
-            run_context,
-            worker=worker.definition,
-            input_payload=input_payload,
-            release_manifest_ref=self.release_manifest_ref,
-        )
+        try:
+            run_context = await self.run_store.create(
+                run_context,
+                worker=worker.definition,
+                input_payload=input_payload,
+                release_manifest_ref=self.release_manifest_ref,
+            )
+        except BaseException:
+            await self._release(run_context, run_context.run_id, "failed")
+            raise
         await self._audit(
             run_context,
             "run.started",
@@ -574,6 +661,7 @@ class LangGraphWorkflowRunner:
         task = asyncio.create_task(
             self._drive(
                 run_context=run_context,
+                lease=lease,
                 graph=graph,
                 worker=worker.definition,
                 input_payload=input_payload,
@@ -641,6 +729,7 @@ class LangGraphWorkflowRunner:
         self,
         *,
         run_context: RunContext,
+        lease: RunLease,
         graph: Any,
         worker: WorkerDefinition,
         input_payload: dict[str, Any],
@@ -650,7 +739,7 @@ class LangGraphWorkflowRunner:
     ) -> None:
         try:
             with self._invocation(run_context, attributes):
-                async with self._metered(run_context, worker) as callbacks:
+                async with self._beating(lease), self._metered(run_context, worker) as callbacks:
                     run_config = {**config, "callbacks": callbacks} if callbacks else config
                     async for chunk in graph.astream(
                         input_payload,
@@ -776,6 +865,17 @@ class LangGraphWorkflowRunner:
                 await self._fail(run_context, run_id, halted)
             raise
 
+        # The lease again, here where the run goes on, never in the decision's
+        # transaction (ADR-0113 decisions 3, 4; usage-and-limits R5.3): money
+        # spent after a wait is new spend, so a spent period ends the run
+        # `failed` with `limit_exceeded`, and the decision that resumed it
+        # stands and is answered as usual. `runs` is not counted again.
+        try:
+            lease = await self._take_again(run_context)
+        except LimitExceededError as refused:
+            await self._fail(run_context, run_id, refused)
+            return
+
         # The run leaves its wait only while it is still in it (runtime-
         # hardening R9.2): of two resumes, one runs the graph and the other is
         # refused here, before it audits or moves the work item.
@@ -789,7 +889,10 @@ class LangGraphWorkflowRunner:
                 run_context, run_id, record.graph_version, worker.definition
             )
             with self._invocation(run_context, attributes):
-                async with self._metered(run_context, worker.definition) as callbacks:
+                async with (
+                    self._beating(lease),
+                    self._metered(run_context, worker.definition) as callbacks,
+                ):
                     state = await graph.ainvoke(
                         Command(resume=resume_payload),
                         self._config(
@@ -812,6 +915,19 @@ class LangGraphWorkflowRunner:
                 await self._fail(run_context, run_id, exc)
             raise
         await self._handle_outcome(run_context, run_id, state)
+
+    async def _take_again(self, run_context: RunContext) -> RunLease:
+        """`limits.resume` for a root going on after a wait; a child or a gate
+        attempt finds its root's lease as it is (R5.6)."""
+        if run_context.lease_root != run_context.run_id:
+            return self.limits.lease(run_context)
+        try:
+            return await self.limits.resume(run_context)
+        except LimitExceededError as refused:
+            await self._audit(
+                run_context, "limits.refused", str(run_context.run_id), details=refused.details
+            )
+            raise
 
     async def _settle_stream(
         self, run_context: RunContext, graph: Any, config: dict[str, Any]
@@ -855,12 +971,18 @@ class LangGraphWorkflowRunner:
             # (compliance-pdpl R2.2): nothing was sent.
             error["reason_code"] = RESIDENCY_REFUSED
             details = {"reason_code": RESIDENCY_REFUSED}
+        elif isinstance(exc, LimitExceededError):
+            # `failed` with `limit_exceeded`, the metric and the scope (R5.5).
+            error.update(exc.details)
+            details = {"reason_code": LIMIT_EXCEEDED, **exc.details}
+        # Released before the row says so, on every way a run ends (failure-
+        # modes #6): a release that fails leaves it to the reaper.
+        await self._release(run_context, run_id, status.value)
         await self.run_store.set_status(run_context, run_id, status, error=error)
         await self._audit(run_context, event, str(run_id), details=details)
         self.telemetry.add_metric(
             DW_RUN_TOTAL, 1, {"worker": run_context.worker_id, "status": status.value}
         )
-        self.budget.forget(run_id)
         waits = self._waits_for(run_context)
         if waits is not None:
             await waits.finished(run_context, run_id, failed=True)
@@ -934,9 +1056,10 @@ class LangGraphWorkflowRunner:
             waits = self._waits_for(run_context)
             if waits is not None:
                 await waits.waiting(run_context, run_id, kind="approval")
-            self._release_paused_workflow(run_context, run_id)
+            await self._release(run_context, run_id, "paused")
             return
 
+        await self._release(run_context, run_id, "completed")
         await self.run_store.set_status(
             run_context, run_id, RunStatus.COMPLETED, result=_jsonable(state)
         )
@@ -947,12 +1070,6 @@ class LangGraphWorkflowRunner:
         waits = self._waits_for(run_context)
         if waits is not None:
             await waits.finished(run_context, run_id, failed=False)
-        # Freed only at a terminal state, never at a pause. The ledger keyed every
-        # run and nothing ever removed one, so a long-lived process grew by one
-        # entry per run for as long as it lived. A paused run keeps its entry on
-        # purpose: freeing it there would let a loop reset its own ceiling by
-        # pausing and being resumed.
-        self.budget.forget(run_id)
 
     def _waits_for(self, run_context: RunContext) -> RunWaitsPort | None:
         """The work item's port, for a run that acts as a principal only."""
@@ -980,17 +1097,9 @@ class LangGraphWorkflowRunner:
         waits = self._waits_for(run_context)
         if waits is not None:
             await waits.waiting(run_context, run_id, kind="timer", wake_at=wake_at)
-        self._release_paused_workflow(run_context, run_id)
-
-    def _release_paused_workflow(self, run_context: RunContext, run_id: uuid.UUID) -> None:
-        """A paused wf-lite run's ledger entry is freed at the pause, unlike an
-        agent loop's (`_handle_outcome`). Its run often resumes in another
-        process (paused by the worker, decided in the API), which never frees
-        this one's entry, so keeping it leaked one per run for the life of the
-        process. Nothing is reset that a model controls: a workflow's pauses and
-        its model steps are the document's, each step one call."""
-        if run_context.definition_hash is not None:
-            self.budget.forget(run_id)
+        # A wait gives the lease back (R5.3): what the run spent stays on the
+        # tree's settled leases, so pausing resets no ceiling.
+        await self._release(run_context, run_id, "paused")
 
     async def _create_approval(
         self, run_context: RunContext, run_id: uuid.UUID, payload: dict[str, Any]
@@ -1047,6 +1156,32 @@ class LangGraphWorkflowRunner:
         )
         try:
             async with self.uow_factory(context) as uow:
+                await uow.audit.append(event)
+                await uow.commit()
+        except Exception as exc:
+            raise InfrastructureError(
+                "failed to write audit event", details={"action": action}
+            ) from exc
+
+    async def _lane_audit(
+        self, run_context: RunContext, action: str, *, details: dict[str, Any]
+    ) -> None:
+        """An audit event of the `studio_runs` lane about a run it was handed,
+        as itself (ADR 0011): the lane, not a person, met the refusal."""
+        event = lane_audit_event(
+            lane=_STUDIO_LANE,
+            event_id=self.id_generator.new_uuid(),
+            tenant_id=TenantId(run_context.tenant_id),
+            workspace_id=WorkspaceId(run_context.workspace_id),
+            action=action,
+            resource_type="worker_run",
+            resource_id=str(run_context.run_id),
+            occurred_at=self.clock.now().astimezone(UTC),
+            details=details,
+            run_id=run_context.run_id,
+        )
+        try:
+            async with self.uow_factory(access_context_from_run(run_context)) as uow:
                 await uow.audit.append(event)
                 await uow.commit()
         except Exception as exc:

@@ -21,8 +21,8 @@ sub-agent and spend without limit, and the ledger would read as if nothing
 happened.
 
 The fix is not a warning in a docstring. `sub_agent_spec` builds the child's
-middleware from the parent's spec and hands it **the same ledger object**, so
-parent turns and child turns spend against one ceiling. Its tools are built by
+middleware from the parent's spec and hands it **the parent's limits port**, so
+parent turns and child turns spend against the run's one lease. Its tools are built by
 `platform_tools` from the parent's executor, so a sub-agent's side effect goes
 through the same authorization, idempotency and audit as any other — a context
 that passes raw LangChain tools here would be handing the model a way around the
@@ -50,8 +50,8 @@ from dw_agent_runtime.adapters.langchain_tools import (
     ScopedToolsMiddleware,
     platform_tools,
 )
+from dw_agent_runtime.adapters.limits_middleware import LimitsMiddleware
 from dw_agent_runtime.adapters.residency_middleware import ResidencyGateMiddleware
-from dw_agent_runtime.adapters.run_budget import RunBudgetMiddleware
 from dw_agent_runtime.adapters.run_control_middleware import RunControlMiddleware
 from dw_agent_runtime.contracts import ToolDefinition
 
@@ -123,10 +123,12 @@ def sub_agent_spec(parent: AgentSpec, child: SubAgentSpec) -> dict[str, Any]:
         # The data route at a delegated turn's model call, for the route the
         # child's profile resolves to, before its limits (compliance-pdpl R2.3).
         ResidencyGateMiddleware(parent.residency, parent.models, profile_id),
-        # The SAME ledger object the parent holds — not a copy, not a fresh one.
-        # This single argument is what keeps a delegated turn inside the ceiling
-        # the run was given.
-        RunBudgetMiddleware(parent.budget, parent.models, profile_id, parent.pricing),
+        # The parent's limits port: a delegated turn's call asks the same run's
+        # lease, so the child spends inside the limits the run was given
+        # (usage-and-limits R5.6).
+        LimitsMiddleware(
+            parent.limits, parent.models, profile_id, parent.pricing, parent.usage_recorder
+        ),
     ]
     spec: dict[str, Any] = {
         "name": child.name,

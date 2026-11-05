@@ -133,17 +133,6 @@ agent_store = sa.Table(
 )
 
 
-tenant_daily_spend_guard = sa.Table(
-    "tenant_daily_spend_guard",
-    metadata,
-    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
-    sa.Column("spend_date", sa.Date, nullable=False),
-    sa.Column("spend_usd", sa.Numeric(12, 4), nullable=False, server_default="0"),
-    sa.Column("updated_at", sa.TIMESTAMP(timezone=True), nullable=False),
-    sa.PrimaryKeyConstraint("tenant_id", "spend_date"),
-)
-
-
 tool_executions = sa.Table(
     "tool_executions",
     metadata,

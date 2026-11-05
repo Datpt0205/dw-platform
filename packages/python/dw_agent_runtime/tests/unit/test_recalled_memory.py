@@ -23,8 +23,9 @@ from test_langchain_tools import make_run_context
 from dw_agent_runtime.adapters.agent_factory import AgentSpec, build_agent, platform_middleware
 from dw_agent_runtime.adapters.chat_model import MockChatModel
 from dw_agent_runtime.adapters.recalled_memory import RecalledMemoryMiddleware
-from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_platform.application.access_context import AccessContext
 from dw_platform.testing.residency import run_gate
@@ -93,7 +94,8 @@ def _spec(model: MockChatModel, recall: Any, *, copy: Any = COPY_WITH_FRAME) -> 
         copy=copy,
         approval_type_prefix="sales_chat.",
         **prompt_fields(WORKER_PROMPT, template=""),
-        budget=RunBudgetLedger(),
+        limits=OpenLimits(),
+        usage_recorder=InMemoryUsageRecorder(),
         pricing=FlatPricing(),
         models=_models(),
         profile_id=PROFILE_ID,

@@ -70,7 +70,6 @@ _PLATFORM_PREDATING: dict[str, str] = dict.fromkeys(
         "platform.run_checkpoints",
         "platform.sod_waivers",
         "platform.support_grants",
-        "platform.tenant_daily_spend_guard",
         "platform.tenant_offboarding_requests",
         "platform.tool_executions",
         "platform.worker_runs",

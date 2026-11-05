@@ -1,8 +1,8 @@
 """The worker builds its model stack with the API's builder (`model_stack`).
 
 One builder for both composition roots, so a model call made in the worker (a
-product's chat command) spends against the same per-run ledger and daily spend
-guard, and is refused the same way in a deployed profile.
+product's chat command) asks the same leases on PostgreSQL as the API's
+(usage-and-limits ticket 03), and is refused the same way in a deployed profile.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from dw_agent_runtime.adapters.usage_recorders import CompositeUsageRecorder
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import SystemClock
 from dw_observability.telemetry import NullTelemetry
+from dw_usage.adapters.limits_sql import SqlLimits
 from dw_usage.adapters.price_book_file import load_price_book
 from dw_usage.application.recorder import LedgerUsageRecorder
 from dw_usage.domain.pricing import PriceBook
@@ -42,7 +43,7 @@ def test_the_worker_maps_its_settings_onto_the_shared_builder() -> None:
     assert config.is_deployed is False
 
 
-def test_the_worker_builds_one_gateway_and_one_ledger() -> None:
+def test_the_worker_builds_one_gateway_on_the_leases() -> None:
     stack = build_model_stack_for(
         WorkerSettings(model_provider="mock"),  # type: ignore[call-arg]
         _SESSIONS,
@@ -51,7 +52,8 @@ def test_the_worker_builds_one_gateway_and_one_ledger() -> None:
         run_control=OpenRunControl(),
     )
     assert isinstance(stack, ModelStack)
-    assert stack.gateway is not None and stack.budget is not None
+    assert isinstance(stack.limits, SqlLimits)
+    assert stack.gateway.limits is stack.limits
 
 
 def test_every_recorded_call_reaches_the_usage_ledger_priced_by_the_book() -> None:

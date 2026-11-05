@@ -53,6 +53,7 @@ from dw_studio.core.application.service import ArtifactService
 from dw_studio.lifecycle.application.kill import KILL_SEGMENTS, KillSwitchService
 from dw_studio.lifecycle.application.service import SUBMIT_SEGMENTS, LifecycleService
 from dw_studio.records.application.record_service import RecordService
+from dw_usage.application.limits import LIMITS_MANAGE
 
 pytestmark = pytest.mark.unit
 
@@ -178,6 +179,9 @@ DECLARED: dict[tuple[str, str], object] = {
         "POST",
         "/api/v1/connections/{connection_id}/revoke-credentials",
     ): connection_routes._may_write,
+    # usage-and-limits ticket 03: one policy's write and its removal.
+    ("PUT", "/api/v1/limits/{scope_type}/{scope_id}/{metric}/{window_kind}"): LIMITS_MANAGE,
+    ("DELETE", "/api/v1/limits/{scope_type}/{scope_id}/{metric}/{window_kind}"): LIMITS_MANAGE,
 }
 DECIDE = ("POST", "/api/v1/approvals/{approval_id}/decisions")
 
