@@ -12,11 +12,17 @@
   No company-set freeze open: 403 when an operator's freeze holds the company
   (R7.4: the company cannot lift it), 409 `not_frozen` otherwise; a lift
   already waiting: 409 `lift_pending`, held by a partial unique index.
-- **Lifting** (`UnfreezeSettler`, on the worker, at the decision's outbox
+- **Lifting** (`SwitchLiftSettler`, on the worker, at the decision's outbox
   event): an approval lifts exactly that row, `lift_approval_id` written, in
   the decider's name with `details.lane`; the database refuses any other lift
   (`platform.guard_control_switch()`). A rejection, a replay, a row already
-  lifted end without error and write nothing.
+  lifted end without error and write nothing. One settler for both lifts, each
+  by its `SwitchLift` row: a freeze's (`studio.lifecycle.unfreeze`) and a
+  kill's (`studio.lifecycle.revive`, agent-lifecycle ticket 05), whose lift is
+  also announced on the outbox as `control.switch.changed`.
+- **A kill** of one agent or workflow is set and asked to be lifted by
+  `dw_studio.lifecycle`'s `KillSwitchService`, which reads the component; the
+  names, the event and the refusals it shares with the settler are here.
 - **Reading** (`GET /control-state`): every member, codes only.
 - **The operators' switches** (`PlatformFreezeService`, the provisioning
   context): a platform freeze, and a freeze of one company with origin
@@ -43,30 +49,43 @@ from dw_platform.application.provisioning import ProvisioningContext
 from dw_platform.application.work_queue import WorkScope
 from dw_platform.domain.approval import ApprovalRequest, decided_event_type
 from dw_platform.domain.audit import AuditEvent
+from dw_platform.domain.outbox import OutboxEvent
 
 __all__ = [
+    "CONTROL_SWITCH_CHANGED",
     "FREEZE_LIFTED",
     "FREEZE_SET",
+    "KILL_LIFTED",
+    "KILL_SET",
     "LIFECYCLE_FREEZE",
+    "LIFECYCLE_KILL_SCOPE",
     "LIFECYCLE_PREFIX",
+    "LIFECYCLE_REVIVE",
+    "LIFECYCLE_REVIVE_DECIDED",
     "LIFECYCLE_UNFREEZE",
     "LIFECYCLE_UNFREEZE_DECIDED",
     "PLATFORM_FREEZE_LIFTED",
     "PLATFORM_FREEZE_SET",
     "PLATFORM_TENANT_FREEZE_LIFTED",
     "PLATFORM_TENANT_FREEZE_SET",
+    "REVIVE_LIFT",
+    "UNFREEZE_LIFT",
     "ControlState",
     "ControlSwitchRepositoryPort",
     "ControlSwitchService",
     "ControlSwitchTx",
     "LiftDecision",
     "OpenFreeze",
+    "OpenKill",
     "PlatformFreezeRepositoryPort",
     "PlatformFreezeService",
     "ProvisioningAudit",
     "ReasonCode",
-    "UnfreezeSettler",
+    "SwitchLift",
+    "SwitchLiftSettler",
     "already_frozen",
+    "already_killed",
+    "switch_changed",
 ]
 
 # Every approval type of the lifecycle is strict: its requester never decides
@@ -75,6 +94,12 @@ LIFECYCLE_PREFIX = "studio.lifecycle."
 LIFECYCLE_FREEZE = "studio.lifecycle.freeze"
 LIFECYCLE_UNFREEZE = "studio.lifecycle.unfreeze"
 LIFECYCLE_UNFREEZE_DECIDED = decided_event_type(LIFECYCLE_UNFREEZE)
+# A kill of one agent or workflow (agent-lifecycle R8): the key of the kill and
+# of the request to revive at the component's `owning_workspace_id`, and the
+# stamp of the revive's decider; the revive is an approval type, not a key.
+LIFECYCLE_KILL_SCOPE = "studio.lifecycle.kill"
+LIFECYCLE_REVIVE = "studio.lifecycle.revive"
+LIFECYCLE_REVIVE_DECIDED = decided_event_type(LIFECYCLE_REVIVE)
 
 FREEZE_SET = "control.freeze.set"
 FREEZE_LIFTED = "control.freeze.lifted"
@@ -82,6 +107,12 @@ PLATFORM_FREEZE_SET = "platform.freeze.set"
 PLATFORM_FREEZE_LIFTED = "platform.freeze.lifted"
 PLATFORM_TENANT_FREEZE_SET = "platform.tenant_freeze.set"
 PLATFORM_TENANT_FREEZE_LIFTED = "platform.tenant_freeze.lifted"
+KILL_SET = "control.kill.set"
+KILL_LIFTED = "control.kill.lifted"
+# Written in the transaction of every set and lift of a kill, identifiers
+# only (`{tenant_id, switch_id}`); the worker's `control_switch` lane hears it.
+CONTROL_SWITCH_CHANGED = "control.switch.changed"
+CONTROL_SWITCH_CHANGED_SCHEMA = "1"
 
 # The lane that carries out the decision, named in `details.lane` of the audit
 # row standing in the decider's name (ADR-0011).
@@ -100,6 +131,16 @@ class OpenFreeze:
     origin: Origin
     reason_code: str
     set_at: datetime
+
+
+@dataclass(frozen=True, slots=True)
+class OpenKill:
+    """The open kill of one component, as its row says."""
+
+    id: uuid.UUID
+    target_id: uuid.UUID
+    owning_workspace_id: uuid.UUID
+    set_by: uuid.UUID
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,7 +195,33 @@ class ControlSwitchTx(Protocol):
         is waiting (the pending index, under a race)."""
         ...
 
-    async def lift_decision(self, approval_id: uuid.UUID) -> LiftDecision | None: ...
+    async def open_kill(self, target_id: uuid.UUID) -> OpenKill | None:
+        """The component's open kill, set by the company (an operator never
+        kills a component)."""
+        ...
+
+    async def insert_kill(
+        self,
+        *,
+        switch_id: uuid.UUID,
+        scope_type: Literal["agent", "workflow"],
+        target_id: uuid.UUID,
+        owning_workspace_id: uuid.UUID,
+        reason_code: ReasonCode,
+        reason: str,
+        set_by: uuid.UUID,
+    ) -> None:
+        """Raises `ConflictError` `already_killed` when the component's kill is
+        already open (the open index, under a race)."""
+        ...
+
+    async def announce(self, event: OutboxEvent) -> None:
+        """The event, on the outbox, in this transaction."""
+        ...
+
+    async def lift_decision(
+        self, approval_id: uuid.UUID, approval_type: str
+    ) -> LiftDecision | None: ...
 
     async def lift(self, switch_id: uuid.UUID, *, by: uuid.UUID, approval_id: uuid.UUID) -> bool:
         """Lift the open row; False when it is gone or already lifted."""
@@ -295,23 +362,42 @@ class ControlSwitchService:
 SettlementOutcome = Literal["lifted", "rejected", "already_lifted"]
 
 
+@dataclass(frozen=True, slots=True)
+class SwitchLift:
+    """What one kind of lift is: the approval type that carries it out, the
+    audit action of the lift, and whether the lift is announced on the outbox
+    (a kill's is: the `control_switch` lane hears every change of a kill)."""
+
+    approval_type: str
+    action: str
+    announce: bool
+    noun: str
+
+
+UNFREEZE_LIFT = SwitchLift(LIFECYCLE_UNFREEZE, FREEZE_LIFTED, announce=False, noun="freeze")
+REVIVE_LIFT = SwitchLift(LIFECYCLE_REVIVE, KILL_LIFTED, announce=True, noun="kill")
+
+
 @dataclass(frozen=True)
-class UnfreezeSettler:
-    """R7.10, on the worker, where the decision's outbox event arrives.
+class SwitchLiftSettler:
+    """R7.10, R8.6, on the worker, where the decision's outbox event arrives.
 
     Idempotent by the switch: a replay meets a row already lifted and writes
-    nothing, so a redelivery never meets the trigger's refusal."""
+    nothing, so a redelivery never meets the trigger's refusal, and a decision
+    on a switch since lifted and set again never lifts the new one: the request
+    names its row by id (R8.6)."""
 
     repo: ControlSwitchRepositoryPort
     clock: UtcClock
     id_generator: IdGenerator
+    lift: SwitchLift
 
     async def settle(self, scope: WorkScope, approval_id: uuid.UUID) -> SettlementOutcome:
         async with self.repo.transaction(scope.tenant_id) as tx:
-            decision = await tx.lift_decision(approval_id)
+            decision = await tx.lift_decision(approval_id, self.lift.approval_type)
             if decision is None or decision.switch_id is None:
                 raise NotFoundError(
-                    "no decided studio.lifecycle.unfreeze approval of that id",
+                    f"no decided {self.lift.approval_type} approval of that id",
                     details={"approval_id": str(approval_id)},
                 )
             if not decision.approved:
@@ -320,6 +406,7 @@ class UnfreezeSettler:
                 decision.switch_id, by=decision.decided_by, approval_id=approval_id
             ):
                 return "already_lifted"
+            now = self.clock.now()
             await tx.audit(
                 AuditEvent(
                     id=self.id_generator.new_uuid(),
@@ -327,10 +414,10 @@ class UnfreezeSettler:
                     workspace_id=WorkspaceId(decision.workspace_id),
                     # A lane carrying out one person's decision audits that person.
                     actor_id=UserId(decision.decided_by),
-                    action=FREEZE_LIFTED,
+                    action=self.lift.action,
                     resource_type=_RESOURCE,
                     resource_id=str(decision.switch_id),
-                    occurred_at=self.clock.now(),
+                    occurred_at=now,
                     details={
                         "approval_id": str(approval_id),
                         "requested_by": str(decision.requested_by),
@@ -338,7 +425,43 @@ class UnfreezeSettler:
                     },
                 )
             )
+            if self.lift.announce:
+                await tx.announce(
+                    switch_changed(
+                        self.id_generator.new_uuid(),
+                        tenant_id=scope.tenant_id,
+                        workspace_id=decision.workspace_id,
+                        switch_id=decision.switch_id,
+                        actor_id=decision.decided_by,
+                        at=now,
+                    )
+                )
         return "lifted"
+
+
+def switch_changed(
+    event_id: uuid.UUID,
+    *,
+    tenant_id: uuid.UUID,
+    workspace_id: uuid.UUID,
+    switch_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    at: datetime,
+) -> OutboxEvent:
+    """`control.switch.changed` v1: identifiers only, the one shape the kill,
+    the lift and the lane share (the outbox is drained by a dispatcher that
+    serves every tenant, so no reason's text rides on it)."""
+    return OutboxEvent(
+        id=event_id,
+        tenant_id=TenantId(tenant_id),
+        workspace_id=WorkspaceId(workspace_id),
+        event_type=CONTROL_SWITCH_CHANGED,
+        schema_version=CONTROL_SWITCH_CHANGED_SCHEMA,
+        aggregate_id=switch_id,
+        occurred_at=at,
+        payload={"tenant_id": str(tenant_id), "switch_id": str(switch_id)},
+        actor_id=actor_id,
+    )
 
 
 # ---- the operators' switches --------------------------------------------------
@@ -479,6 +602,14 @@ def already_frozen() -> ConflictError:
     """A second open freeze of the same origin: refused here, and by the
     adapters that meet the open index under a race."""
     return ConflictError("a freeze is already open", details={"reason_code": "already_frozen"})
+
+
+def already_killed() -> ConflictError:
+    """A second open kill of one component (R8.1): refused by the service and
+    by the adapter that meets the open index under a race."""
+    return ConflictError(
+        "the component is already killed", details={"reason_code": "already_killed"}
+    )
 
 
 def _not_frozen() -> ConflictError:

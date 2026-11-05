@@ -1067,6 +1067,7 @@ def _studio_run_context(taken: StudioRun) -> RunContext:
         requested_by=taken.requested_by,
         run_as_principal_id=taken.run_as_principal_id,
         run_manifest_hash=taken.run_manifest_hash,
+        artifact_id=taken.artifact_id,
         worker_id=f"studio:{taken.artifact_kind}:{taken.artifact_version_id}",
         worker_version=version,
         channel="studio",

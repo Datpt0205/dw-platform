@@ -38,6 +38,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
+from uuid import UUID
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import BaseChatModel
@@ -83,6 +84,10 @@ class SubAgentSpec:
     model: BaseChatModel | None = None
     profile_id: str | None = None
     system_prompt: str | None = None
+    # A linked agent's component (agent-lifecycle R8.5), from the run's pinned
+    # closure: its kill refuses this child's turns while the parent's own
+    # component is open. None for a sub-agent that is no Studio component.
+    artifact_id: UUID | None = None
 
 
 def sub_agent_spec(parent: AgentSpec, child: SubAgentSpec) -> dict[str, Any]:
@@ -108,8 +113,12 @@ def sub_agent_spec(parent: AgentSpec, child: SubAgentSpec) -> dict[str, Any]:
         OneApprovalPerStepMiddleware(offered, copy=parent.copy, approvals=parent.executor),
         PlatformToolErrorsMiddleware(offered, copy=parent.copy),
         # The freeze at a delegated turn's model call too (agent-lifecycle
-        # R7.1): the parent's middleware does not run for a child turn.
-        RunControlMiddleware(parent.executor.run_control),
+        # R7.1): the parent's middleware does not run for a child turn. A
+        # linked agent's own kill is asked here, after the run's (R8.5).
+        RunControlMiddleware(
+            parent.executor.run_control,
+            artifacts=() if child.artifact_id is None else (child.artifact_id,),
+        ),
         # The SAME ledger object the parent holds — not a copy, not a fresh one.
         # This single argument is what keeps a delegated turn inside the ceiling
         # the run was given.

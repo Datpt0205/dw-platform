@@ -1902,6 +1902,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/studio/agents/{artifact_id}/kill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Kill a agent: its live and test runs stop at their next door */
+        post: operations["kill_agents_api_v1_studio_agents__artifact_id__kill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/agents/{artifact_id}/revive-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask a second person to revive a killed agent */
+        post: operations["request_agents_revive_api_v1_studio_agents__artifact_id__revive_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/studio/agents/{artifact_id}/versions/{version_id}/retire": {
         parameters: {
             query?: never;
@@ -2245,6 +2279,40 @@ export interface paths {
          *     `workspace_id` are `field_not_writable` (R6.7).
          */
         patch: operations["update_record_api_v1_studio_objects__api_name__records__record_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/studio/workflows/{artifact_id}/kill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Kill a workflow: its live and test runs stop at their next door */
+        post: operations["kill_workflows_api_v1_studio_workflows__artifact_id__kill_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/workflows/{artifact_id}/revive-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Ask a second person to revive a killed workflow */
+        post: operations["request_workflows_revive_api_v1_studio_workflows__artifact_id__revive_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/studio/workflows/{artifact_id}/versions/{version_id}/retire": {
@@ -4069,6 +4137,24 @@ export interface components {
              */
             kind: "keyed";
         };
+        /** KillBody */
+        KillBody: {
+            /** Reason */
+            reason: string;
+            /**
+             * Reason Code
+             * @enum {string}
+             */
+            reason_code: "incident" | "maintenance" | "abuse" | "test" | "other";
+        };
+        /** KillView */
+        KillView: {
+            /**
+             * Switch Id
+             * Format: uuid
+             */
+            switch_id: string;
+        };
         /** KnowledgeDocumentView */
         KnowledgeDocumentView: {
             /** Chunk Count */
@@ -5163,6 +5249,22 @@ export interface components {
             resource_type: string;
             /** Scope Set Key */
             scope_set_key: string;
+        };
+        /**
+         * ReviveRequestView
+         * @description The approval that lifts the kill once a second person approves it.
+         */
+        ReviveRequestView: {
+            /**
+             * Approval Id
+             * Format: uuid
+             */
+            approval_id: string;
+            /**
+             * Status
+             * @default pending
+             */
+            status: string;
         };
         /** RoleAssignmentView */
         RoleAssignmentView: {
@@ -11311,6 +11413,96 @@ export interface operations {
             };
         };
     };
+    kill_agents_api_v1_studio_agents__artifact_id__kill_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KillBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KillView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    request_agents_revive_api_v1_studio_agents__artifact_id__revive_requests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviveRequestView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     retire_agents_version_api_v1_studio_agents__artifact_id__versions__version_id__retire_post: {
         parameters: {
             query?: never;
@@ -12413,6 +12605,96 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecordOut"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    kill_workflows_api_v1_studio_workflows__artifact_id__kill_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["KillBody"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KillView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    request_workflows_revive_api_v1_studio_workflows__artifact_id__revive_requests_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReviveRequestView"];
                 };
             };
             /** @description The request was refused */

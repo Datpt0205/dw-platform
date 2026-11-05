@@ -23,6 +23,9 @@ class OpenRunControl:
     only `doors` when given; `reopen()` opens them again."""
 
     asked: list[tuple[RunControlDoor, uuid.UUID]] = field(default_factory=list)
+    # Each ask's run context and the components the door named beyond the
+    # run's own, for a test of what a door hands the port (agent-lifecycle 05).
+    contexts: list[tuple[RunContext, tuple[uuid.UUID, ...]]] = field(default_factory=list)
     _reason: HaltReason | None = None
     _doors: frozenset[RunControlDoor] | None = None
     set_by: uuid.UUID | None = None
@@ -53,6 +56,7 @@ class OpenRunControl:
         artifacts: Sequence[uuid.UUID] = (),
     ) -> None:
         self.asked.append((door, run_context.run_id))
+        self.contexts.append((run_context, tuple(artifacts)))
         if self._reason is not None and (self._doors is None or door in self._doors):
             raise RunHaltedError(self._reason, door=door, set_by=self.set_by)
 

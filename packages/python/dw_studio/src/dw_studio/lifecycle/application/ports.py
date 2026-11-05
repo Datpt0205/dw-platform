@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.control_switches import ControlSwitchTx
 from dw_platform.domain.approval import ApprovalRequest
 from dw_studio.core.application.bindings import BindingVerdict
 from dw_studio.core.application.ports import ArtifactTx, Dependent, VersionRow
@@ -54,6 +55,26 @@ class LifecycleTx(Protocol):
 
 class LifecycleStore(Protocol):
     def transaction(self, context: AccessContext) -> AbstractAsyncContextManager[LifecycleTx]:
+        """Commits on a clean exit, rolls back on an exception."""
+        ...
+
+
+class KillTx(Protocol):
+    """A kill's transaction (agent-lifecycle ticket 05): the envelope's, under
+    the caller's tenant, so the component read for its owning workspace and
+    the switch written for it commit or roll back together."""
+
+    @property
+    def envelope(self) -> ArtifactTx: ...
+
+    @property
+    def switches(self) -> ControlSwitchTx:
+        """`platform.control_switches`' statements on the envelope's session."""
+        ...
+
+
+class KillStore(Protocol):
+    def transaction(self, context: AccessContext) -> AbstractAsyncContextManager[KillTx]:
         """Commits on a clean exit, rolls back on an exception."""
         ...
 

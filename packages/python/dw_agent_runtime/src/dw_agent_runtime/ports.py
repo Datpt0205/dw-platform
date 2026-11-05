@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor
 from dw_kernel.errors import DomainError
+from dw_platform.domain.audit import AuditEvent
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
 
@@ -134,9 +135,12 @@ class RunControlPort(Protocol):
         artifacts: Sequence[UUID] = (),
     ) -> None:
         """Return when the run may go through `door`; else raise
-        `RunHaltedError` with the reason. `artifacts` are the components the
-        call reaches (a kill of any refuses it). At `admission`, `start` and
-        `resume` the run's principal and company are read too."""
+        `RunHaltedError` with the reason. A kill of the run's own component
+        (`run_context.artifact_id`) refuses it, and of any of `artifacts`, the
+        further components the call reaches (a linked agent, R8.5), asked
+        after it; a `simulate` run is refused by no kill (ADR-0120 decision 7).
+        At `admission`, `start` and `resume` the run's principal and company
+        are read too."""
         ...
 
     async def admission_state(
@@ -146,6 +150,32 @@ class RunControlPort(Protocol):
         lane): the reason it may not be admitted now, or None. No principal is
         asked: an event has none until its run is requested."""
         ...
+
+
+class RunCancelUnit(Protocol):
+    """The transaction a `control_switch` lane cancels one run in, as a
+    `RunCancelHook` writes through it (agent-lifecycle R8.10; workflow-engine
+    ticket 08, MEDIUM (a)): under the run's tenant, committed with the cancel
+    or rolled back with it, so a hook opens no connection of its own and what
+    it writes cannot outlive a cancel that did not happen. Narrow on purpose:
+    what a hook writes is an audit row; a hook that reads adds the read here,
+    with the lane's unit its one implementation."""
+
+    async def audit(self, event: AuditEvent) -> None: ...
+
+
+class RunCancelHook(Protocol):
+    """Called for each run the `control_switch` lane cancels, in the cancel's
+    transaction and before the run is set `cancelled` (agent-lifecycle R8.10;
+    H-22): `actor` is the person who set the kill and `lane` the lane carrying
+    it out (ADR-0011). Registered by name at the worker's composition root,
+    none by default; workflow-engine/08 registers `record_unresolved_effects`
+    (workflow-engine R6.38). Raising rolls that run's cancel back, and the
+    outbox delivers the change again: no run is cancelled past a hook."""
+
+    async def on_cancel(
+        self, unit: RunCancelUnit, run_id: UUID, *, actor: UUID, lane: str
+    ) -> None: ...
 
 
 class StreamingWorkflowRunnerPort(Protocol):
@@ -434,6 +464,7 @@ class StudioRun:
     tenant_id: UUID
     workspace_id: UUID
     artifact_kind: str
+    artifact_id: UUID
     artifact_version_id: UUID
     # The root's pinned hash: the sealed `definition_hash`, or a draft's
     # provisional one from its manifest; with `COMPILER_VERSION`, what the

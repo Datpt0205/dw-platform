@@ -48,7 +48,7 @@ from dw_kernel.ports import UtcClock
 from dw_observability.metrics import DW_CONTROL_REFUSALS_TOTAL
 from dw_observability.telemetry import TelemetryPort
 
-__all__ = ["CONTROL_SWITCH_CHANNEL", "SqlRunControl"]
+__all__ = ["CONTROL_SWITCH_CHANNEL", "SqlRunControl", "reached_components"]
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +148,19 @@ def _snapshot_of(rows: Sequence[Any], read_at: datetime) -> _Snapshot:
     )
 
 
+def reached_components(
+    run_context: RunContext, artifacts: Sequence[uuid.UUID]
+) -> tuple[uuid.UUID, ...]:
+    """The components whose kill refuses this call, in the order a refusal
+    names one (agent-lifecycle R8.1, R8.5): the run's own first, then those
+    the door names (a linked agent). None for a `simulate` run, which a kill
+    never stops, so a fix can be evaluated (ADR-0120 decision 7)."""
+    if run_context.run_mode == "simulate":
+        return ()
+    own = () if run_context.artifact_id is None else (run_context.artifact_id,)
+    return (*own, *artifacts)
+
+
 class SqlRunControl:
     """Implements `RunControlPort`. One per process: the API and the worker
     each hand this instance to every door they build."""
@@ -194,7 +207,10 @@ class SqlRunControl:
             if standing is not None:
                 self._refuse(standing, door)
         snapshot = await self._snapshot(tenant_id, door)
-        refusal = snapshot.refusal(artifacts, kill_first=door is RunControlDoor.ADMISSION)
+        refusal = snapshot.refusal(
+            reached_components(run_context, artifacts),
+            kill_first=door is RunControlDoor.ADMISSION,
+        )
         if refusal is not None:
             self._refuse(refusal.reason, door, refusal.switch)
 

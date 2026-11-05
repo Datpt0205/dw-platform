@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from dw_agent_runtime.adapters.checkpoint_retention import SqlCheckpointRetention
+from dw_agent_runtime.adapters.killed_runs import SqlKilledRuns
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.run_control import SqlRunControl
 from dw_agent_runtime.adapters.spend_guard import SqlSpendGuardRetention
@@ -40,6 +41,7 @@ from dw_agent_runtime.channel_decisions import (
     ChannelApprovalDecisionService,
     ChannelDecisionCommand,
 )
+from dw_agent_runtime.control_switch_lane import ControlSwitchLane, RunCancelHooks
 from dw_agent_runtime.run_control import lane_actors
 from dw_agent_runtime.wflite.catalog import load_shipped_packs
 from dw_agent_runtime.wflite.publish import (
@@ -123,7 +125,12 @@ from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.channel_access import LinkedUserAccess
 from dw_platform.application.config_versions import CONFIG_PREFIX, ConfigSettlement
 from dw_platform.application.connection_admin import CONNECTIONS_ENABLE, ConnectionEnableSettler
-from dw_platform.application.control_switches import LIFECYCLE_PREFIX, UnfreezeSettler
+from dw_platform.application.control_switches import (
+    LIFECYCLE_PREFIX,
+    REVIVE_LIFT,
+    UNFREEZE_LIFT,
+    SwitchLiftSettler,
+)
 from dw_platform.application.decision_gate import DW_DECISION, DwDecisionAdmission
 from dw_platform.application.dw_autonomy import (
     DW_AUTONOMY_PREFIX,
@@ -159,8 +166,11 @@ from dw_worker.consumers.config_versions import (
 )
 from dw_worker.consumers.connections import CONNECTIONS_ENABLE_DECIDED, build_enable_handler
 from dw_worker.consumers.control_switches import (
+    CONTROL_SWITCH_CHANGED,
+    LIFECYCLE_REVIVE_DECIDED,
     LIFECYCLE_UNFREEZE_DECIDED,
-    build_unfreeze_handler,
+    build_lift_handler,
+    build_switch_changed_handler,
 )
 from dw_worker.consumers.dw_autonomy import DW_AUTONOMY_RAISE_DECIDED, build_raise_handler
 from dw_worker.consumers.dw_timers import INTERVAL_SECONDS as DW_TIMERS_INTERVAL_SECONDS
@@ -368,6 +378,14 @@ def build_purge_steps() -> OffboardingPurgeSteps:
     a context that deletes its tables its own way adds its step; every other
     table goes by the lane's default step."""
     return OffboardingPurgeSteps.platform()
+
+
+def build_run_cancel_hooks() -> RunCancelHooks:
+    """What the `control_switch` lane calls for each run a kill cancels, in
+    the cancel's transaction (agent-lifecycle R8.10), built here and frozen:
+    a context joins with one `register` line, none by default.
+    workflow-engine/08 registers `record_unresolved_effects`."""
+    return RunCancelHooks().freeze()
 
 
 def build_tenant_wide_scopes() -> TenantWideScopeRegistry:
@@ -579,10 +597,25 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         handlers[OWNER_COVERAGE_LOW] = build_owner_coverage_handler(
             SqlScopeHolders(sessions), SqlNotificationRepository(sessions)
         )
-        # A decided request to lift a company's freeze (agent-lifecycle R7.10).
-        handlers[LIFECYCLE_UNFREEZE_DECIDED] = build_unfreeze_handler(
-            UnfreezeSettler(
-                repo=SqlControlSwitchRepository(sessions), clock=clock, id_generator=ids
+        # A decided request to lift a company's freeze or revive a killed
+        # component (agent-lifecycle R7.10, R8.6), and a kill carried out on
+        # the runs it holds (R8.2, the `control_switch` lane).
+        for decided, lift in (
+            (LIFECYCLE_UNFREEZE_DECIDED, UNFREEZE_LIFT),
+            (LIFECYCLE_REVIVE_DECIDED, REVIVE_LIFT),
+        ):
+            handlers[decided] = build_lift_handler(
+                SwitchLiftSettler(
+                    repo=SqlControlSwitchRepository(sessions),
+                    clock=clock,
+                    id_generator=ids,
+                    lift=lift,
+                ),
+                lift.noun,
+            )
+        handlers[CONTROL_SWITCH_CHANGED] = build_switch_changed_handler(
+            ControlSwitchLane(
+                store=SqlKilledRuns(sessions), hooks=build_run_cancel_hooks(), clock=clock, ids=ids
             )
         )
         # A decided publication of a DW's workflow draft (wf-ai R6.5, R6.6).

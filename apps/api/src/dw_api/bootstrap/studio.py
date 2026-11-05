@@ -17,6 +17,9 @@ The stage machine (agent-lifecycle ticket 03) mounts one submit, withdraw and
 retire route per segment of `SUBMIT_SEGMENTS`, unless a test names its own
 `segments=` (to put a test kind under one); its submit asks the process's one
 `SqlRunControl` (ticket 01) and runs the per-kind checks of `_SUBMIT_CHECKS`.
+A kill and the request to revive (ticket 05) mount under `KILL_SEGMENTS`
+alone, never a test's `segments=`: a switch kills an agent or a workflow,
+`ck_control_switches_scope_type`.
 
 The one door a Studio run is created through (workflow-engine ticket 02),
 `RunRequestService`, takes two tables frozen here: `_RUN_KEYS`, the key a
@@ -110,7 +113,8 @@ from dw_studio.kinds import (
     run_boundary_derivers,
     run_pinnable_steps,
 )
-from dw_studio.lifecycle.adapters.store import SqlLifecycleStore
+from dw_studio.lifecycle.adapters.store import SqlKillStore, SqlLifecycleStore
+from dw_studio.lifecycle.application.kill import KILL_SEGMENTS, KillSwitchService
 from dw_studio.lifecycle.application.ports import SubmitCheck
 from dw_studio.lifecycle.application.service import SUBMIT_SEGMENTS, LifecycleService
 from dw_studio.records.adapters.actor_boundaries import SqlActorBoundaries
@@ -159,6 +163,10 @@ class StudioContainer:
     # segment of each kind it submits, withdraws and retires.
     lifecycle: LifecycleService
     segments: Mapping[str, str]
+    # agent-lifecycle 05: a component's kill and the request to revive it,
+    # under the route segment of each kind a switch can kill.
+    kill_switches: KillSwitchService
+    kill_segments: Mapping[str, str]
     routers: tuple[APIRouter, ...]
     # tenant-config 04: the door that accepts a Studio run (workflow-engine/02)
     # builds its manifest with this, in its own transaction, under the release
@@ -289,6 +297,7 @@ def build_studio(
     # dependencies, which import this package.
     from dw_api.routes.v1.studio_artifacts import router as artifacts_router
     from dw_api.routes.v1.studio_bindings import router as bindings_router
+    from dw_api.routes.v1.studio_kill import kill_router
     from dw_api.routes.v1.studio_lifecycle import lifecycle_router
     from dw_api.routes.v1.studio_node_types import router as node_types_router
     from dw_api.routes.v1.studio_records import router as records_router
@@ -298,10 +307,13 @@ def build_studio(
         artifacts=artifacts,
         lifecycle=lifecycle,
         segments=segments,
+        kill_switches=KillSwitchService(SqlKillStore(store), artifacts, clock, ids),
+        kill_segments=KILL_SEGMENTS,
         routers=(
             artifacts_router,
             bindings_router,
             lifecycle_router(segments),
+            kill_router(KILL_SEGMENTS),
             node_types_router,
             records_router,
         ),

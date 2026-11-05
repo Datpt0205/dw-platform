@@ -3,7 +3,8 @@ R7.4, R7.6, R7.10, R7.11, R7.1 AL16; AL12, AL16, AL18).
 
 The real app and container: the strict prefix is the one `wiring.py` adds,
 the operator routes run as `dw_provisioner`, and a decided lift is settled by
-`UnfreezeSettler`, as the worker does on the decision's outbox event.
+`SwitchLiftSettler` (`UNFREEZE_LIFT`), as the worker does on the decision's
+outbox event.
 """
 
 from __future__ import annotations
@@ -32,7 +33,8 @@ from dw_platform.adapters.persistence.control_switches_repo import SqlControlSwi
 from dw_platform.application.control_switches import (
     LIFECYCLE_PREFIX,
     LIFECYCLE_UNFREEZE_DECIDED,
-    UnfreezeSettler,
+    UNFREEZE_LIFT,
+    SwitchLiftSettler,
 )
 from dw_platform.application.work_queue import WorkScope
 from dw_platform.testing.rbac import (
@@ -133,10 +135,11 @@ class Api:
             )
         assert payload is not None, "the decision announced nothing"
         person = self.people[who]
-        settler = UnfreezeSettler(
+        settler = SwitchLiftSettler(
             repo=SqlControlSwitchRepository(self.sessions),
             clock=SystemClock(),
             id_generator=Uuid4Generator(),
+            lift=UNFREEZE_LIFT,
         )
         scope = WorkScope(tenant_id=person.tenant.tenant_id, workspace_id=person.tenant.main)
         return await settler.settle(scope, uuid.UUID(payload["approval_id"]))

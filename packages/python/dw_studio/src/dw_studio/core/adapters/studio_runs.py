@@ -97,6 +97,7 @@ class SqlStudioRunStore:
                 tenant_id=tenant_id,
                 workspace_id=row.workspace_id,
                 artifact_kind=row.artifact_kind,
+                artifact_id=row.artifact_id,
                 artifact_version_id=row.artifact_version_id,
                 pinned_hash=str(resolver.root.content_hash),
                 run_mode=row.run_mode,

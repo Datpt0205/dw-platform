@@ -27,6 +27,7 @@ from dw_agent_runtime.dispatch import OutcomeUnknownError
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.ports import StudioRun, StudioRunBlocked
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.run_control import HaltReason, RunControlDoor
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.testing.studio_runs import ScriptedDoor, StudioHarness, document, step
 from dw_agent_runtime.testing.workflow_types import fixture_node_registry
@@ -71,6 +72,7 @@ def studio_run(doc: Mapping[str, Any], harness: StudioHarness, **over: Any) -> S
         tenant_id=uuid.uuid4(),
         workspace_id=uuid.uuid4(),
         artifact_kind="workflow",
+        artifact_id=uuid.uuid4(),
         artifact_version_id=uuid.uuid4(),
         pinned_hash="sha256:" + "c" * 64,
         run_mode="live",
@@ -294,3 +296,30 @@ def test_an_edited_draft_compiles_again_from_its_new_content() -> None:
     new_graph = runner._studio_graph(ports, edited)
     assert new_graph is not old_graph
     assert "ba" in new_graph.nodes and "ba" not in old_graph.nodes
+
+
+# ---- agent-lifecycle 05: the run's own component at its node head ------------------
+
+
+async def test_every_node_head_asks_with_the_component_the_run_was_taken_for() -> None:
+    """agent-lifecycle R8.1: the context each node head hands the port names
+    the run's own component, from its row, and the node names no other, so a
+    kill of it refuses the run without the node naming it."""
+    h, _ = harness()
+    store = FakeTake(studio_run(two_sends(), h))
+    await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    assert isinstance(store.taken, StudioRun)
+    asked = [(c.artifact_id, c.run_mode, extra) for c, extra in h.run_control.contexts]
+    assert asked == [(store.taken.artifact_id, "live", ())] * 2
+
+
+async def test_a_kill_at_the_node_head_cancels_the_run_before_any_door() -> None:
+    """agent-lifecycle R8.1: `cancelled` with `artifact_killed` and the door,
+    no send."""
+    h, door = harness()
+    h.run_control.refuse(HaltReason.ARTIFACT_KILLED, doors=[RunControlDoor.NODE])
+    store = FakeTake(studio_run(two_sends(), h))
+    status = await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    assert status == RunStatus.CANCELLED
+    assert store.finished == [("cancelled", {"code": "artifact_killed", "door": "node"})]
+    assert door.calls == []

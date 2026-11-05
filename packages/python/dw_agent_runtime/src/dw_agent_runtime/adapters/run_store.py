@@ -136,6 +136,9 @@ class RunRecord:
     # here, never from whoever resumes it. `simulate` is the closed value for
     # a record built without one.
     run_mode: RunMode = "simulate"
+    # The Studio component the run runs (workflow-engine R3.1); None for a run
+    # of a code graph. A resume carries it, so its doors ask about its kill.
+    artifact_id: uuid.UUID | None = None
 
 
 def resume_context(record: RunRecord, *, tenant_id: uuid.UUID, channel: str) -> RunContext:
@@ -164,6 +167,7 @@ def resume_context(record: RunRecord, *, tenant_id: uuid.UUID, channel: str) -> 
         requested_by=record.requested_by,
         run_as_principal_id=record.run_as_principal_id,
         definition_hash=record.definition_hash,
+        artifact_id=record.artifact_id,
         # A run resumes in the mode it started in (R4.5): a simulated run
         # stays simulated whichever process resumes it.
         run_mode=record.run_mode,
@@ -583,6 +587,7 @@ class SqlWorkerRunStore:
             run_as_principal_id=row.run_as_principal_id,
             definition_hash=row.definition_hash,
             run_mode=row.run_mode,
+            artifact_id=row.artifact_id,
             actor_roles=frozenset(row.actor_roles),
             actor_scopes=frozenset(row.actor_scopes),
             actor_plan_id=row.actor_plan_id,

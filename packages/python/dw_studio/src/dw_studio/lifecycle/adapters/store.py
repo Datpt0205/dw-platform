@@ -1,5 +1,6 @@
 """`SqlLifecycleStore`: the stage machine's reads beyond the envelope, on the
-envelope's own session (as `dw_app`, under the caller's tenant).
+envelope's own session (as `dw_app`, under the caller's tenant); `SqlKillStore`:
+a kill's switch statements on that same session (agent-lifecycle ticket 05).
 
 It decides nothing: `studio.guard_version_stage()` refuses a move, and the
 envelope's `update_version` reads that refusal back by its constraint name.
@@ -17,11 +18,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dw_kernel.errors import NotFoundError
 from dw_platform.adapters.persistence import tables as platform
+from dw_platform.adapters.persistence.control_switches_repo import control_switch_tx
 from dw_platform.adapters.persistence.repositories import (
     SqlApprovalRepository,
     _approval_from_row,
 )
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.control_switches import ControlSwitchTx
 from dw_platform.domain.approval import ApprovalRequest
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore, SqlArtifactTx
 from dw_studio.core.adapters.tables import (
@@ -112,3 +115,21 @@ class SqlLifecycleStore:
     async def transaction(self, context: AccessContext) -> AsyncIterator[SqlLifecycleTx]:
         async with self.artifacts.transaction(context) as envelope:
             yield SqlLifecycleTx(envelope)
+
+
+@dataclass
+class SqlKillTx:
+    """`KillTx`: the envelope's session, and the switch statements bound to it."""
+
+    envelope: SqlArtifactTx
+    switches: ControlSwitchTx
+
+
+@dataclass(frozen=True)
+class SqlKillStore:
+    artifacts: SqlArtifactStore
+
+    @asynccontextmanager
+    async def transaction(self, context: AccessContext) -> AsyncIterator[SqlKillTx]:
+        async with self.artifacts.transaction(context) as envelope:
+            yield SqlKillTx(envelope, control_switch_tx(envelope.session, context.tenant_id))

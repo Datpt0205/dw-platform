@@ -152,6 +152,11 @@ class RunContext(BaseModel):
     # it is not handed (tools-and-skills R4.1; DO-05). Set where a Studio run
     # is taken and resumed (agent-builder/03).
     run_manifest_hash: str | None = Field(default=None, pattern=r"^sha256:[0-9a-f]{64}$")
+    # The Studio component the run runs (`platform.worker_runs.artifact_id`),
+    # read from its row where a Studio run is taken and resumed; None for any
+    # other run. `RunControlPort` asks about its kill at every door, so no
+    # door has to name it (agent-lifecycle R8.1, R8.5).
+    artifact_id: UUID | None = None
     worker_id: str
     worker_version: str = Field(pattern=_RUN_VERSION_PATTERN)
     channel: str

@@ -4,9 +4,12 @@
 `SqlControlSwitchRepository` runs as `dw_app` under one company's RLS: what
 the company sets, asks to lift, and reads, and what the settlement lifts. The
 database decides the rest: `uq_control_switches_open` refuses a second open
-freeze of one origin, `uq_approval_requests_control_lift_pending` a second
-pending lift, and `platform.guard_control_switch()` any lift but the one an
-approved, second-person request names.
+freeze of one origin or a second open kill of one component,
+`uq_approval_requests_control_lift_pending` a second pending lift, and
+`platform.guard_control_switch()` any lift but the one an approved,
+second-person request names. `control_switch_tx` binds the same statements to
+a session another store already holds: a kill is written in the transaction
+that read its component (`dw_studio.lifecycle`, agent-lifecycle ticket 05).
 
 `SqlPlatformFreezeRepository` runs as `dw_provisioner` (no tenant, BYPASSRLS):
 the operators' switches, each with its `platform.provisioning_audit` row in
@@ -20,6 +23,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Literal
 
 import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
@@ -28,21 +32,28 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_kernel.errors import ConflictError, NotFoundError
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
-from dw_platform.adapters.persistence.repositories import SqlApprovalRepository, SqlAuditRepository
+from dw_platform.adapters.persistence.repositories import (
+    SqlApprovalRepository,
+    SqlAuditRepository,
+    SqlOutboxRepository,
+)
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.control_switches import (
-    LIFECYCLE_UNFREEZE,
+    ControlSwitchTx,
     LiftDecision,
     OpenFreeze,
+    OpenKill,
     ProvisioningAudit,
     ReasonCode,
     already_frozen,
+    already_killed,
 )
 from dw_platform.application.effect_keys import EffectClaim
 from dw_platform.domain.approval import ApprovalRequest
 from dw_platform.domain.audit import AuditEvent
+from dw_platform.domain.outbox import OutboxEvent
 
-__all__ = ["SqlControlSwitchRepository", "SqlPlatformFreezeRepository"]
+__all__ = ["SqlControlSwitchRepository", "SqlPlatformFreezeRepository", "control_switch_tx"]
 
 _OPEN_INDEX = "uq_control_switches_open"
 _LIFT_PENDING_INDEX = "uq_approval_requests_control_lift_pending"
@@ -155,6 +166,64 @@ class _Tx:
                 raise already_frozen() from exc
             raise
 
+    async def open_kill(self, target_id: uuid.UUID) -> OpenKill | None:
+        row = (
+            await self.session.execute(
+                sa.select(
+                    _SWITCHES.c.id,
+                    _SWITCHES.c.target_id,
+                    _SWITCHES.c.owning_workspace_id,
+                    _SWITCHES.c.set_by,
+                ).where(
+                    _SWITCHES.c.action == "kill",
+                    _SWITCHES.c.target_id == target_id,
+                    _SWITCHES.c.lifted_at.is_(None),
+                )
+            )
+        ).first()
+        if row is None:
+            return None
+        return OpenKill(
+            id=row.id,
+            target_id=row.target_id,
+            owning_workspace_id=row.owning_workspace_id,
+            set_by=row.set_by,
+        )
+
+    async def insert_kill(
+        self,
+        *,
+        switch_id: uuid.UUID,
+        scope_type: Literal["agent", "workflow"],
+        target_id: uuid.UUID,
+        owning_workspace_id: uuid.UUID,
+        reason_code: ReasonCode,
+        reason: str,
+        set_by: uuid.UUID,
+    ) -> None:
+        try:
+            await self.session.execute(
+                sa.insert(_SWITCHES).values(
+                    id=switch_id,
+                    tenant_id=self.tenant_id,
+                    scope_type=scope_type,
+                    owning_workspace_id=owning_workspace_id,
+                    target_id=target_id,
+                    action="kill",
+                    origin="tenant",
+                    reason_code=reason_code,
+                    reason=reason,
+                    set_by=set_by,
+                )
+            )
+        except IntegrityError as exc:
+            if _OPEN_INDEX in _constraint(exc):
+                raise already_killed() from exc
+            raise
+
+    async def announce(self, event: OutboxEvent) -> None:
+        await SqlOutboxRepository(self.session).add(event)
+
     async def open_lift_request(self, request: ApprovalRequest) -> None:
         try:
             await SqlApprovalRepository(self.session).add(request)
@@ -166,7 +235,9 @@ class _Tx:
                 ) from exc
             raise
 
-    async def lift_decision(self, approval_id: uuid.UUID) -> LiftDecision | None:
+    async def lift_decision(
+        self, approval_id: uuid.UUID, approval_type: str
+    ) -> LiftDecision | None:
         row = (
             await self.session.execute(
                 sa.select(
@@ -186,7 +257,7 @@ class _Tx:
                 )
                 .where(
                     tables.approval_requests.c.id == approval_id,
-                    tables.approval_requests.c.approval_type == LIFECYCLE_UNFREEZE,
+                    tables.approval_requests.c.approval_type == approval_type,
                 )
                 .order_by(tables.approval_decisions.c.decided_at.desc())
                 .limit(1)
@@ -220,6 +291,12 @@ class _Tx:
 
     async def audit(self, event: AuditEvent) -> None:
         await SqlAuditRepository(self.session).append(event)
+
+
+def control_switch_tx(session: AsyncSession, tenant_id: uuid.UUID) -> ControlSwitchTx:
+    """The switch statements on a session already bound to `tenant_id`'s
+    RLS, in the transaction its holder opened and commits."""
+    return _Tx(session, tenant_id)
 
 
 @dataclass(frozen=True)
