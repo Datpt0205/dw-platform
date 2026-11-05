@@ -1,6 +1,6 @@
 # 04 — Làn studio_runs: lấy việc công bằng, lease, reaper, thư chết
 
-Status: ready-for-agent
+Status: resolved (2026-11-05, main)
 Blocked by: 03, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/agent-lifecycle/issues/05-tat-khan-cap-va-khoi-phuc.md
 Area: studio
 Yêu cầu: R1.9, R5.1, R5.2, R5.3, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R5.12, R5.13, R5.14, R5.15, R5.16, R5.17, R5.18, R5.19, R5.20, R5.21, R5.22, R5.23, R5.24, R5.25, R5.26, WE2, WE3, WE4, WE6, WE8, WE17, WE23, WE24, WE25, WE52
@@ -20,34 +20,34 @@ Chạy lượt chạy Studio ở worker từ hàng `platform.worker_runs`, công
 
 ## Tiêu chí chấp nhận
 
-- [ ] R5.1 (WE2): tạo lượt chạy khi worker tắt → dòng giữ `queued`, tiến trình API không gọi `ainvoke`; dời việc chạy vào API → test đỏ.
-- [ ] R5.2 (WE4): sau 10.000 lượt chờ của tenant A, lượt của tenant B nằm trong lô lấy đầu; đổi hàm sang FIFO → test đỏ.
-- [ ] R5.3 (WE3): dưới `app.tenant_id` của tenant A, lệnh nhận việc chỉ nhận lượt chạy của A dù tenant B có lượt đến hạn sớm hơn; `platform.studio_run_scopes_due` trả id tenant, không id lượt chạy nào; dời lệnh nhận vào hàm definer hay cho hàm trả id lượt chạy → test đỏ.
-- [ ] R5.9 (WE6): hết hạn mức của kỳ với lượt `chat` → `failed` với `limit_exceeded` kèm `resets_at` và `metric` lấy từ câu trả lời của `LimitsPort.admit`, 0 lời gọi model; bỏ kiểm `LimitsPort.admit` → test đỏ.
-- [ ] R5.10 (WE6): hết hạn mức của kỳ với lượt `datahub` → giữ `queued`, `available_at` bằng `resets_at`, sự kiện nhận còn nguyên, 0 lời gọi model.
-- [ ] R5.11 (WE6): lần thử `eval` được nhận → 0 lời gọi `LimitsPort.admit` và `resume` (bản giả đếm); lượt `chat` sau một điểm chờ được nhận lại → `resume` một lần, `admit` không gọi lần hai; `resume` trả `limit_exceeded` cho lượt `chat` → `failed` `limit_exceeded`; `admit` trả `limits_unavailable` → giữ `queued` như R5.16; `admit` gọi hai lần cho cùng `root_run_id` (worker chết giữa `admit` và ghi `deadline_at`) → bản giả theo hợp đồng trả cùng lease, `runs` đếm một lần.
-- [ ] R5.12 (WE17): Đóng băng tenant khi lượt `chat` và lượt `manual` đang `queued` → cả hai `cancelled` với `tenant_frozen`; giữ `queued` cho lượt tương tác → test đỏ.
-- [ ] R5.13 (WE17): Đóng băng tenant khi ba lượt `datahub` đang `queued` → cả ba giữ `queued`; gỡ Đóng băng → ba lượt chạy theo thứ tự `available_at`.
-- [ ] R5.14 (WE17): Tắt khẩn quy trình khi một lượt `datahub` của nó đang `queued` → `cancelled`, không giữ `queued`; cùng lúc một lượt `simulate` của cùng quy trình đang `queued` → được nhận và chạy; hủy cả lượt `simulate` → test đỏ.
-- [ ] R5.15 (WE17): người chạy của một lượt `manual` bị tạm khóa khi lượt đang `queued` → `cancelled` với `principal_inactive`, 0 lời gọi model.
-- [ ] R5.16 (WE17): `RunControlPort` báo `control_state_unavailable` → lượt giữ `queued` với `available_at` sau, không `cancelled`, 0 lời gọi model; cho lượt qua khi port báo lý do đó → test đỏ.
-- [ ] R5.17 (WE17): tài khoản dịch vụ chạy của ba lượt `datahub` bị tạm khóa khi chúng đang `queued` → cả ba giữ `queued`, 0 lời gọi model; kích hoạt lại tài khoản → ba lượt chạy theo thứ tự `available_at`; hủy lượt `datahub` vì `principal_inactive` → test đỏ.
-- [ ] R5.18 (WE17): công ty `locked` khi một lượt `chat` và một lượt `datahub` đang `queued` → cả hai `cancelled` với `tenant_locked`; công ty `offboarding` → `cancelled` với `tenant_offboarding`; 0 lời gọi model.
-- [ ] R5.19 (WE25): bản giả của `BindingReviewPort` báo `binding_needs_review` cho ba lượt `datahub` đang `queued` → cả ba giữ `queued`, `deadline_at` còn NULL, 0 lời gọi model và 0 lần gọi `LimitsPort.admit`; bản giả thôi báo giữ → ba lượt chạy theo thứ tự `available_at`; cho lượt qua hay hủy lượt khi port báo giữ → test đỏ.
-- [ ] R5.20 (WE24): tài khoản dịch vụ của ba lượt `datahub` bị tạm khóa → mỗi người giữ `platform.members.write` ở độ sâu công ty trong workspace của lượt nhận đúng một thông báo qua nhiều chu kỳ, người chỉ giữ khóa đó ở độ sâu workspace không nhận, người giữ khóa đó ở độ sâu công ty của tenant B không nhận thông báo nào về lượt của tenant A; kích hoạt lại rồi tạm khóa lần nữa → thêm đúng một thông báo; đổi `source_key` sang theo lượt → ba thông báo, test đỏ; bỏ `status_changed_at` khỏi `source_key` → lần tạm khóa thứ hai không có thông báo, test đỏ.
-- [ ] R5.21 (WE25): bản giả của `BindingReviewPort` báo giữ ba lượt `datahub` với cùng `grants_changed_at` → mỗi người giữ `studio.bindings.approve` ở workspace của lượt nhận đúng một thông báo qua nhiều chu kỳ, người không giữ khóa đó không nhận, người giữ khóa đó của tenant B không nhận thông báo nào về lượt của tenant A; port báo một `grants_changed_at` mới → thêm đúng một thông báo; đổi `source_key` sang theo lượt → ba thông báo, test đỏ.
-- [ ] R5.22 (WE23): lượt `chat` qua mọi hàng của bảng R5 ở lần nhận đầu → `deadline_at` bằng thời điểm nhận cộng 30 ngày; lượt còn bị giữ ở `queued` (Đóng băng, hạn mức, `principal_inactive`, `binding_needs_review`) → `deadline_at` còn NULL; `kill -9` worker rồi lượt được nhận lại → `deadline_at` không đổi; đặt lại `deadline_at` ở lần nhận lại → test đỏ.
-- [ ] R5.23 (WE23): đồng hồ giả qua `deadline_at` của một lượt `waiting` ở một bước chờ giả → trong ≤ 90 giây lane `studio_run_reaper` đặt `cancelled` với `error.code` `deadline_exceeded` và đúng một audit `run.deadline_exceeded` với actor `system:studio_run_reaper`; `platform.studio_run_deadlines_due` trả id tenant, không id lượt chạy nào; lượt quá hạn mà một worker còn giữ lease còn hạn → reaper không đổi nó; dưới `app.tenant_id` của tenant A reaper không đổi lượt quá hạn của tenant B; một lượt `datahub` bị giữ vì `binding_needs_review` 31 ngày (đồng hồ giả) → `cancelled` `deadline_exceeded`; bỏ lượt quét hạn chót khỏi reaper → lượt `waiting` giữ mãi, test đỏ; lượt giữ vì Đóng băng có `available_at` sau 5 phút, lượt giữ vì `control_state_unavailable` sau 60 giây.
-- [ ] R5.5 (WE8): worker cũ ghi checkpoint sau khi mất lease → bị từ chối, worker dừng; worker cũ ghi checkpoint đúng lúc worker mới vừa nhận (hai phiên, chờ tới khi `pg_locks` có phiên chờ) → lần ghi của worker cũ lùi, của worker mới commit; kiểm lease ở ứng dụng trước giao dịch ghi thay vì trong nó → ca đồng thời đỏ; bỏ token rào → test đỏ.
-- [ ] R5.25 (WE52): `BindingReviewPort` giả ném lỗi, `LimitsPort.admit` giả ném lỗi, và `RunControlPort` giả trả `workspace_archived` → mỗi ca lượt giữ `queued` với `available_at` sau, không `cancelled`, 0 lời gọi model, `deadline_at` còn NULL; cho qua khi port lỗi → test đỏ.
-- [ ] R5.26: một lượt `manual` thư chết → mỗi người giữ `platform.members.write` ở độ sâu công ty nhận đúng một thông báo `studio.run.dead_lettered:<run_id>` ở workspace neo của mình, `requested_by` là thành viên workspace của lượt nhận một thông báo, outbox giao lại lần hai không thêm thông báo; người của tenant B không nhận; bỏ handler → test đỏ; lane retention tỉa checkpoint của lượt thư chết.
-- [ ] R5.7: lần nhận lại và lần giữ: lượt có ba Bước phê duyệt quay lại hàng ba lần → `attempt` vẫn 0, `LimitsPort.admit` được gọi đúng một lần; lượt giữ vì Đóng băng qua mười chu kỳ → `attempt` 0, `lease_owner` NULL, các lượt tương tác khác của cùng tenant vẫn được nhận trong các chu kỳ đó; reaper xếp lại lượt mồ côi → `attempt` tăng một, `available_at` theo backoff; dưới `app.tenant_id` của tenant A reaper không xếp lại lượt mồ côi của tenant B, `platform.studio_run_orphans_due` trả id tenant, không id lượt chạy; tăng `attempt` ở mọi lần nhận → lượt nhiều Bước phê duyệt thư chết, test đỏ.
-- [ ] R5.6: `kill -9` worker giữa lượt chạy → một worker khác nhận lại trong ≤ 90 giây, đúng một lần; tắt worker có trật tự giữa lượt → lease trả lại, `attempt` không đổi, lượt được nhận lại ngay; lô 8 lượt mà mỗi lượt chạy 70 giây → không lượt nào bị reaper xếp lại (heartbeat từ lúc nhận); `aput_writes` của worker cũ sau khi worker mới nhận → lùi, write của worker mới được giữ.
-- [ ] R5.7: năm lần sập (bốn lần xếp lại rồi lần sập thứ năm) → `status = 'dead_lettered'`, đúng một audit `run.dead_lettered` với actor `system:studio_run_reaper` và một outbox `studio.run.dead_lettered` trong cùng giao dịch, không nhận lại.
-- [ ] R5.8: lượt `eval` (`priority` 2) và lượt tương tác (`priority` 0) cùng chờ → lượt tương tác lấy trước.
-- [ ] R1.9: tài liệu có hai mục `outcomes[]` cùng tên → lỗi của mô hình có con trỏ, không niêm phong; `when` trả chuỗi → `wf.type_mismatch`; tài liệu có hai mục khác tên với `when` kiểu bool → niêm phong.
-- [ ] R5.24: lượt `completed` mà `when` của `lead_new` đúng, của `lead_duplicate` sai → `outcomes` là `{lead_new}` trong cùng giao dịch ghi `completed`; lượt `failed` → `outcomes` tính trên trạng thái cuối; lượt bị reaper `cancelled` → `{}`; lượt `chat` `failed` `limit_exceeded` ở dispatch với một `when` là `!has(steps.x)` → `{}`; `when` tham chiếu một Bước của làn rẽ nhánh, kể cả trong `has()` → `wf.ref_not_dominating` lúc gửi kiểm định, qua một biến → nhận; một `when` ném lỗi khi tính → mục đó vắng, lượt vẫn kết thúc; bỏ bước tính → cột luôn rỗng, ca có `lead_new` đỏ.
-- [ ] Xong: `make test-integration` xanh.
+- [x] R5.1 (WE2): tạo lượt chạy khi worker tắt → dòng giữ `queued`, tiến trình API không gọi `ainvoke`; dời việc chạy vào API → test đỏ.
+- [x] R5.2 (WE4): sau 10.000 lượt chờ của tenant A, lượt của tenant B nằm trong lô lấy đầu; đổi hàm sang FIFO → test đỏ.
+- [x] R5.3 (WE3): dưới `app.tenant_id` của tenant A, lệnh nhận việc chỉ nhận lượt chạy của A dù tenant B có lượt đến hạn sớm hơn; `platform.studio_run_scopes_due` trả id tenant, không id lượt chạy nào; dời lệnh nhận vào hàm definer hay cho hàm trả id lượt chạy → test đỏ.
+- [x] R5.9 (WE6): hết hạn mức của kỳ với lượt `chat` → `failed` với `limit_exceeded` kèm `resets_at` và `metric` lấy từ câu trả lời của `LimitsPort.admit`, 0 lời gọi model; bỏ kiểm `LimitsPort.admit` → test đỏ.
+- [x] R5.10 (WE6): hết hạn mức của kỳ với lượt `datahub` → giữ `queued`, `available_at` bằng `resets_at`, sự kiện nhận còn nguyên, 0 lời gọi model.
+- [x] R5.11 (WE6): lần thử `eval` được nhận → 0 lời gọi `LimitsPort.admit` và `resume` (bản giả đếm); lượt `chat` sau một điểm chờ được nhận lại → `resume` một lần, `admit` không gọi lần hai; `resume` trả `limit_exceeded` cho lượt `chat` → `failed` `limit_exceeded`; `admit` trả `limits_unavailable` → giữ `queued` như R5.16; `admit` gọi hai lần cho cùng `root_run_id` (worker chết giữa `admit` và ghi `deadline_at`) → bản giả theo hợp đồng trả cùng lease, `runs` đếm một lần.
+- [x] R5.12 (WE17): Đóng băng tenant khi lượt `chat` và lượt `manual` đang `queued` → cả hai `cancelled` với `tenant_frozen`; giữ `queued` cho lượt tương tác → test đỏ.
+- [x] R5.13 (WE17): Đóng băng tenant khi ba lượt `datahub` đang `queued` → cả ba giữ `queued`; gỡ Đóng băng → ba lượt chạy theo thứ tự `available_at`.
+- [x] R5.14 (WE17): Tắt khẩn quy trình khi một lượt `datahub` của nó đang `queued` → `cancelled`, không giữ `queued`; cùng lúc một lượt `simulate` của cùng quy trình đang `queued` → được nhận và chạy; hủy cả lượt `simulate` → test đỏ.
+- [x] R5.15 (WE17): người chạy của một lượt `manual` bị tạm khóa khi lượt đang `queued` → `cancelled` với `principal_inactive`, 0 lời gọi model.
+- [x] R5.16 (WE17): `RunControlPort` báo `control_state_unavailable` → lượt giữ `queued` với `available_at` sau, không `cancelled`, 0 lời gọi model; cho lượt qua khi port báo lý do đó → test đỏ.
+- [x] R5.17 (WE17): tài khoản dịch vụ chạy của ba lượt `datahub` bị tạm khóa khi chúng đang `queued` → cả ba giữ `queued`, 0 lời gọi model; kích hoạt lại tài khoản → ba lượt chạy theo thứ tự `available_at`; hủy lượt `datahub` vì `principal_inactive` → test đỏ.
+- [x] R5.18 (WE17): công ty `locked` khi một lượt `chat` và một lượt `datahub` đang `queued` → cả hai `cancelled` với `tenant_locked`; công ty `offboarding` → `cancelled` với `tenant_offboarding`; 0 lời gọi model.
+- [x] R5.19 (WE25): bản giả của `BindingReviewPort` báo `binding_needs_review` cho ba lượt `datahub` đang `queued` → cả ba giữ `queued`, `deadline_at` còn NULL, 0 lời gọi model và 0 lần gọi `LimitsPort.admit`; bản giả thôi báo giữ → ba lượt chạy theo thứ tự `available_at`; cho lượt qua hay hủy lượt khi port báo giữ → test đỏ.
+- [x] R5.20 (WE24): tài khoản dịch vụ của ba lượt `datahub` bị tạm khóa → mỗi người giữ `platform.members.write` ở độ sâu công ty trong workspace của lượt nhận đúng một thông báo qua nhiều chu kỳ, người chỉ giữ khóa đó ở độ sâu workspace không nhận, người giữ khóa đó ở độ sâu công ty của tenant B không nhận thông báo nào về lượt của tenant A; kích hoạt lại rồi tạm khóa lần nữa → thêm đúng một thông báo; đổi `source_key` sang theo lượt → ba thông báo, test đỏ; bỏ `status_changed_at` khỏi `source_key` → lần tạm khóa thứ hai không có thông báo, test đỏ.
+- [x] R5.21 (WE25): bản giả của `BindingReviewPort` báo giữ ba lượt `datahub` với cùng `grants_changed_at` → mỗi người giữ `studio.bindings.approve` ở workspace của lượt nhận đúng một thông báo qua nhiều chu kỳ, người không giữ khóa đó không nhận, người giữ khóa đó của tenant B không nhận thông báo nào về lượt của tenant A; port báo một `grants_changed_at` mới → thêm đúng một thông báo; đổi `source_key` sang theo lượt → ba thông báo, test đỏ.
+- [x] R5.22 (WE23): lượt `chat` qua mọi hàng của bảng R5 ở lần nhận đầu → `deadline_at` bằng thời điểm nhận cộng 30 ngày; lượt còn bị giữ ở `queued` (Đóng băng, hạn mức, `principal_inactive`, `binding_needs_review`) → `deadline_at` còn NULL; `kill -9` worker rồi lượt được nhận lại → `deadline_at` không đổi; đặt lại `deadline_at` ở lần nhận lại → test đỏ.
+- [x] R5.23 (WE23): đồng hồ giả qua `deadline_at` của một lượt `waiting` ở một bước chờ giả → trong ≤ 90 giây lane `studio_run_reaper` đặt `cancelled` với `error.code` `deadline_exceeded` và đúng một audit `run.deadline_exceeded` với actor `system:studio_run_reaper`; `platform.studio_run_deadlines_due` trả id tenant, không id lượt chạy nào; lượt quá hạn mà một worker còn giữ lease còn hạn → reaper không đổi nó; dưới `app.tenant_id` của tenant A reaper không đổi lượt quá hạn của tenant B; một lượt `datahub` bị giữ vì `binding_needs_review` 31 ngày (đồng hồ giả) → `cancelled` `deadline_exceeded`; bỏ lượt quét hạn chót khỏi reaper → lượt `waiting` giữ mãi, test đỏ; lượt giữ vì Đóng băng có `available_at` sau 5 phút, lượt giữ vì `control_state_unavailable` sau 60 giây.
+- [x] R5.5 (WE8): worker cũ ghi checkpoint sau khi mất lease → bị từ chối, worker dừng; worker cũ ghi checkpoint đúng lúc worker mới vừa nhận (hai phiên, chờ tới khi `pg_locks` có phiên chờ) → lần ghi của worker cũ lùi, của worker mới commit; kiểm lease ở ứng dụng trước giao dịch ghi thay vì trong nó → ca đồng thời đỏ; bỏ token rào → test đỏ.
+- [x] R5.25 (WE52): `BindingReviewPort` giả ném lỗi, `LimitsPort.admit` giả ném lỗi, và `RunControlPort` giả trả `workspace_archived` → mỗi ca lượt giữ `queued` với `available_at` sau, không `cancelled`, 0 lời gọi model, `deadline_at` còn NULL; cho qua khi port lỗi → test đỏ.
+- [x] R5.26: một lượt `manual` thư chết → mỗi người giữ `platform.members.write` ở độ sâu công ty nhận đúng một thông báo `studio.run.dead_lettered:<run_id>` ở workspace neo của mình, `requested_by` là thành viên workspace của lượt nhận một thông báo, outbox giao lại lần hai không thêm thông báo; người của tenant B không nhận; bỏ handler → test đỏ; lane retention tỉa checkpoint của lượt thư chết.
+- [x] R5.7: lần nhận lại và lần giữ: lượt có ba Bước phê duyệt quay lại hàng ba lần → `attempt` vẫn 0, `LimitsPort.admit` được gọi đúng một lần; lượt giữ vì Đóng băng qua mười chu kỳ → `attempt` 0, `lease_owner` NULL, các lượt tương tác khác của cùng tenant vẫn được nhận trong các chu kỳ đó; reaper xếp lại lượt mồ côi → `attempt` tăng một, `available_at` theo backoff; dưới `app.tenant_id` của tenant A reaper không xếp lại lượt mồ côi của tenant B, `platform.studio_run_orphans_due` trả id tenant, không id lượt chạy; tăng `attempt` ở mọi lần nhận → lượt nhiều Bước phê duyệt thư chết, test đỏ.
+- [x] R5.6: `kill -9` worker giữa lượt chạy → một worker khác nhận lại trong ≤ 90 giây, đúng một lần; tắt worker có trật tự giữa lượt → lease trả lại, `attempt` không đổi, lượt được nhận lại ngay; lô 8 lượt mà mỗi lượt chạy 70 giây → không lượt nào bị reaper xếp lại (heartbeat từ lúc nhận); `aput_writes` của worker cũ sau khi worker mới nhận → lùi, write của worker mới được giữ.
+- [x] R5.7: năm lần sập (bốn lần xếp lại rồi lần sập thứ năm) → `status = 'dead_lettered'`, đúng một audit `run.dead_lettered` với actor `system:studio_run_reaper` và một outbox `studio.run.dead_lettered` trong cùng giao dịch, không nhận lại.
+- [x] R5.8: lượt `eval` (`priority` 2) và lượt tương tác (`priority` 0) cùng chờ → lượt tương tác lấy trước.
+- [x] R1.9: tài liệu có hai mục `outcomes[]` cùng tên → lỗi của mô hình có con trỏ, không niêm phong; `when` trả chuỗi → `wf.type_mismatch`; tài liệu có hai mục khác tên với `when` kiểu bool → niêm phong.
+- [x] R5.24: lượt `completed` mà `when` của `lead_new` đúng, của `lead_duplicate` sai → `outcomes` là `{lead_new}` trong cùng giao dịch ghi `completed`; lượt `failed` → `outcomes` tính trên trạng thái cuối; lượt bị reaper `cancelled` → `{}`; lượt `chat` `failed` `limit_exceeded` ở dispatch với một `when` là `!has(steps.x)` → `{}`; `when` tham chiếu một Bước của làn rẽ nhánh, kể cả trong `has()` → `wf.ref_not_dominating` lúc gửi kiểm định, qua một biến → nhận; một `when` ném lỗi khi tính → mục đó vắng, lượt vẫn kết thúc; bỏ bước tính → cột luôn rỗng, ca có `lead_new` đỏ.
+- [x] Xong: `make test-integration` xanh.
 
 ## Nguồn
 
@@ -98,3 +98,74 @@ Chạy lượt chạy Studio ở worker từ hàng `platform.worker_runs`, công
       (R4.8, ticket 03).
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-11-04 (agent, discovery/14 S-RT, `db/bench/srt/RESULTS.md`): bốn số đo chạm thiết kế của ticket này. (a) Lệnh nhận `UPDATE ... WHERE id IN (SELECT ... LIMIT n FOR UPDATE SKIP LOCKED)` dưới RLS với 10.000 lượt vừa chèn chưa `ANALYZE` thành nested-loop semi join quét lại vế trong: một chu kỳ nhận 9.300 lượt thay vì 8, cạn pool, lease hết hạn, lượt của công ty khác bắt đầu sau 112 giây; dạng `WITH picked AS MATERIALIZED (... LIMIT n FOR UPDATE SKIP LOCKED) UPDATE ... FROM picked` nhận đúng n. Đề xuất: viết lệnh nhận ở dạng CTE và thêm vào R5.2 một ca 10.000 lượt chèn liền trước, không `ANALYZE`, khẳng định mỗi chu kỳ nhận ≤ lô. (b) Rào `FOR SHARE` gộp vào câu `set_config` sẵn có không thêm lượt đi về (+0,2 ms p50, +0,8 ms p95 mỗi `aput`; câu riêng +1,1 / +1,9 ms) và từ chối mọi lần ghi của bên giữ cũ. (c) Một giao dịch vừa `FOR SHARE` vừa `UPDATE` cùng dòng `worker_runs` làm hai làn song song deadlock: bộ đếm `steps_started` phải tự là rào, không đứng sau rào của saver trong cùng giao dịch. (d) Hủy giữa chừng: chỉ heartbeat 15 giây thì Bước đang chạy dừng sau 13,8-14,0 giây, NOTIFY thì 12-42 ms; T8 (≤ 5 giây) cần NOTIFY hay heartbeat ≤ 4 giây, trái dòng bỏ NOTIFY `dw_run_state` khỏi W1 (24/10/2026). Tiếp quản sau `kill -9`: 56,9-68,9 giây (≤ 90).
+- 2026-11-05 (agent): dựng xong.
+    - Đã làm: revision `2611a825560d` (`worker_runs.outcomes text[]`, ba hàm SECURITY DEFINER
+      `studio_run_scopes_due`, `studio_run_orphans_due`, `studio_run_deadlines_due` chỉ trả id tenant, `search_path` cố
+      định, EXECUTE chỉ `dw_app`; ba index một phần); `StudioAdmission` và bảng từ chối ở
+      `dw_agent_runtime/studio_dispatch.py` (chủ duy nhất của hình từ chối, hằng 60 giây, 5 phút, 30 ngày); `run_studio`
+      nhận lượt đã claim theo `lease_token`, hỏi dispatch, đặt `deadline_at` một lần, ghi `outcomes`; `SqlStudioRunStore`
+      rào mọi lệnh ghi bằng `lease_owner`; `SqlAlchemyCheckpointSaver` khóa dòng `FOR SHARE` ở đầu giao dịch của `aput`,
+      `aput_writes`; `SqlStudioRunQueue` (claim `MATERIALIZED ... FOR UPDATE SKIP LOCKED` dưới RLS, heartbeat, trả claim,
+      requeue với backoff, thư chết với audit và outbox, hủy quá hạn với audit); `StudioRunsLane`, `StudioRunReaper`;
+      `build_studio_lanes` ở worker (lane `studio_runs` 1 giây, `studio_run_reaper` 15 giây, handler
+      `studio.run.dead_lettered`, `close` khi tắt có trật tự qua `ConsumerRegistry`); `SqlHeldRunAlerts` ở `dw_platform`;
+      `outcomes[]` ở `WorkflowDocument`, `PACK_RULES` từ chối, `check_outcomes` và `reached_outcomes` ở
+      `wflite/outcomes.py`, `WorkflowValidator` nhận `ExpressionEngine`; `_reap_stale_thread` bỏ qua lượt Studio
+      (`STUDIO_RUN` của `runtime_tables`, một chủ); `SqlRunManifestEngines` nối vào resolver của worker.
+    - (agent, theo ủy quyền 31/10/2026) `admit` lũy đẳng theo `root_run_id` đã có ở `SqlLimits._open_for` (lease mở thì
+      nhập, không đếm `runs` lần hai), nên usage-and-limits không đổi. Nếu sai thì: thêm khóa lũy đẳng ở `_OPEN`.
+    - (agent, theo ủy quyền 31/10/2026) `limit_exceeded` không có `resets_at` (trần của chính lượt) kết thúc `failed` mọi
+      loại, vì chờ không làm đầy lại. Bảng phủ mọi loại của ADR-0113 (Accepted) quyết 3: `replay`, `fork` như tương tác; `schedule`
+      hết hạn mức → `cancelled` `limit_refused`, `binding_needs_review` → `cancelled`, Đóng băng → giữ,
+      `principal_inactive` → `cancelled`; loại không có hàng (lượt con của ticket 09, loại mới, rỗng) → giữ 60 giây như
+      R5.25. Nếu sai thì: sửa một hàm của bảng, test bảng theo hàng đi theo.
+    - (agent, theo ủy quyền 31/10/2026) `platform.studio_run_deadlines_due(p_limit, p_unclaimed_after)` nhận tuổi tối đa
+      của lượt chưa nhận làm tham số, để 30 ngày chỉ nằm ở `RUN_DEADLINE`. Nếu sai thì: hằng trong hàm và test so hai bản.
+    - (agent, theo ủy quyền 31/10/2026) lời báo khi giữ gọi một lần mỗi lượt bị giữ mỗi lần nhận (không gộp theo
+      `source_key` trong chu kỳ, vì khóa do adapter dựng); UNIQUE `(recipient_user_id, source_key)` giữ một thông báo.
+      Lời báo lỗi chỉ ghi log, lượt vẫn giữ (MEDIUM (c) của gate). Nếu sai thì: lane gộp theo `(lý do, principal)`.
+    - (agent, theo ủy quyền 31/10/2026) `BindingReviewPort` ở worker là `UnwiredBindingReview` (ném lỗi → lượt do trình
+      kích hoạt giữ 60 giây, R5.25) tới workflow-triggers/03; chưa cửa tác động nào nối ở runner Studio của worker (mỗi
+      cửa theo ticket dựng nó, workflow-nodes/04-08), Bước cần cửa kết thúc `effect_door_unwired`. Nếu sai thì: nối cửa
+      `tool` qua `ToolExecutor` ở ticket này.
+    - (agent, theo ủy quyền 31/10/2026) môi trường của `when`: `steps` (Bước trội điểm cuối, `dyn`), `params` (biến khai,
+      có kiểu), `work` (`dyn`); `dyn` được nhận lúc gửi, lúc tính chỉ `true` mới đạt; mã mới `wf.type_mismatch`,
+      `wf.expression_invalid` trong `MESSAGES`. workflow-nodes/03 thay bằng bộ dựng môi trường chung. Nếu sai thì: đổi tên
+      gốc ở `outcome_env`, một chỗ.
+    - (agent, theo ủy quyền 31/10/2026) mất claim hay bị hủy khi tắt: runner không nhả lease tiền (bên nhận sau `resume`
+      nhập lease đang mở; không ai nhận thì reaper `budget_leases` đóng khi hết hạn). Mỗi tick, tenant nhận tối đa
+      `ceil(chỗ trống / số tenant)`, phần thừa không chia lại trong cùng tick (đúng chữ R5.2). Nếu sai thì: vòng chia thêm.
+    - (agent, theo ủy quyền 31/10/2026) `platform.members.write` là khóa độ sâu công ty: ca "người chỉ giữ ở độ sâu
+      workspace" của R5.20 không dựng được; test dùng một thành viên giữ khóa khác. Lượt `live` của test chép từ lượt
+      `simulate` với trigger `match_run_manifest` tắt trong một giao dịch của migrator, vì W1 chỉ tới `live` qua cổng chất
+      lượng. Kill -9 của R5.6 dùng tiến trình con chạy lane thật với lease 2 giây; ≤ 90 giây chứng bằng hằng (60 + 15 + 6 +
+      1 = 82). Nếu sai thì: đo với lease thật ở lúc đóng hàng.
+    - (agent) gate MEDIUM: (b) lượt `simulate` hỏi `RunControlPort` không kèm artifact (làm); (c) lời báo lỗi thì giữ
+      (làm); (a), (d), (e) giữ như gate ghi.
+    - usage-and-limits/03 M11 đóng: lượt do trình kích hoạt bị giữ tới `resets_at` nên `limits.refused` một lần mỗi kỳ
+      (test qua ba chu kỳ). model-connections/02 MEDIUM (a) đóng: `SqlRunManifestEngines` nối ở `build_model_stack_for`.
+    - Test: `test_studio_dispatch.py` (77, bảng từng hàng, thứ tự ba cổng, port hỏng, hết giờ), `test_studio_lane.py` (22,
+      chia công bằng, heartbeat, tắt có trật tự, reaper, backoff, quét `run_studio` chỉ ở lane), `test_outcomes.py` (18),
+      `test_studio_runs_consumer.py` (4); `test_studio_run_lane.py` 25 trên Postgres (claim dưới RLS và hàm chỉ trả id
+      tenant, 10.000 lượt không `ANALYZE`, ưu tiên, R5.9-R5.19 và R5.25 ở làn với `SqlRunControl` thật, thông báo thật,
+      hạn chót, rào checkpoint hai phiên với `pg_locks`, chết thật `os._exit`, tắt có trật tự, lô vượt lease, thư chết và
+      handler, `outcomes`); `test_studio_runs.py` sửa theo claim (26 xanh); test quyền mới ở `test_privileges.py`;
+      `test_rls_coverage`, `test_privileges`, `test_offboarding_coverage`, `test_metadata_matches_catalog` 150 xanh;
+      integration `dw_agent_runtime`, `test_workflow_kind_db`, `test_run_request`, `test_studio_workflows` 233 xanh; unit
+      toàn repo 4957 xanh (9 bỏ qua), phủ 76,41%; mypy Windows và Linux sạch.
+    - `mutations/04.yaml` 41 đột biến, chưa chạy `mutate.py`; chạy tay 3 (gỡ rào saver, đặt lại `deadline_at` mỗi lần
+      nhận, bỏ tính `outcomes`), mỗi cái đỏ. Test bắt một lỗi khi viết: lượt giữ vì `principal_inactive` không mang lời
+      báo.
+    - `reviewing-feature-security` (đọc): tenant mỗi giao dịch qua `set_config(..., true)`; ba hàm definer chỉ trả id
+      tenant; reaper và lệnh nhận dưới RLS từng tenant (test tenant B không đổi); handler thư chết từ chối payload khác
+      phong bì (run, workspace); lời báo chỉ tới người giữ khóa qua `effective_grants`, chữ cố định; port hỏng hay lý do
+      lạ giữ, không mở; audit thư chết và hạn chót cùng giao dịch với dòng.
+    - MEDIUM: (M1) audit `limits.refused` ghi ở giao dịch riêng trước lệnh giữ, như trước ticket này; lệnh giữ lỗi thì
+      lần nhận sau (cùng kỳ, sau requeue) ghi thêm một dòng. (M2) lần thử `eval` chưa có `gate_run_id` trên dòng
+      (agent-lifecycle/04 thêm), nên lời gọi model của nó không thấy lease mở và bị từ chối (đóng). (M3) lượt con chưa
+      có hàng trong bảng (ticket 09). (M4) T8 (hủy ≤ 5 giây) của S-RT vẫn cần NOTIFY, dòng W2. (M5) `ConsumerRegistry`
+      thêm `close`; lane khác chưa dùng.
+    - Còn ở lúc đóng hàng đợi: `mutate.py` cho `mutations/04.yaml`; `make test-integration` toàn bộ; P50/P95/P99 của lệnh
+      nhận (`scopes_due` + claim), `run_studio` một lượt một Bước (take, dispatch, `admitted`, `aput` có rào, `finish`),
+      `RunRequestService.request` và phiên bản `workflow` gửi kiểm định (thêm kiểm `outcomes`) so với `5a46e7db`;
+      `/code-review`.

@@ -1,0 +1,292 @@
+# Mutation check of workflow-engine ticket 04: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the
+# ticket's criteria: the refusal table at dispatch (`StudioAdmission`, tested
+# at the lane on PostgreSQL as well as in memory), the claim and the reaper
+# (`SqlStudioRunQueue` under each tenant's RLS), the fence on the row and on the
+# checkpoint saver, the lane's heartbeat and orderly shutdown, the deadline,
+# the dead letter and its reader, and the outcomes (failure-modes #5: each test
+# calls the code where the effect happens). A sample was broken by hand on
+# 5/11/2026, each red (named in the ticket's Comments). The migration's
+# mutations apply in place, so their tests recreate the database from the
+# mutated revision; the scan's mutates in place (a scan cannot see a package
+# copy).
+mutations:
+  # ---- R5.1-R5.3, R5.8: the claim -----------------------------------------------------
+  - name: R5.1 the API runs a Studio run itself
+    file: apps/api/src/dw_api/bootstrap/studio.py
+    old: "    node_types = build_node_registry()\n"
+    new: "    node_types = build_node_registry()\n    _ = (lambda r: r.run_studio)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_lane.py::test_r5_1_only_the_studio_runs_lane_runs_a_studio_run
+  - name: R5.2 the lane gives the first tenant the whole batch
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_lane.py
+    old: "        share = math.ceil(free / len(tenants))\n"
+    new: "        share = free\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_lane.py::test_r5_2_each_tenant_gets_its_share_of_the_batch_however_long_anothers_backlog
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_2_behind_ten_thousand_runs_of_one_tenant_anothers_run_is_in_the_first_batch
+  - name: R5.2 the scan of due tenants is first-come by tenant id
+    file: db/migrations/versions/2611a825560d_studio_run_queue_scopes_and_outcomes.py
+    old: "            ORDER BY min(r.available_at), r.tenant_id\n            LIMIT greatest(p_limit, 0)\n        $$\n        \"\"\"\n    )\n    op.execute(\n        f\"\"\"\n        CREATE FUNCTION platform.studio_run_orphans_due"
+    new: "            ORDER BY r.tenant_id\n            LIMIT greatest(p_limit, 0)\n        $$\n        \"\"\"\n    )\n    op.execute(\n        f\"\"\"\n        CREATE FUNCTION platform.studio_run_orphans_due"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_3_the_claim_under_a_tenant_takes_only_its_runs_and_the_scan_names_tenants
+  - name: R5.2 the claim's pick is not materialised
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_run_queue.py
+    old: "    WITH picked AS MATERIALIZED (\n"
+    new: "    WITH picked AS NOT MATERIALIZED (\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_2_behind_ten_thousand_runs_of_one_tenant_anothers_run_is_in_the_first_batch
+  - name: R5.3 the scan returns run ids
+    file: db/migrations/versions/2611a825560d_studio_run_queue_scopes_and_outcomes.py
+    old: "        CREATE FUNCTION platform.studio_run_scopes_due(p_limit integer)\n        RETURNS TABLE (tenant_id uuid)\n"
+    new: "        CREATE FUNCTION platform.studio_run_scopes_due(p_limit integer)\n        RETURNS TABLE (tenant_id uuid, run_id uuid)\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_3_the_claim_under_a_tenant_takes_only_its_runs_and_the_scan_names_tenants
+  - name: R5.8 the claim takes by arrival alone
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_run_queue.py
+    old: "        ORDER BY priority, available_at, created_at, id\n"
+    new: "        ORDER BY available_at, created_at, id\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_8_an_interactive_run_is_taken_before_an_eval_run_due_earlier
+
+  # ---- R5.9-R5.19, R5.25: the refusal table ---------------------------------------------
+  - name: R5.9 dispatch never asks the limits
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "        if kind == EVAL or run.lease_root != run.run_id:\n"
+    new: "        if True:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_9_an_interactive_run_over_its_limit_fails_with_resets_at_and_metric
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_9_a_chat_run_over_its_limit_fails_at_the_lane_with_no_step_and_no_outcome
+  - name: R5.10 a trigger's run over its limit is ended
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "    if trigger_kind in TRIGGERED:\n        until = datetime.fromisoformat(str(resets_at))\n"
+    new: "    if trigger_kind in TRIGGERED:\n        return Ended(\"failed\", error, refused)\n        until = datetime.fromisoformat(str(resets_at))\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_10_a_triggers_run_over_its_limit_waits_for_the_reset
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_10_a_datahub_run_over_its_limit_waits_for_the_reset_audited_once
+  - name: R5.11 an eval trial asks the limits
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "        if kind == EVAL or run.lease_root != run.run_id:\n"
+    new: "        if run.lease_root != run.run_id:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_11_an_eval_trial_never_asks_the_limits
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_11_an_eval_trial_runs_without_asking_the_limits_and_a_later_take_resumes
+  - name: R5.11 every take admits again
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "                if taken.deadline_at is None:\n"
+    new: "                if True:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_11_the_first_take_admits_and_every_later_take_resumes
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_11_an_eval_trial_runs_without_asking_the_limits_and_a_later_take_resumes
+  - name: R5.12 a freeze holds an interactive run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "            if trigger_kind in INTERACTIVE or trigger_kind == EVAL:\n                return cancelled\n            return Held(code, HUMAN_HOLD)\n"
+    new: "            return Held(code, HUMAN_HOLD)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_12_a_freeze_cancels_an_interactive_run_and_an_eval_trial
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_12_r5_13_a_freeze_cancels_interactive_runs_and_holds_a_triggers_in_order
+  - name: R5.13 a freeze cancels a trigger's run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "                return cancelled\n            return Held(code, HUMAN_HOLD)\n"
+    new: "                return cancelled\n            return cancelled\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_13_a_freeze_holds_a_triggers_run_for_a_person
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_12_r5_13_a_freeze_cancels_interactive_runs_and_holds_a_triggers_in_order
+  - name: R5.14 a simulate run is asked with its component
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "        asked = run if run.run_mode != \"simulate\" else run.model_copy(update={\"artifact_id\": None})\n"
+    new: "        asked = run\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_14_a_simulate_run_is_asked_without_its_component
+  - name: R5.14 a kill holds the run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "            return cancelled if run_mode in (\"live\", \"test\") else _broken(code)\n"
+    new: "            return _broken(code)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_14_a_kill_cancels_every_kind_in_live_and_test
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_14_a_kill_cancels_a_queued_live_run_and_a_simulate_run_still_runs
+  - name: R5.15 an inactive principal holds a manual run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "            if trigger_kind in TRIGGERED:\n                return Held(code, HUMAN_HOLD, alert=PrincipalInactiveAlert(principal_id))\n            return cancelled\n"
+    new: "            return Held(code, HUMAN_HOLD, alert=PrincipalInactiveAlert(principal_id))\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_15_an_inactive_principal_cancels_the_run
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_15_r5_17_r5_20_an_inactive_principal_cancels_a_manual_run_and_holds_a_triggers
+  - name: R5.17 an inactive service account cancels a trigger's run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "            if trigger_kind in TRIGGERED:\n                return Held(code, HUMAN_HOLD, alert=PrincipalInactiveAlert(principal_id))\n"
+    new: "            if False:\n                return Held(code, HUMAN_HOLD, alert=PrincipalInactiveAlert(principal_id))\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_17_an_inactive_service_account_holds_a_triggers_run_and_tells
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_15_r5_17_r5_20_an_inactive_principal_cancels_a_manual_run_and_holds_a_triggers
+  - name: R5.18 a locked company holds the run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "        case HaltReason.TENANT_LOCKED | HaltReason.TENANT_OFFBOARDING:\n            return cancelled\n"
+    new: "        case HaltReason.TENANT_LOCKED | HaltReason.TENANT_OFFBOARDING:\n            return Held(code, HUMAN_HOLD)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_18_a_locked_or_leaving_company_cancels_every_kind
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_18_a_locked_company_cancels_a_chat_and_a_datahub_run
+  - name: R5.16 an unreadable switch state lets the run through
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "        case HaltReason.CONTROL_STATE_UNAVAILABLE:\n            return Held(code, TEMPORARY_HOLD)\n"
+    new: "        case HaltReason.CONTROL_STATE_UNAVAILABLE:\n            return Ended(\"cancelled\", {\"code\": code})\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_16_an_unreadable_switch_state_holds_every_kind_briefly
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_16_r5_25_a_broken_port_holds_the_run_a_minute_and_runs_nothing
+  - name: R5.19 the binding review is never asked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "        if kind in BINDING_REVIEWED_KINDS:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_19_a_binding_to_review_holds_a_triggers_run_before_any_limit
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_19_r5_21_a_binding_to_review_holds_triggers_runs_and_tells_its_approvers_once
+  - name: R5.25 a broken port lets the run through
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "                logger.warning(\"BindingReviewPort failed at dispatch\", exc_info=True)\n                return _broken(\"binding_review_unavailable\")\n"
+    new: "                logger.warning(\"BindingReviewPort failed at dispatch\", exc_info=True)\n                hold = None\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_25_a_broken_port_holds_the_run_briefly_and_never_lets_it_through
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_16_r5_25_a_broken_port_holds_the_run_a_minute_and_runs_nothing
+  - name: R5.25 an unknown reason cancels the run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_dispatch.py
+    old: "        case _:\n            return _broken(code)\n"
+    new: "        case _:\n            return cancelled\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_dispatch.py::test_r5_25_a_broken_port_holds_the_run_briefly_and_never_lets_it_through
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_16_r5_25_a_broken_port_holds_the_run_a_minute_and_runs_nothing
+
+  # ---- R5.20, R5.21: who is told -----------------------------------------------------------
+  - name: R5.20 the notice is keyed by the run
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/held_run_alerts.py
+    old: "        key = f\"studio.run.principal_inactive:{principal_id}:{changed.isoformat()}\"\n"
+    new: "        key = f\"studio.run.principal_inactive:{principal_id}:{uuid.uuid4()}\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_15_r5_17_r5_20_an_inactive_principal_cancels_a_manual_run_and_holds_a_triggers
+  - name: R5.20 the notice forgets the change
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/held_run_alerts.py
+    old: "        key = f\"studio.run.principal_inactive:{principal_id}:{changed.isoformat()}\"\n"
+    new: "        key = f\"studio.run.principal_inactive:{principal_id}\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_15_r5_17_r5_20_an_inactive_principal_cancels_a_manual_run_and_holds_a_triggers
+  - name: R5.21 the notice is keyed by the run
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/held_run_alerts.py
+    old: "            f\"{grants_changed_at.isoformat()}\"\n"
+    new: "            f\"{uuid.uuid4()}\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_19_r5_21_a_binding_to_review_holds_triggers_runs_and_tells_its_approvers_once
+
+  # ---- R5.5: the fence -------------------------------------------------------------------
+  - name: R5.5 the saver writes without its fence
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/checkpoint.py
+    old: "    if fence is None:\n        return\n    run_id, token = fence\n"
+    new: "    if fence is None or True:\n        return\n    run_id, token = fence\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_5_a_worker_that_lost_its_claim_writes_no_checkpoint
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_5_a_stale_write_waiting_on_a_new_claim_rolls_back_and_the_new_holder_writes
+  - name: R5.5 the row's writes name no claim
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/studio_runs.py
+    old: "        worker_runs.c.lease_owner == lease_token,\n"
+    new: "        sa.true(),\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_6_a_worker_killed_mid_run_is_taken_over_once_and_its_send_is_not_made_again
+  - name: R5.5 a lost claim's heartbeat lets the run go on
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_lane.py
+    old: "                run.cancel()\n                return\n"
+    new: "                return\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_lane.py::test_r5_5_a_heartbeat_that_finds_the_claim_gone_stops_the_run
+
+  # ---- R5.6, R5.7: heartbeat, shutdown, requeue, dead letter -------------------------------
+  - name: R5.6 no heartbeat
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_lane.py
+    old: "            try:\n                held = await self.queue.beat(claim, lease=self.lease)\n"
+    new: "            try:\n                held = True\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_lane.py::test_r5_6_each_run_beats_from_its_claim_so_a_batch_outlasting_the_lease_keeps_it
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_6_a_batch_that_outlasts_the_lease_keeps_every_claim_by_its_heartbeat
+  - name: R5.6 an orderly shutdown keeps its claims
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_lane.py
+    old: "                await self.queue.release(claim)\n"
+    new: "                pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_lane.py::test_r5_6_an_orderly_shutdown_hands_every_running_claim_back
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_6_an_orderly_shutdown_hands_the_claim_back_and_attempt_stays
+  - name: R5.6 the reaper never queues an orphan again
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_lane.py
+    old: "        for tenant_id in await self.queue.orphans_due(self.tenants):\n"
+    new: "        for tenant_id in []:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_6_a_worker_killed_mid_run_is_taken_over_once_and_its_send_is_not_made_again
+  - name: R5.7 every claim counts an attempt
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_run_queue.py
+    old: "        lease_until = now() + :lease,\n"
+    new: "        lease_until = now() + :lease,\n        attempt = w.attempt + 1,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_11_an_eval_trial_runs_without_asking_the_limits_and_a_later_take_resumes
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_19_r5_21_a_binding_to_review_holds_triggers_runs_and_tells_its_approvers_once
+  - name: R5.7 the dead letter writes no audit
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_run_queue.py
+    old: "        now = self.clock.now()\n        await SqlAuditRepository(session).append(\n"
+    new: "        now = self.clock.now()\n        if False:\n          await SqlAuditRepository(session).append(\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_7_r5_26_the_fifth_death_dead_letters_the_run_and_tells_who_must_know
+  - name: R5.7 a run is never dead-lettered
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_run_queue.py
+    old: "                if orphan.attempt >= max_requeues:\n"
+    new: "                if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_7_r5_26_the_fifth_death_dead_letters_the_run_and_tells_who_must_know
+  - name: R5.26 the dead letter tells nobody
+    file: apps/worker/src/dw_worker/consumers/studio_runs.py
+    old: "        by_workspace = await holders.tenant_depth_holders(tenant_id, _RECIPIENT_KEY)\n"
+    new: "        by_workspace: dict[uuid.UUID, list[uuid.UUID]] = {}\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_7_r5_26_the_fifth_death_dead_letters_the_run_and_tells_who_must_know
+
+  # ---- R5.22, R5.23: the deadline ------------------------------------------------------------
+  - name: R5.22 every take sets the deadline again
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/studio_runs.py
+    old: "                    deadline_at=sa.func.coalesce(\n                        worker_runs.c.deadline_at, sa.func.now() + sa.literal(deadline)\n                    ),\n"
+    new: "                    deadline_at=sa.func.now() + sa.literal(deadline),\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_22_a_run_gets_its_deadline_at_its_first_take_and_keeps_it
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_11_an_eval_trial_runs_without_asking_the_limits_and_a_later_take_resumes
+  - name: R5.23 the reaper never ends an overdue run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_lane.py
+    old: "        for tenant_id in await self.queue.deadlines_due(\n"
+    new: "        for tenant_id in [] or await self.queue.deadlines_due(\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_lane.py::test_r5_23_the_reaper_ends_overdue_runs_before_it_queues_orphans_again
+  - name: R5.23 the reaper ends a run a live claim holds
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_run_queue.py
+    old: "                sa.or_(_w.c.lease_until.is_(None), _w.c.lease_until < now_),\n"
+    new: "                sa.true(),\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_23_the_reaper_ends_a_waiting_run_past_its_deadline_and_nothing_else
+
+  # ---- R1.9, R5.24: outcomes -----------------------------------------------------------------
+  - name: R5.24 the end records no outcome
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            outcomes = await reached_outcomes(\n"
+    new: "            outcomes = [] if True else await reached_outcomes(\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_run_lane.py::test_r5_24_a_completed_run_records_the_outcomes_it_reached_and_a_failed_one_too
+  - name: R5.24 a branch step dominates the end
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outcomes.py
+    old: "        if tree.dominates(index, Terminal.END)\n"
+    new: "        if True\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_outcomes.py::test_r5_24_a_step_of_a_branch_lane_does_not_dominate_the_end_even_inside_has
+  - name: R1.9 a string condition checks
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/outcomes.py
+    old: "_CONDITION_TYPES = frozenset({describe(BOOL), describe(DYN)})\n"
+    new: "_CONDITION_TYPES = frozenset({describe(BOOL), describe(DYN), describe(STRING)})\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_outcomes.py::test_r1_9_a_condition_that_is_not_a_boolean_is_a_type_mismatch
+  - name: R1.9 two outcomes of one name
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        if outcome.name in seen:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_outcomes.py::test_r1_9_two_outcomes_of_one_name_are_a_model_error_at_the_second

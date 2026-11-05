@@ -2811,3 +2811,58 @@ async def test_the_daily_spend_guard_is_gone(db_urls: DatabaseUrls) -> None:
     finally:
         await migrator.dispose()
     assert found is None
+
+
+# workflow-engine ticket 04 (migration 2611a825560d): `outcomes` changes no
+# grant on `platform.worker_runs`, and the three reads across tenants of the
+# Studio run queue are definers with a fixed `search_path`, called by `dw_app`
+# alone, never by PUBLIC.
+
+_STUDIO_QUEUE_FUNCTIONS = (
+    "platform.studio_run_scopes_due(integer)",
+    "platform.studio_run_orphans_due(integer)",
+    "platform.studio_run_deadlines_due(integer, interval)",
+)
+
+
+async def test_the_studio_run_queue_reads_are_dw_apps_definers_and_outcomes_adds_no_grant(
+    db_urls: DatabaseUrls,
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (r.rolname, r.verb)
+                for r in await conn.execute(_HELD_VERBS, {"t": "platform.worker_runs"})
+            }
+            callers = {
+                (role, function)
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+                for function in _STUDIO_QUEUE_FUNCTIONS
+                if await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+            }
+            shapes = {
+                str(row.proname): (bool(row.prosecdef), list(row.proconfig or []))
+                for row in await conn.execute(
+                    sa.text(
+                        "SELECT proname, prosecdef, proconfig FROM pg_proc WHERE pronamespace ="
+                        " 'platform'::regnamespace AND proname LIKE 'studio_run_%_due'"
+                    )
+                )
+            }
+    finally:
+        await migrator.dispose()
+    assert held == {
+        ("dw_app", "SELECT"),
+        ("dw_app", "INSERT"),
+        ("dw_app", "UPDATE"),
+        ("dw_app", "DELETE"),
+    }
+    assert callers == {("dw_app", function) for function in _STUDIO_QUEUE_FUNCTIONS}
+    assert shapes == {
+        name: (True, ["search_path=pg_catalog, platform"])
+        for name in ("studio_run_scopes_due", "studio_run_orphans_due", "studio_run_deadlines_due")
+    }
