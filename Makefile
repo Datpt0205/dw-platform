@@ -20,7 +20,7 @@ COMPOSE := docker compose --env-file .env -f infra/compose/docker-compose.yml
         db-migrate migrate lint format typecheck \
         test-unit coverage test-integration test-architecture test-contract test-hooks test-plans \
         test-e2e test-web test-all eval-smoke test-eval-smoke eval-leadcare eval-wf-ai \
-        demo-dw demo-dw-again demo-dw-down bench-record-access bench-rbac \
+        demo-dw demo-dw-again demo-dw-down bench-record-access bench-rbac bench-offboarding \
         generate-contracts new-context release-manifest release-manifest-check semconv-snapshot semconv-snapshot-check ci
 
 help: ## List available targets
@@ -155,6 +155,17 @@ bench-record-access: ## record-access/01's policy variants on the records harnes
 bench-rbac: ## FOG-38's tenant-role costs at D12 (own DB `dw_bench_rbac_fog38`, dropped after; not CI)
 	DW_TEST_DB_SUFFIX=$${DW_TEST_DB_SUFFIX:-_fog38} uv run python db/bench/rbac/bench_rbac.py \
 		setup q1 q1gc q2 q3 q4 drop $(if $(OUT),--out $(OUT),)
+
+bench-offboarding: ## FOG-32: offboarding 10^6 records in the worker image (1 CPU, 1 GiB) and the column-SELECT probe (IMAGE=dw-worker:<tag>; own DBs, dropped after; not CI)
+	DW_TEST_DB_SUFFIX=$${DW_TEST_DB_SUFFIX:-_fog32} uv run python db/bench/offboarding/bench_offboarding.py setup
+	DW_TEST_DB_SUFFIX=$${DW_TEST_DB_SUFFIX:-_fog32} uv run python db/bench/offboarding/bench_offboarding.py run --tenant none --image $(or $(IMAGE),dw-worker:local) $(if $(OUT),--out $(OUT),)
+	DW_TEST_DB_SUFFIX=$${DW_TEST_DB_SUFFIX:-_fog32} uv run python db/bench/offboarding/bench_offboarding.py run --tenant small --image $(or $(IMAGE),dw-worker:local) $(if $(OUT),--out $(OUT),)
+	DW_TEST_DB_SUFFIX=$${DW_TEST_DB_SUFFIX:-_fog32} uv run python db/bench/offboarding/bench_offboarding.py run --tenant small --memory 4g --image $(or $(IMAGE),dw-worker:local) $(if $(OUT),--out $(OUT),)
+	DW_TEST_DB_SUFFIX=$${DW_TEST_DB_SUFFIX:-_fog32} uv run python db/bench/offboarding/bench_offboarding.py run --tenant mid --memory 5g --image $(or $(IMAGE),dw-worker:local) $(if $(OUT),--out $(OUT),)
+	DW_TEST_DB_SUFFIX=$${DW_TEST_DB_SUFFIX:-_fog32} uv run python db/bench/offboarding/bench_offboarding.py run --tenant big --image $(or $(IMAGE),dw-worker:local) $(if $(OUT),--out $(OUT),)
+	DW_TEST_DB_SUFFIX=$${DW_TEST_DB_SUFFIX:-_fog32} uv run python db/bench/offboarding/bench_offboarding.py run --tenant big --variant spool --image $(or $(IMAGE),dw-worker:local) $(if $(OUT),--out $(OUT),)
+	DW_TEST_DB_SUFFIX=$${DW_TEST_DB_SUFFIX:-_fog32} uv run python db/bench/offboarding/bench_offboarding.py probe $(if $(OUT),--out $(OUT),)
+	DW_TEST_DB_SUFFIX=$${DW_TEST_DB_SUFFIX:-_fog32} uv run python db/bench/offboarding/bench_offboarding.py drop
 
 eval-smoke: ## Evaluation smoke suite (deterministic safety-gate graders)
 	uv run python scripts/run_evals.py --smoke
