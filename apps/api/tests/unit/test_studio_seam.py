@@ -230,6 +230,7 @@ async def test_a_group_mounted_without_studio_answers_otherwise() -> None:
     container.studio = StudioContainer(
         kinds=ArtifactKindRegistry(()),
         artifacts=cast(Any, None),
+        agent_settings=cast(Any, None),
         lifecycle=cast(Any, None),
         segments={},
         candidates=cast(Any, None),

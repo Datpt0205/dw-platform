@@ -33,6 +33,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
+import dw_studio.agents.adapters.tables  # its table joins `metadata`
 import dw_studio.records.adapters.tables  # noqa: F401 - its tables join `metadata`
 from dw_studio.core.adapters.tables import metadata
 
@@ -115,6 +116,7 @@ async def test_the_description_matches_the_migrated_catalog(studio_db: DatabaseU
         "field_defs",
         "picklist_options",
         "records",
+        "agent_settings",
     }
 
 

@@ -1264,6 +1264,7 @@ source = { editable = "packages/python/dw_studio" }
 dependencies = [
     { name = "cel-expr-python" },
     { name = "dw-agent-runtime" },
+    { name = "dw-evals" },
     { name = "dw-kernel" },
     { name = "dw-platform" },
     { name = "protobuf" },
@@ -1276,6 +1277,7 @@ dependencies = [
 requires-dist = [
     { name = "cel-expr-python", specifier = "==0.1.3" },
     { name = "dw-agent-runtime", editable = "packages/python/dw_agent_runtime" },
+    { name = "dw-evals", editable = "packages/python/dw_evals" },
     { name = "dw-kernel", editable = "packages/python/dw_kernel" },
     { name = "dw-platform", editable = "packages/python/dw_platform" },
     { name = "protobuf", specifier = "==7.36.1" },

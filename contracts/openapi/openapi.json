@@ -51,6 +51,64 @@
         "title": "AddSupportStaffRequest",
         "type": "object"
       },
+      "AgentSettingsView": {
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "audience": {
+            "additionalProperties": true,
+            "description": "A `dw.audience/v1` document.",
+            "title": "Audience",
+            "type": "object"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "owner_user_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The accountable owner; null only after that person left the company.",
+            "title": "Owner User Id"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "version": {
+            "description": "The settings' ETag; `If-Match` of a `PATCH`.",
+            "title": "Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "artifact_id",
+          "audience",
+          "owner_user_id",
+          "enabled",
+          "version",
+          "created_at",
+          "updated_at"
+        ],
+        "title": "AgentSettingsView",
+        "type": "object"
+      },
       "AllowedHostRequestBody": {
         "additionalProperties": false,
         "properties": {
@@ -4565,6 +4623,34 @@
           "revoked_at"
         ],
         "title": "MySupportGrantModel",
+        "type": "object"
+      },
+      "NewAgentSettings": {
+        "additionalProperties": false,
+        "description": "Every setting stated: none has a default (AB10).",
+        "properties": {
+          "audience": {
+            "additionalProperties": true,
+            "description": "A `dw.audience/v1` document.",
+            "title": "Audience",
+            "type": "object"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "owner_user_id": {
+            "format": "uuid",
+            "title": "Owner User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "audience",
+          "owner_user_id",
+          "enabled"
+        ],
+        "title": "NewAgentSettings",
         "type": "object"
       },
       "NewArtifact": {
@@ -17098,6 +17184,210 @@
           }
         },
         "summary": "Ask a second person to revive a killed agent",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/agents/{artifact_id}/settings": {
+      "get": {
+        "operationId": "read_agent_settings_api_v1_studio_agents__artifact_id__settings_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Read Agent Settings",
+        "tags": [
+          "studio"
+        ]
+      },
+      "patch": {
+        "operationId": "update_agent_settings_api_v1_studio_agents__artifact_id__settings_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Update Agent Settings",
+        "tags": [
+          "studio"
+        ]
+      },
+      "post": {
+        "operationId": "create_agent_settings_api_v1_studio_agents__artifact_id__settings_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NewAgentSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentSettingsView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Create Agent Settings",
         "tags": [
           "studio"
         ]

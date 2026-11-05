@@ -9,6 +9,9 @@ dependencies = [
     # `RunManifestPort` and the pinned types it returns (tenant-config 04): the
     # runtime declares the port, Studio satisfies it.
     "dw-agent-runtime",
+    # The agent frame's graders in `dw_studio.testing` (agent-builder 02), keyed
+    # `studio.agent_frame.<gate>` and registered by `scripts/run_evals.py`.
+    "dw-evals",
     "pydantic>=2.10,<3",
     "sqlalchemy[asyncio]>=2.0.36,<2.1",
     # The one CEL binding (ADR 0114 decision 2), pinned exactly: a 0.1.x C++

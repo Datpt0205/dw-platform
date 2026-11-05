@@ -83,18 +83,22 @@ from dw_api.bootstrap.models import model_provider_config
 from dw_api.bootstrap.paths import MODEL_PROFILES_DIR, TOOL_SPECS_DIR, release_manifest_ref
 from dw_api.settings import ApiSettings
 from dw_kernel.ports import SystemClock, Uuid7Generator
+from dw_platform.adapters.persistence.audience_workspaces import SqlAudienceWorkspaces
 from dw_platform.adapters.persistence.config_versions_repo import SqlConfigVersionStore
 from dw_platform.adapters.persistence.plan_model_profiles import (
     CachingPlanModelProfiles,
     SqlPlanModelProfiles,
 )
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.audience import AudienceValidator
 from dw_platform.application.config_versions import (
     CONFIG_VERSION,
     ConfigKindRegistry,
     ConfigVersionDecisions,
     ConfigVersionService,
 )
+from dw_studio.agents.adapters.settings_store import SqlAgentSettingsStore
+from dw_studio.agents.application.settings import AgentSettingsService
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
 from dw_studio.core.adapters.cel.engine import CelCppEngine
 from dw_studio.core.adapters.field_security_inputs import SqlFieldSecurityInputs
@@ -169,6 +173,9 @@ class StudioContainer:
 
     kinds: ArtifactKindRegistry
     artifacts: ArtifactService
+    # agent-builder 02: an agent's settings beside its versions, every write
+    # through org-and-principals' audience validator.
+    agent_settings: AgentSettingsService
     # agent-lifecycle 03: the one writer of a version's stage, and the route
     # segment of each kind it submits, withdraws and retires.
     lifecycle: LifecycleService
@@ -320,6 +327,7 @@ def build_studio(
 
     # Imported here, not at the top: the routes import the container's
     # dependencies, which import this package.
+    from dw_api.routes.v1.studio_agents import router as agents_router
     from dw_api.routes.v1.studio_artifacts import router as artifacts_router
     from dw_api.routes.v1.studio_bindings import router as bindings_router
     from dw_api.routes.v1.studio_kill import kill_router
@@ -331,6 +339,12 @@ def build_studio(
     return StudioContainer(
         kinds=registry,
         artifacts=artifacts,
+        agent_settings=AgentSettingsService(
+            SqlAgentSettingsStore(store),
+            AudienceValidator(SqlAudienceWorkspaces(sessions)),
+            clock,
+            ids,
+        ),
         lifecycle=lifecycle,
         segments=segments,
         candidates=CandidateReader(lifecycle),
@@ -338,6 +352,7 @@ def build_studio(
         kill_segments=KILL_SEGMENTS,
         routers=(
             artifacts_router,
+            agents_router,
             bindings_router,
             lifecycle_router(segments),
             kill_router(KILL_SEGMENTS),

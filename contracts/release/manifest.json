@@ -93,9 +93,14 @@
       "checksum": "2c3569c4af18d9543cbb0223b5dd1c59bf2e4932260ec193975baa1ac38d9d9d",
       "dataset_id": "platform_smoke",
       "version": "1.2.0"
+    },
+    {
+      "checksum": "b67fe6324cb32795131ae238ede2a22613af04cac7fa1c6757b4d17f545b1bbb",
+      "dataset_id": "studio_agent_frame",
+      "version": "1.0.0"
     }
   ],
-  "git_sha": "84bca74a2d88e9ee58cd4691aed6f269c7ed277c",
+  "git_sha": "5cb1074b80d45b2101dbd75ced290eceec520319",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "model_profiles": [
@@ -190,6 +195,11 @@
       "checksum": "b5dee5fc2c33cf58c88dad2853961f1aae2372dafb70080158098a45fb57a042",
       "prompt_id": "platform.untrusted_demo",
       "version": "1.1.0"
+    },
+    {
+      "checksum": "3f4a0c4524dbdabffd97956aa7ac81578e18332c534f9e30e3a8e3cdd1ac3195",
+      "prompt_id": "studio.agent_frame",
+      "version": "1.0.0"
     },
     {
       "checksum": "331f76d45972c7d70d526fa273519589839f3cbb44b17e2e0ec666a8808f6730",

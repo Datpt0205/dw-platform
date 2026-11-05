@@ -125,7 +125,7 @@ def test_the_running_app_registers_no_test_kind() -> None:
             expressions=CelCppEngine(),
         )
     )
-    assert running.kinds == {"object", "workflow"}
+    assert running.kinds == {"object", "workflow", "agent"}
     assert not running.kinds & {entry.kind for entry in FIXTURE_KINDS}
 
 

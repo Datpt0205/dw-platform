@@ -34,6 +34,7 @@ from dw_api.routes.v1 import admin_roles as role_routes
 from dw_api.routes.v1 import admin_service_principals as service_principal_routes
 from dw_api.routes.v1 import connections as connection_routes
 from dw_api.routes.v1 import digital_workers as digital_workers_routes
+from dw_api.routes.v1 import studio_agents as agents_routes
 from dw_api.routes.v1 import studio_artifacts as studio_routes
 from dw_api.routes.v1 import studio_bindings as bindings_routes
 from dw_api.routes.v1 import studio_kill as kill_routes
@@ -140,6 +141,9 @@ DECLARED: dict[tuple[str, str], object] = {
     # (tenant-config R2.1, R2.21; ADR-0108 decision 4).
     ("POST", "/api/v1/studio/artifacts"): studio_routes._may_create,
     ("POST", "/api/v1/studio/artifacts/{artifact_id}/draft"): studio_routes._may_write,
+    # `studio.agents.manage_settings` at the agent's owning workspace, 403 to
+    # its author without it (agent-builder R1.11; ADR-0108 decision 4).
+    ("POST", "/api/v1/studio/agents/{artifact_id}/settings"): agents_routes._may_manage,
     # The propose key at the artifact's owning workspace, after its read key;
     # the proposer alone withdraws (tenant-config R8.2, R8.14, R8.17).
     (

@@ -77,6 +77,89 @@ def writes_untrusted_tag(text: str) -> bool:
     return _UNTRUSTED_TAG_PATTERN.search(text) is not None
 
 
+# ---- a tenant's instructions (ADR-0117 decision 4) ------------------------------
+#
+# A Studio agent's instructions, and a workflow `ai.llm` step's (workflow-nodes
+# 05), are a company's text, never a template: the frame around them is the
+# platform's, rendered at the platform layer only, and the text follows it in a
+# `<tenant_instructions>` block it cannot close. The rules below are the one
+# lint both callers run, each with one code (agent-builder R2.1-R2.4).
+
+TENANT_INSTRUCTIONS_TAG: Final = "tenant_instructions"
+# The platform variables a frame may name, a closed set (ADR-0117 decision 4):
+# a frame or a caller naming another is refused before any prompt exists.
+SYSTEM_VARIABLES: Final = frozenset(
+    {"current_date", "current_time", "user_display_name", "workspace_name", "agent_name", "locale"}
+)
+# The two of them code builds, which a frame may interpolate raw (ADR-0010);
+# a person's name or a workspace's is never one.
+CODE_BUILT_VARIABLES: Final = frozenset({"current_date", "current_time"})
+MAX_INSTRUCTION_CHARS: Final = 16_000
+# Each interpolated value, cut at a character (16 KiB of UTF-8).
+MAX_SYSTEM_VALUE_BYTES: Final = 16_384
+
+# An opening or closing of any block the platform writes, in any case and with
+# any space after `<` or `/`: `</tenant_instructions>`, `< /input`, `<TOOL_OUTPUT`.
+_CONTAINMENT_DELIMITER = re.compile(
+    rf"<\s*/?\s*(?:{TENANT_INSTRUCTIONS_TAG}|{UNTRUSTED_TAG}|{TOOL_OUTPUT_TAG})", re.IGNORECASE
+)
+# `{{`, or `{name}` with a dotted or indexed path: what `str.format` or a
+# template engine would read as a placeholder. `{"a": 1}` is not one.
+_TEMPLATE_SYNTAX = re.compile(r"\{\{|\{[A-Za-z_][A-Za-z0-9_.\[\]]*\}")
+# C0 controls but the tab and the newline.
+_CONTROL_CHAR = re.compile(r"[\x00-\x08\x0b-\x1f]")
+
+
+class InstructionFinding(NamedTuple):
+    """One rule a company's instructions break: its code and a fixed sentence,
+    never the text itself."""
+
+    code: str
+    detail: str
+
+
+INSTRUCTION_RULES: Final[Mapping[str, str]] = {
+    "instructions.too_long": f"instructions are at most {MAX_INSTRUCTION_CHARS} characters",
+    "instructions.control_char": "a control character other than a newline or a tab",
+    "instructions.template_syntax": "text shaped like a template placeholder, {{ or {name}",
+    "instructions.delimiter": "the opening or closing of a block the platform writes",
+}
+
+
+def lint_instructions(text: str) -> list[InstructionFinding]:
+    """Every rule `text` breaks, each once, in `INSTRUCTION_RULES`' order.
+
+    The assembler does not depend on it: text that reaches it unchecked is
+    still contained (a draft run, a step built before the rule). NFC is the
+    envelope's repair at save (`canonical_document`), not a rule here."""
+    broken = {
+        "instructions.too_long": len(text) > MAX_INSTRUCTION_CHARS,
+        "instructions.control_char": _CONTROL_CHAR.search(text) is not None,
+        "instructions.template_syntax": _TEMPLATE_SYNTAX.search(text) is not None,
+        "instructions.delimiter": _CONTAINMENT_DELIMITER.search(text) is not None,
+    }
+    return [
+        InstructionFinding(code, detail)
+        for code, detail in INSTRUCTION_RULES.items()
+        if broken[code]
+    ]
+
+
+def escape_delimiters(text: str) -> str:
+    """`text` with the `<` of each block delimiter written `&lt;`, and every
+    other character as it was: `a < b` stays, `</tenant_instructions>` cannot
+    close its block (R2.2)."""
+    return _CONTAINMENT_DELIMITER.sub(lambda found: "&lt;" + found.group(0)[1:], text)
+
+
+def cut_utf8(value: str, max_bytes: int) -> str:
+    """At most `max_bytes` of UTF-8, a character cut in half dropped whole."""
+    encoded = value.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return value
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
+
 class ContainedOutput(NamedTuple):
     """A tool's answer as the model reads it, and what stays beside it: a
     `content_and_artifact` pair whose artifact is never sent to the model."""
@@ -271,6 +354,17 @@ class PromptRegistry:
         """
         return self._prompts.existing((prompt_id, version)) is not None
 
+    def platform_artifact(self, prompt_id: str, version: str) -> PromptArtifact:
+        """The platform layer's artifact, whatever any tenant holds: what a
+        containment frame is rendered from (`assemble_system_prompt`)."""
+        entry = self._prompts.existing((prompt_id, version))
+        if entry is None:
+            raise NotFoundError(
+                "prompt version not registered",
+                details={"prompt_id": prompt_id, "version": version},
+            )
+        return entry[0]
+
     def render(
         self,
         prompt_id: str,
@@ -310,3 +404,66 @@ class PromptRegistry:
             ),
             checksum=checksum,
         )
+
+
+class PromptAssemblyError(DomainError):
+    """A frame or a caller named a variable outside `SYSTEM_VARIABLES`, a frame
+    let a value other than a code-built one through raw, or a frame's variable
+    had no value: no prompt is built (agent-builder R2.3)."""
+
+    def __init__(self, message: str, *, variable: str) -> None:
+        super().__init__(f"{message}: {variable}", details={"variable": variable})
+        self.variable = variable
+
+
+def _refused(message: str, names: frozenset[str] | set[str]) -> None:
+    if names:
+        raise PromptAssemblyError(message, variable=sorted(names)[0])
+
+
+def assemble_system_prompt(
+    prompts: PromptRegistry,
+    prompt_id: str,
+    version: str,
+    *,
+    instructions: str,
+    variables: Mapping[str, str],
+) -> str:
+    """The system message of a Studio agent or `ai.llm` step (ADR-0117
+    decision 4; agent-builder R1.12, R2.1-R2.3).
+
+    The frame `prompt_id@version` is rendered at the platform layer only,
+    never through a company's override (`CLAUDE.md`, Per-tenant artifacts:
+    a containment frame), with each value it declares cut at 16 KiB of UTF-8
+    and contained by the registry unless it is one of the two code-built
+    values the frame lists in `raw_variables`. The company's instructions
+    follow verbatim and uncut in a `<tenant_instructions>` block, every block
+    delimiter in them escaped; they never pass through `str.format`. A
+    variable the frame does not declare is not interpolated."""
+    frame = prompts.platform_artifact(prompt_id, version)
+    if _CONTAINMENT_DELIMITER.search(frame.system + frame.template):
+        # Only the code below writes the block; a frame writing one could open
+        # a block the company's text then appears to sit in.
+        raise ConfigError(
+            "a containment frame writes a block delimiter itself",
+            details={"prompt_id": prompt_id, "version": version},
+        )
+    _refused(
+        "a variable outside the platform's set",
+        (set(variables) | frame.variables) - SYSTEM_VARIABLES,
+    )
+    _refused(
+        "the frame lets a value through raw that code does not build",
+        set(frame.raw_variables) - CODE_BUILT_VARIABLES,
+    )
+    _refused("the frame's variable has no value", frame.variables - set(variables))
+    rendered = prompts.render(
+        prompt_id,
+        version,
+        {name: cut_utf8(variables[name], MAX_SYSTEM_VALUE_BYTES) for name in frame.variables},
+        tenant_id=None,
+    )
+    parts = (rendered.system.strip(), rendered.user.strip())
+    tag = TENANT_INSTRUCTIONS_TAG
+    block = f"<{tag}>\n{escape_delimiters(instructions)}\n</{tag}>"
+    return "\n\n".join([*(part for part in parts if part), block])

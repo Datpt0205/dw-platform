@@ -853,6 +853,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "where one version uses another artifact, a child of the version; workspaces apart"
         " on purpose (a dependent in ws2 counts against deleting an artifact of ws1)"
     ),
+    ("studio", "agent_settings"): (
+        "cài đặt sử dụng của một agent đi theo vỏ tài liệu toàn công ty; workspace sở hữu nằm ở"
+        " `studio.artifacts.owning_workspace_id` (agent-builder ticket 02, ADR-0117 quyết 3, DO-01)"
+    ),
     ("studio", "definition_manifests"): (
         "content-addressed by hash across the company; one body serves every version that"
         " seals the same content and closure"

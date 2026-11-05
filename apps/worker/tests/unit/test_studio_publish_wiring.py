@@ -62,7 +62,7 @@ def test_every_kind_of_the_registry_has_its_decided_handler(kinds: Any) -> None:
         ids=Uuid4Generator(),
         kinds=kinds,
     )
-    expected = {"object", "workflow"} if kinds is None else {"fixture", "fixture_gateless"}
+    expected = {"object", "workflow", "agent"} if kinds is None else {"fixture", "fixture_gateless"}
     assert registry.kinds == expected
     assert set(handlers) == _decided_types(registry.kinds)
 
@@ -79,7 +79,7 @@ def test_the_chat_decision_door_guards_every_kind_and_is_strict(kinds: Any) -> N
         studio_kinds=kinds,
     )
     flow = command.service.approval_flow
-    expected = {"object", "workflow"} if kinds is None else {"fixture", "fixture_gateless"}
+    expected = {"object", "workflow", "agent"} if kinds is None else {"fixture", "fixture_gateless"}
     publish = {k: g for k, g in flow.decision_guards.items() if k.startswith(PUBLISH_PREFIX)}
     assert set(publish) == {f"studio.publish.{kind}" for kind in expected}
     assert all(

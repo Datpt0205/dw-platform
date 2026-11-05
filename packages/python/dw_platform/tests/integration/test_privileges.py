@@ -825,6 +825,12 @@ _STUDIO_WRITES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "actor_boundaries": (frozenset({"DELETE"}), frozenset()),
     "actor_boundary_objects": (frozenset({"DELETE"}), frozenset()),
     "actor_boundary_fields": (frozenset({"DELETE"}), frozenset()),
+    # An agent's settings (agent-builder ticket 02): created once, its three
+    # settings changed; never deleted by dw_app (the artifact's CASCADE does).
+    "agent_settings": (
+        frozenset({"INSERT"}),
+        frozenset({"audience", "owner_user_id", "enabled", "row_version", "updated_at"}),
+    ),
     # A step's `wf:` keys (custom-objects ticket 03): inserted with the write,
     # deleted by offboarding and the purge, never rewritten.
     "record_write_keys": (frozenset({"INSERT", "DELETE"}), frozenset()),

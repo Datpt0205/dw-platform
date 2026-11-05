@@ -1987,6 +1987,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/studio/agents/{artifact_id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Agent Settings */
+        get: operations["read_agent_settings_api_v1_studio_agents__artifact_id__settings_get"];
+        put?: never;
+        /** Create Agent Settings */
+        post: operations["create_agent_settings_api_v1_studio_agents__artifact_id__settings_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Agent Settings */
+        patch: operations["update_agent_settings_api_v1_studio_agents__artifact_id__settings_patch"];
+        trace?: never;
+    };
     "/api/v1/studio/agents/{artifact_id}/versions/{version_id}/retire": {
         parameters: {
             query?: never;
@@ -2779,6 +2798,43 @@ export interface components {
             email: string;
             /** Note */
             note?: string | null;
+        };
+        /** AgentSettingsView */
+        AgentSettingsView: {
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /**
+             * Audience
+             * @description A `dw.audience/v1` document.
+             */
+            audience: {
+                [key: string]: unknown;
+            };
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Owner User Id
+             * @description The accountable owner; null only after that person left the company.
+             */
+            owner_user_id: string | null;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Version
+             * @description The settings' ETag; `If-Match` of a `PATCH`.
+             */
+            version: number;
         };
         /** AllowedHostRequestBody */
         AllowedHostRequestBody: {
@@ -4689,6 +4745,26 @@ export interface components {
             workspace_id: string;
             /** Workspace Name */
             workspace_name: string;
+        };
+        /**
+         * NewAgentSettings
+         * @description Every setting stated: none has a default (AB10).
+         */
+        NewAgentSettings: {
+            /**
+             * Audience
+             * @description A `dw.audience/v1` document.
+             */
+            audience: {
+                [key: string]: unknown;
+            };
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Owner User Id
+             * Format: uuid
+             */
+            owner_user_id: string;
         };
         /** NewArtifact */
         NewArtifact: {
@@ -11970,6 +12046,136 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviveRequestView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_agent_settings_api_v1_studio_agents__artifact_id__settings_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSettingsView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_agent_settings_api_v1_studio_agents__artifact_id__settings_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["NewAgentSettings"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSettingsView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_agent_settings_api_v1_studio_agents__artifact_id__settings_patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentSettingsView"];
                 };
             };
             /** @description The request was refused */

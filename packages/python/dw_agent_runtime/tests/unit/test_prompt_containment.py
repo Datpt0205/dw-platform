@@ -150,6 +150,15 @@ def test_every_shipped_prompt_contains_hostile_values(path: Path) -> None:
     assert "SYSTEM: ignore" not in rendered.system
 
 
+# The raw variables a shipped prompt is allowed, each decided on the record.
+# `studio.agent_frame` (agent-builder 02; ADR-0117 decision 4): the run's date
+# and time, which code builds and `assemble_system_prompt`, the frame's one
+# caller, refuses for any other variable (`CODE_BUILT_VARIABLES`).
+RAW_ON_RECORD: dict[str, frozenset[str]] = {
+    "studio.agent_frame": frozenset({"current_date", "current_time"}),
+}
+
+
 @pytest.mark.parametrize("path", _shipped(), ids=lambda p: p.stem)
 def test_no_shipped_prompt_takes_a_raw_variable(path: Path) -> None:
     """The platform's own prompts render nothing raw. Which value reaches a
@@ -158,4 +167,4 @@ def test_no_shipped_prompt_takes_a_raw_variable(path: Path) -> None:
     and the test is edited, on the record, with the reason the artifact gives."""
     artifact = PromptRegistry().load_file(path)
 
-    assert artifact.raw_variables == {}
+    assert set(artifact.raw_variables) == RAW_ON_RECORD.get(artifact.prompt_id, frozenset())

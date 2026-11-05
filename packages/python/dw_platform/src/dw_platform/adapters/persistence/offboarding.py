@@ -336,6 +336,12 @@ STUDIO_EXCLUSIONS: Mapping[str, OffboardingExclusion] = MappingProxyType(
             " thành viên công ty",
             cascade_from="platform.tenant_members",
         ),
+        # agent-builder ticket 02: an agent's settings, which `dw_app` never deletes.
+        "studio.agent_settings": OffboardingExclusion(
+            reason="dw_app không DELETE; xóa theo FK CASCADE khi lane xóa thành phần agent"
+            " (studio.artifacts)",
+            cascade_from="studio.artifacts",
+        ),
         "studio.access_epochs": OffboardingExclusion(
             reason="một dòng đếm mỗi công ty, dw_app chỉ đọc; xóa qua hàm SECURITY DEFINER"
             " studio.purge_access_epoch",

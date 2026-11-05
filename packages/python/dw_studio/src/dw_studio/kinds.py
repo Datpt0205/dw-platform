@@ -23,6 +23,14 @@ from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_agent_runtime.wflite.validate import ToolSpecLookup
 from dw_kernel.expressions import ExpressionEngine
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_studio.agents.application.publish import AgentPublishHook
+from dw_studio.agents.application.settings import AGENTS_AUTHOR_SCOPE
+from dw_studio.agents.domain.document import (
+    AGENT_DOCUMENT_SCHEMA,
+    AGENT_KIND,
+    extract_agent,
+    validate_agent,
+)
 from dw_studio.core.application.boundaries import (
     ActorBoundaryPort,
     BoundaryDeriver,
@@ -104,6 +112,24 @@ def workflow_kind(
     )
 
 
+def agent_kind() -> ArtifactKindEntry:
+    """The `agent` kind (agent-builder R1.8; ADR-0117 decisions 2, 4): the
+    author key reads and writes the definition, the submit key is the one the
+    workflow kind shares, and the hook is the kind's (agent-builder/05 gives it
+    its task). A gated kind: its versions reach approval through the gate."""
+    return ArtifactKindEntry(
+        kind=AGENT_KIND,
+        document_schema=AGENT_DOCUMENT_SCHEMA,
+        read_key=AGENTS_AUTHOR_SCOPE,
+        write_key=AGENTS_AUTHOR_SCOPE,
+        submit_key=VERSIONS_SUBMIT_SCOPE,
+        publish_hook=AgentPublishHook(),
+        validate=validate_agent,
+        extract=extract_agent,
+        compare=None,
+    )
+
+
 def platform_kinds(
     object_store: Callable[[ArtifactTx], ObjectDefinitionStore],
     *,
@@ -126,6 +152,7 @@ def platform_kinds(
             boundaries=boundaries,
             expressions=expressions,
         ),
+        agent_kind(),
     )
 
 

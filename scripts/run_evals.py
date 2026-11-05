@@ -22,6 +22,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
+
     from dw_evals.graders import Grader
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -33,9 +35,12 @@ def grader_table() -> dict[str, Grader]:
     """Every grader a dataset may name. Two tables claiming one name stop the
     run (`merge_graders` raises, naming it)."""
     from dw_evals.graders import GRADERS, merge_graders
+    from dw_studio.testing.agent_frame_evals import GRADERS as AGENT_FRAME_GRADERS
 
-    tables = [GRADERS]
+    tables: list[Mapping[str, Grader]] = [GRADERS]
     # ---- BOUNDED CONTEXT GRADERS REGISTER HERE ----------------------------
+    # Studio's agent frame (agent-builder 02): `studio.agent_frame.<gate>`.
+    tables.append(AGENT_FRAME_GRADERS)
     return merge_graders(*tables)
 
 
