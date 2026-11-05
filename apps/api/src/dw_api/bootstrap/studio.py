@@ -84,6 +84,7 @@ from dw_studio.core.application.bindings import (
     BindingStatus,
     platform_binding_types,
 )
+from dw_studio.core.application.boundaries import ActorBoundaryPort
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.run_request import RunLaneRegistry, RunRequestService
@@ -92,6 +93,7 @@ from dw_studio.kinds import WORKFLOW_KIND, WORKFLOWS_TEST_SCOPE, platform_kinds
 from dw_studio.lifecycle.adapters.store import SqlLifecycleStore
 from dw_studio.lifecycle.application.ports import SubmitCheck
 from dw_studio.lifecycle.application.service import SUBMIT_SEGMENTS, LifecycleService
+from dw_studio.records.adapters.actor_boundaries import SqlActorBoundaries
 from dw_studio.records.adapters.definition_store import object_store_of
 from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
 
@@ -150,6 +152,12 @@ class StudioContainer:
     # workflow-nodes 02: the one step registry the `workflow` kind validates
     # against and the catalogue route publishes.
     node_types: Mapping[str, NodeTypeSpec]
+    # record-access 04: where a version's data boundary is recorded in its
+    # publish transaction and a `simulate` run's provisional one in its run
+    # door's; the `agent` and `workflow` publish hooks (agent-builder/05,
+    # workflow-engine/03) and the run door's derivations (workflow-engine/03)
+    # take it from here.
+    actor_boundaries: ActorBoundaryPort
 
 
 def build_studio(
@@ -267,4 +275,5 @@ def build_studio(
         binding_status=BindingStatus(store, binding_types),
         run_bindings=SqlRunBindings(sessions),
         node_types=node_types,
+        actor_boundaries=SqlActorBoundaries(),
     )

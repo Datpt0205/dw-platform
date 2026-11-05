@@ -242,6 +242,7 @@ async def test_a_group_mounted_without_studio_answers_otherwise() -> None:
         binding_status=cast(Any, None),
         run_bindings=cast(Any, None),
         node_types={},
+        actor_boundaries=cast(Any, None),
     )
     app = create_app(container)
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)

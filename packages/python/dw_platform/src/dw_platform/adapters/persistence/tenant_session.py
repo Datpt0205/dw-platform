@@ -82,25 +82,75 @@ async def tenant_session(
         yield session
 
 
-# -- the actor kind (record-access ticket 03, step 5; ADR-0105 decision 6) --------
+# -- the actor (record-access tickets 03 and 04; ADR-0105 decision 6) ------------
 
-# Ticket 04 adds `agent` and `workflow`, with the run's boundary and mode.
-ActorKind = Literal["user"]
-_ACTOR_KINDS: frozenset[str] = frozenset({"user"})
-_BIND_ACTOR = text("SELECT set_config('app.actor_kind', :kind, true)")
+ActorKind = Literal["user", "agent", "workflow"]
+_RUN_KINDS: frozenset[str] = frozenset({"agent", "workflow"})
 
 
-async def bind_actor(session: AsyncSession | AsyncConnection, kind: ActorKind) -> None:
-    """Bind `app.actor_kind` for the open transaction only; the one setter of it.
+class ActorBindingRefusedError(Exception):
+    """A run's actor was asked for a run this transaction cannot read, or for a
+    principal other than the one its run row acts as. Nothing was bound."""
 
-    The record policies admit a row only to a bound actor kind, so a transaction
-    that never comes through here (a run's session, a support context, another
-    package's adapter) reads no Studio record. Which modules may call this, and
-    with which kind, is `test_session_setting_scan.py`'s list.
+
+# The three settings together, for this transaction only (`true`): a pooled
+# connection carries none of them into whoever borrows it next (R6.6).
+_BIND_ACTOR = text(
+    "SELECT set_config('app.actor_kind', :kind, true),"
+    "       set_config('app.boundary_id', :boundary, true),"
+    "       set_config('app.run_mode', :mode, true)"
+)
+
+# A run's principal, mode and boundaries, from its row under the bound tenant:
+# never from `RunContext` or a checkpoint (gate (d), (e)). `studio.boundary_chain`
+# is the one answer to which boundaries a run reads under, root first (gate (b),
+# (f), (k)); a run with no Studio root has none and reads no record.
+_RUN_ACTOR = text(
+    "SELECT r.run_mode, coalesce(r.run_as_principal_id, r.requested_by) AS principal,"
+    "       NULLIF(current_setting('app.user_id', true), '')::uuid AS bound,"
+    "       array_to_string(studio.boundary_chain(r.id), ',') AS chain"
+    " FROM platform.worker_runs r"
+    " WHERE r.tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid"
+    "   AND r.id = :run"
+)
+
+
+async def bind_actor(
+    session: AsyncSession | AsyncConnection,
+    kind: ActorKind,
+    *,
+    run_id: uuid.UUID | None = None,
+) -> None:
+    """Bind `app.actor_kind`, `app.boundary_id` and `app.run_mode` for the open
+    transaction only; the one setter of all three.
+
+    `user` binds no run, and clears the other two. `agent` and `workflow` read
+    the run's row under the bound tenant: its mode becomes `app.run_mode`, its
+    boundary chain `app.boundary_id`, and the principal bound by `bind_tenant`
+    must be the one the run acts as (`run_as_principal_id`, else
+    `requested_by`; ADR-0103), or nothing is bound. The record policies admit a
+    row only to a bound actor kind, so a transaction that never comes through
+    here reads no Studio record. Which modules may call this, and with which
+    kind, is `test_session_setting_scan.py`'s list.
     """
-    if kind not in _ACTOR_KINDS:
+    if kind == "user":
+        if run_id is not None:
+            raise ValueError("the actor kind `user` binds no run")
+        boundary, mode = "", ""
+    elif kind in _RUN_KINDS:
+        if run_id is None:
+            raise ValueError(f"the actor kind {kind!r} binds a run")
+        row = (await session.execute(_RUN_ACTOR, {"run": run_id})).one_or_none()
+        if row is None:
+            raise ActorBindingRefusedError(f"no run {run_id} under the bound tenant")
+        if row.bound is None or row.bound != row.principal:
+            raise ActorBindingRefusedError(
+                f"run {run_id} acts as its own principal, not the one this transaction bound"
+            )
+        boundary, mode = str(row.chain), str(row.run_mode)
+    else:
         raise ValueError(f"unknown actor kind {kind!r}")
-    (await session.execute(_BIND_ACTOR, {"kind": kind})).first()
+    (await session.execute(_BIND_ACTOR, {"kind": kind, "boundary": boundary, "mode": mode})).first()
 
 
 # -- the tenant-wide scope (record-access ticket 03, step 6; ADR-0105 decision 5) --

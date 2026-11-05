@@ -207,6 +207,85 @@ access_input_tables = sa.Table(
     sa.PrimaryKeyConstraint("table_name", "trigger_name"),
 )
 
+# The data boundaries of agents and workflows (revision 996c234cfde3,
+# record-access ticket 04): written only by `studio.record_actor_boundary`,
+# read by `studio.boundary_chain` and `studio.acl_boundary_objects`.
+actor_boundaries = sa.Table(
+    "actor_boundaries",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("id", UUID(as_uuid=True), nullable=False),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("source_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("source_version", sa.Text, nullable=False),
+    sa.Column("run_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("created_at", _TS, nullable=False, server_default=sa.text("now()")),
+    sa.PrimaryKeyConstraint("tenant_id", "id"),
+    sa.ForeignKeyConstraint(["tenant_id"], [platform.tenants.c.id], ondelete="CASCADE"),
+    sa.Index(
+        "uq_actor_boundaries_tenant_id_kind_source_id_source_version",
+        "tenant_id",
+        "kind",
+        "source_id",
+        "source_version",
+        unique=True,
+        postgresql_where=sa.text("run_id IS NULL"),
+    ),
+    sa.Index(
+        "uq_actor_boundaries_tenant_id_run_id",
+        "tenant_id",
+        "run_id",
+        unique=True,
+        postgresql_where=sa.text("run_id IS NOT NULL"),
+    ),
+)
+
+
+def _boundary_key() -> sa.ForeignKeyConstraint:
+    return sa.ForeignKeyConstraint(
+        ["tenant_id", "boundary_id"],
+        [actor_boundaries.c.tenant_id, actor_boundaries.c.id],
+        ondelete="CASCADE",
+    )
+
+
+actor_boundary_objects = sa.Table(
+    "actor_boundary_objects",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("boundary_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("object_id", UUID(as_uuid=True), nullable=False),
+    *(
+        sa.Column(flag, sa.Boolean, nullable=False)
+        for flag in ("can_read", "can_create", "can_update", "can_delete", "can_assign")
+    ),
+    sa.PrimaryKeyConstraint("tenant_id", "boundary_id", "object_id"),
+    _boundary_key(),
+    sa.ForeignKeyConstraint(
+        ["tenant_id", "object_id"],
+        [object_defs.c.tenant_id, object_defs.c.id],
+        ondelete="RESTRICT",
+    ),
+    sa.Index("ix_actor_boundary_objects_tenant_id_object_id", "tenant_id", "object_id"),
+)
+
+actor_boundary_fields = sa.Table(
+    "actor_boundary_fields",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("boundary_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("field_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("access", sa.Text, nullable=False),
+    sa.PrimaryKeyConstraint("tenant_id", "boundary_id", "field_id"),
+    _boundary_key(),
+    sa.ForeignKeyConstraint(
+        ["tenant_id", "field_id"],
+        [field_defs.c.tenant_id, field_defs.c.id],
+        ondelete="RESTRICT",
+    ),
+    sa.Index("ix_actor_boundary_fields_tenant_id_field_id", "tenant_id", "field_id"),
+)
+
 SLOT_COLUMNS: tuple[str, ...] = tuple(slot for slots in SLOTS.values() for slot in slots)
 
 records = sa.Table(
