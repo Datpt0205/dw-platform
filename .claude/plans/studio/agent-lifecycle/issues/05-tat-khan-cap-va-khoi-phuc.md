@@ -1,6 +1,6 @@
 # 05 — Tắt khẩn cấp agent và quy trình, bật lại cần hai người, hủy việc đang chờ
 
-Status: ready-for-agent
+Status: resolved (2026-11-05, main)
 Blocked by: 01, 03, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R8.10, R8.11, AL13, AL14, AL15, AL16, AL28, AL29
@@ -95,42 +95,42 @@ switch_id}` trong cùng giao dịch; trả 201 với `{switch_id}`;
 
 ## Tiêu chí chấp nhận
 
-- [ ] R8.1: sau kill, run `live` và `test` mới của thành phần → `cancelled` `artifact_killed`; lượt
+- [x] R8.1: sau kill, run `live` và `test` mới của thành phần → `cancelled` `artifact_killed`; lượt
       `datahub` đã xếp hàng của thành phần → `cancelled`, không giữ `queued`; lượt `simulate` vẫn chạy, kể cả một lượt
       `simulate` đang `waiting` khi lane chạy; kill lần hai → 409 `already_killed`, một audit; khi vừa Đóng băng của
       công ty do Q vừa Tắt khẩn do P → `tenant_frozen`, `set_by` Q.
-- [ ] R8.1 (AL16): người của tenant B gọi `kill` hay `revive-requests` với `artifact_id` của tenant A → 404 giống id ngẫu
+- [x] R8.1 (AL16): người của tenant B gọi `kill` hay `revive-requests` với `artifact_id` của tenant A → 404 giống id ngẫu
       nhiên, không dòng công tắc, không audit ở A; người giữ `studio.lifecycle.kill` ở độ sâu `workspace` của ws1 với
       thành phần thuộc ws2 → 404; `agents` với id của một quy trình → 404; bỏ lọc độ sâu → test đỏ.
-- [ ] R8.2 (AL13): run `waiting_approval` của thành phần → `cancelled`, phê duyệt của nó → `cancelled`,
+- [x] R8.2 (AL13): run `waiting_approval` của thành phần → `cancelled`, phê duyệt của nó → `cancelled`,
       audit `approval.cancelled` mang actor là người tắt và khóa `lane` trong `details`; một lượt Studio `waiting` của
       thành phần → `cancelled`; outbox `control.switch.changed` ghi cùng giao dịch với dòng công tắc; gỡ lane → test đỏ.
-- [ ] R8.9 (AL28): cửa giả của một công cụ không khóa giữ lời gọi đang bay, Tắt khẩn thành phần, rồi cửa trả
+- [x] R8.9 (AL28): cửa giả của một công cụ không khóa giữ lời gọi đang bay, Tắt khẩn thành phần, rồi cửa trả
       `OutcomeUnknownError` → dòng kết thúc của lời gọi là `outcome_unknown`, không `failed` hay `cancelled`, nhà cung cấp
       nhận đúng 1 lời gọi, lượt `cancelled` `artifact_killed` ở cửa kế tiếp; cùng ca với Đóng băng của công ty → lượt
       `cancelled` `tenant_frozen`; cửa trả thành công sau Tắt khẩn → dòng `succeeded`; ghi `failed` cho lời gọi đang bay
       lúc Tắt khẩn → test đỏ.
-- [ ] R8.10 (AL29): một móc giả đăng ký vào sổ móc hủy lượt, Tắt khẩn một thành phần có một lượt `waiting` → móc nhận
+- [x] R8.10 (AL29): một móc giả đăng ký vào sổ móc hủy lượt, Tắt khẩn một thành phần có một lượt `waiting` → móc nhận
       đúng một lời gọi với id lượt, `actor` là người tắt và `lane` `control_switch`, trong giao dịch đặt `cancelled`; móc
       ném lỗi → lượt vẫn `waiting`, lần xử lý thử lại; bỏ lời gọi sổ móc khỏi lane → móc nhận 0 lời gọi, test đỏ.
-- [ ] R8.11 (AL29): lượt chạy tới một cửa sau khi người P Tắt khẩn thành phần → `RunHaltedError` mang `artifact_killed`
+- [x] R8.11 (AL29): lượt chạy tới một cửa sau khi người P Tắt khẩn thành phần → `RunHaltedError` mang `artifact_killed`
       và `set_by` P; sau khi người Q đặt Đóng băng của công ty → `tenant_frozen` và `set_by` Q; sau khi người vận hành O đặt Đóng băng của nền tảng →
       `platform_frozen`, `set_by` O và audit có `details.platform_freeze_id`; lý do `tenant_locked` →
       `set_by` vắng; bỏ `set_by` khỏi ảnh chụp của `SqlRunControl` → test đỏ.
-- [ ] R8.3 (AL13): quyết định phê duyệt đến sau khi run đã bị hủy do kill → 409, không resume.
-- [ ] R8.4 (AL15): tin Zalo đã xếp hàng của thành phần bị tắt → lane gửi không gọi nhà cung cấp (test
+- [x] R8.3 (AL13): quyết định phê duyệt đến sau khi run đã bị hủy do kill → 409, không resume.
+- [x] R8.4 (AL15): tin Zalo đã xếp hàng của thành phần bị tắt → lane gửi không gọi nhà cung cấp (test
       hợp đồng với lane giả).
-- [ ] R8.5 (AL15): agent bị tắt dùng làm agent liên kết trong agent khác → lời gọi bị từ chối trong
+- [x] R8.5 (AL15): agent bị tắt dùng làm agent liên kết trong agent khác → lời gọi bị từ chối trong
       stack con.
-- [ ] R8.6 (AL14): xin bật lại → mở yêu cầu phê duyệt `studio.lifecycle.revive` nghiêm với `switch_id`; duyệt bởi người
+- [x] R8.6 (AL14): xin bật lại → mở yêu cầu phê duyệt `studio.lifecycle.revive` nghiêm với `switch_id`; duyệt bởi người
       khác → công tắc gỡ, `lift_approval_id` ghi; xin bật lại khi không bị tắt → 409 `not_killed`; xin lần hai khi yêu cầu
       đầu còn `pending` → 409 `lift_pending`; P tắt, xin bật lại, Q duyệt, P tắt lại, rồi sự kiện `.decided` cũ giao lại
       → công tắc mới vẫn mở; trình kích hoạt của thành phần ghi `refused_killed` khi bị tắt và xin lượt chạy lại sau khi
       bật lại, không bước nào bật lại trình kích hoạt.
-- [ ] R8.7 (AL14): người xin bật lại tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required`,
+- [x] R8.7 (AL14): người xin bật lại tự duyệt → 409 `conflict` với `details.reason_code` `second_person_required`,
       công tắc không gỡ.
-- [ ] R8.8: kill và bật lại ghi đúng một audit trong cùng giao dịch; rollback thì audit không còn.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_agent_runtime/tests apps/api/tests apps/worker/tests -k "kill or revive or control_switch"` xanh.
+- [x] R8.8: kill và bật lại ghi đúng một audit trong cùng giao dịch; rollback thì audit không còn.
+- [x] Xong: `uv run python -m pytest packages/python/dw_agent_runtime/tests apps/api/tests apps/worker/tests -k "kill or revive or control_switch"` xanh.
 
 ## Nguồn
 
@@ -175,3 +175,39 @@ switch_id}` trong cùng giao dịch; trả 201 với `{switch_id}`;
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): lượt xác nhận (một subagent ngữ cảnh mới, mở đúng các tệp đã dẫn), 7 HIGH đã sửa, không dẫn sai: (11) lane hủy đúng các `status` `waiting_approval`, `waiting_timer`, `waiting`, `queued`; (12) agent liên kết và Quy trình con kiểm ở stack con và cửa đầu node với id thành phần từ bao đóng ghim, lượt cha hủy; (13) quyết định `rejected` không gỡ gì; (14) yêu cầu đã quyết khi lane chạy: bỏ qua phê duyệt, vẫn hủy lượt; (15) cột của `platform.platform_freezes` cho `set_by` nêu ở ticket 01; (16) `studio.lifecycle.revive` là loại phê duyệt, không khóa, spec sửa theo; (17) INSERT nêu `status`, vai mẫu `org_admin`, mã thành công và thân của hai route, payload outbox chỉ id; ở cửa nhận, `artifact_killed` trước Đóng băng. Nếu sai thì: (12) lane quét cả lượt cha đỗ; (16) đăng ký khóa và route bật lại đòi nó.
 - 2026-11-04 (agent): MEDIUM thêm: người xin không tự rút yêu cầu bật lại (loại nghiêm chặn người xin cả khi từ chối, `approval_flow.py:284-286`), nên yêu cầu treo chặn lần xin sau tới khi người khác quyết.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent): dựng xong. Revision `b735015cca5c` (sau `66777ec67d16`): khóa `studio.lifecycle.kill` (`workspace`,
+  `standard`, `active`, `dw_platform`, `tenant_grantable`) vào `platform.permissions` và vai mẫu `org_admin`, chỉ mục
+  `ix_approval_requests_tenant_id_run_id_pending` cho lane; bảng, trigger và chỉ mục một yêu cầu gỡ đã có từ ticket 01.
+  `KillSwitchService` (`dw_studio.lifecycle.application.kill`) sau `ArtifactService.open_for` với khóa đó, dòng công tắc,
+  `control.kill.set` và outbox `control.switch.changed` v1 `{tenant_id, switch_id}` trên phiên của vỏ thành phần
+  (`control_switch_tx`); route `POST /studio/{agents|workflows}/{id}/kill` (201) và `.../revive-requests` (202),
+  `Idempotency-Key`. `UnfreezeSettler` thành `SwitchLiftSettler` với hai dòng `SwitchLift` (`UNFREEZE_LIFT`,
+  `REVIVE_LIFT`; bật lại ghi thêm outbox). Lane `control_switch` (`dw_agent_runtime.control_switch_lane`, `SqlKilledRuns`)
+  là handler outbox của `control.switch.changed`; `RunCancelUnit`, `RunCancelHook` ở `dw_agent_runtime.ports`, sổ
+  `RunCancelHooks` dựng và đóng ở `build_run_cancel_hooks()` của worker, rỗng. Test: `test_kill_switch.py` (unit, 51 ca),
+  `test_kill_switch_db.py` (17), `test_kill_api.py` (10), hai ca ở `test_studio_runs.py`, hai ở `test_studio_runner.py`;
+  `mutations/05.yaml` 23 đột biến chưa chạy, 12 phá tay đều đỏ.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): quyết khi dựng. (D1) Thành phần của chính lượt có một chủ:
+  `RunContext.artifact_id`, đọc từ dòng lượt ở `SqlStudioRunStore.take` và `resume_context`; `SqlRunControl` hỏi nó ở
+  mọi cửa (`reached_components`), nên bước công tắc của executor, đầu node, `start`, `resume`, `decide` và cửa model không
+  phải tự nêu; cửa chỉ nêu thêm thành phần khác (agent liên kết), xếp sau. Nếu sai thì: mỗi cửa truyền `artifacts` riêng.
+  (D2) Luật `simulate` ở cùng chỗ đó: lượt `simulate` không bị kill nào chặn, Đóng băng vẫn chặn; ở W1 trình kích hoạt
+  `test` chạy `simulate` (workflow-triggers:R2.3), nên lượt chạy thử của người dựng không bị Tắt khẩn chặn. Nếu sai thì:
+  kill chặn cả lượt `test` của trình kích hoạt `test`. (D3) Dịch vụ tắt nằm ở `dw_studio.lifecycle`, vì nó đọc thành
+  phần; tên, sự kiện và lỗi chung ở `dw_platform.application.control_switches`, câu SQL công tắc một bản ở
+  `control_switches_repo`. Nếu sai thì: dịch vụ ở `dw_platform` sau một Protocol đọc thành phần. (D4) Lane không vào sổ
+  `tenant_wide_scope()`: `control_switches`, `worker_runs`, `approval_requests` chỉ lọc theo công ty, lane đọc một công
+  ty. Nếu sai thì: thêm một dòng `TenantWideLane` có lý do. (D5) Mỗi lượt một giao dịch: đọc lại lượt `FOR UPDATE` và
+  công tắc `FOR SHARE`, nên bật lại chờ hay thắng lần hủy. (D6) `error` của lượt bị lane hủy là
+  `{code: artifact_killed, switch_id}`, dạng của `run_studio`, vì mọi lượt lane chạm là dòng Studio. Nếu sai thì: dạng
+  `reason_code` của `_fail`. (D7) `RunCancelUnit` chỉ có `audit(event)`; workflow-engine/08 thêm lần đọc nó cần.
+  (D8) Audit `control.kill.set` và yêu cầu bật lại ở `owning_workspace_id` của thành phần. (D9) Quy trình con: lượt con
+  mang `artifact_id` của chính nó trên dòng, nên đầu node của nó tự hỏi; không có gì để nối tới workflow-engine/09.
+  Agent liên kết: `SubAgentSpec.artifact_id`, `RunControlMiddleware(artifacts=...)` trong stack con. (D10) `agents` mount
+  theo spec nhưng trả 404 tới khi loại `agent` có dòng `studio.artifact_kinds` (agent-builder).
+- 2026-11-05 (agent): MEDIUM để lại: (a) lane không `pg_notify('dw_run_state')` khi hủy, trang đang xem lượt thấy ở lần
+  đọc sau; (b) `SubAgentSpec.artifact_id` chưa có bên đặt production (chưa có agent Studio): agent-builder phải điền từ
+  bao đóng ghim, không thì R8.5 chỉ có ở test (failure-modes #1); (c) bản nhân bản `org_admin` đã có không nhận khóa mới,
+  như ticket 01; (d) offboarding chưa có test xóa công tắc `kill` riêng (bảng đã có trong bước của ticket 01).
+  Còn nợ ở lần đóng hàng: `mutate.py` cho `mutations/05.yaml`; P50/P95/P99 của hai route mới, lần quyết bật lại và
+  đường hủy của lane so với `ad311f38`; `code-review`; `reviewing-deployment-security` (route mới).

@@ -22,6 +22,7 @@ from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.budget import RunBudgetLedger
+from dw_agent_runtime.ports import RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.testing.step_recorder import FakeStepRecorder
@@ -77,15 +78,20 @@ class FileDoor:
 
 
 def build_runner(
-    sessions: async_sessionmaker[AsyncSession], doors: Mapping[EffectDoor, StepDoor]
+    sessions: async_sessionmaker[AsyncSession],
+    doors: Mapping[EffectDoor, StepDoor],
+    *,
+    run_control: RunControlPort | None = None,
 ) -> tuple[LangGraphWorkflowRunner, FakeStepRecorder]:
+    """`run_control` is the node head's (agent-lifecycle 05 passes a real
+    `SqlRunControl`); open by default."""
     clock, ids = SystemClock(), Uuid7Generator()
     graphs = GraphRegistry()
     recorder = FakeStepRecorder()
     nodes = StudioNodePorts(
         doors=dict(doors),
         claims=FakeClaims(),
-        run_control=OpenRunControl(),
+        run_control=run_control or OpenRunControl(),
         runs=SqlStudioRunStore(sessions, ids, clock),
         recorder=recorder,
         telemetry=RecordingTelemetry(),

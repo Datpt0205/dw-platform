@@ -1,0 +1,175 @@
+# Mutation check of agent-lifecycle ticket 05: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the
+# ticket's "Kiểm soát" rows (AL13, AL14, AL15, AL16, AL28, AL29) and per door
+# that holds one, each naming the tests that call that door directly
+# (failure-modes #5). Ten were run by hand while writing the tests (5/11/2026),
+# each red: the run's own component in `reached_components`, the simulate
+# exemption, the linked agent's component in the sub-agent stack, the hook
+# loop, the lane's actor, `set_by` in the refusal, the lane's cancel, the
+# kill-first order at admission, the kill key, and the simulate filter of the
+# parked runs.
+mutations:
+  # ---- AL16, R8.1: who may kill and revive, at the component's workspace ------
+  - name: AL16 R8.1 the kill asks the read key instead of studio.lifecycle.kill
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/kill.py
+    old: "tx.envelope, artifact_id, kind=kind, key=_kill_key, lock=False"
+    new: "tx.envelope, artifact_id, kind=kind, key=lambda e: e.read_key, lock=False"
+    tests:
+      - apps/api/tests/integration/test_kill_api.py::test_r8_1_a_reader_without_the_key_is_403
+  - name: AL16 R8.1 the kill reads the component without the depth of open_for
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/kill.py
+    old: |2
+              row, _ = await self.artifacts.open_for(
+                  tx.envelope, artifact_id, kind=kind, key=_kill_key, lock=False
+              )
+              return row
+    new: |2
+              row = await tx.envelope.artifact(artifact_id)
+              assert row is not None
+              return row
+    tests:
+      - apps/api/tests/integration/test_kill_api.py::test_al16_another_company_or_another_workspace_is_404_and_writes_nothing
+      - apps/api/tests/integration/test_kill_api.py::test_al16_a_workflow_under_the_agents_segment_is_404
+  - name: R8.1 a second kill of an open one is not refused
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/kill.py
+    old: |2
+                  if await tx.switches.open_kill(artifact_id) is not None:
+                      raise already_killed()
+    new: ""
+    tests:
+      - apps/api/tests/integration/test_kill_api.py::test_r8_1_a_kill_writes_its_switch_one_audit_and_one_event_and_a_second_is_409
+  - name: R8.2 the kill announces nothing to the lane
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/kill.py
+    old: "            await tx.switches.announce(\n                switch_changed(\n                    self.ids.new_uuid(),\n                    tenant_id=context.tenant_id,\n                    workspace_id=row.owning_workspace_id,\n"
+    new: "            (\n                switch_changed(\n                    self.ids.new_uuid(),\n                    tenant_id=context.tenant_id,\n                    workspace_id=row.owning_workspace_id,\n"
+    tests:
+      - apps/api/tests/integration/test_kill_api.py::test_r8_1_a_kill_writes_its_switch_one_audit_and_one_event_and_a_second_is_409
+  # ---- R8.1, AL15: every door asks about the run's own component -------------
+  - name: R8.1 the run's own component is not asked about
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_control.py
+    old: "    own = () if run_context.artifact_id is None else (run_context.artifact_id,)\n"
+    new: "    own = ()\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_kill_switch.py::test_a_kill_of_the_runs_own_component_refuses_every_door_naming_its_setter
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_a_new_live_or_test_run_of_a_killed_component_is_cancelled_at_its_start
+  - name: R8.1 a simulate run is stopped by a kill
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_control.py
+    old: "    if run_context.run_mode == \"simulate\":\n        return ()\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_kill_switch.py::test_a_simulate_run_is_refused_by_no_kill_but_still_by_a_freeze
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_a_simulate_run_of_a_killed_component_still_runs
+  - name: R8.1 at admission a freeze holds a killed component's queued run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_control.py
+    old: "            kill_first=door is RunControlDoor.ADMISSION,\n"
+    new: "            kill_first=False,\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_kill_switch.py::test_at_admission_a_kill_by_p_answers_before_a_freeze_by_q
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_at_admission_a_killed_components_queued_run_is_cancelled_even_when_frozen
+  - name: R8.1 a resumed run forgets its component
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_store.py
+    old: "        artifact_id=record.artifact_id,\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_a_decision_on_a_killed_components_paused_run_is_refused
+  - name: R8.1 a taken Studio run forgets its component
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "        artifact_id=taken.artifact_id,\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_runner.py::test_every_node_head_asks_with_the_component_the_run_was_taken_for
+  - name: AL15 R8.5 the sub-agent stack names no linked component
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/sub_agents.py
+    old: "            artifacts=() if child.artifact_id is None else (child.artifact_id,),\n"
+    new: "            artifacts=(),\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_kill_switch.py::test_a_killed_linked_agent_is_refused_in_its_sub_agent_stack
+  - name: AL15 R8.5 the model door drops the components it was given
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_control_middleware.py
+    old: "            run_context, door=RunControlDoor.MODEL, artifacts=self._artifacts\n"
+    new: "            run_context, door=RunControlDoor.MODEL\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_kill_switch.py::test_a_killed_linked_agent_is_refused_in_its_sub_agent_stack
+  # ---- AL29, R8.11: the answer names who set the switch -------------------------
+  - name: AL29 R8.11 a refusal carries no setter
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_control.py
+    old: "            set_by=None if switch is None else switch.set_by,\n"
+    new: "            set_by=None,\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_kill_switch.py::test_a_kill_of_the_runs_own_component_refuses_every_door_naming_its_setter
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_the_answer_names_who_set_the_switch_that_refused
+  # ---- AL13, R8.2, R8.3: the lane cancels what is parked ------------------------
+  - name: AL13 R8.2 the lane cancels no run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/control_switch_lane.py
+    old: "            await tx.cancel(run_id, switch_id=kill.switch_id)\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_kill_switch.py::test_the_lane_cancels_each_parked_run_and_its_request_in_the_setters_name
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_the_lane_cancels_the_parked_runs_and_their_requests_in_ps_name
+  - name: AL13 R8.2 the lane leaves the runs' requests pending
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/control_switch_lane.py
+    old: "                request.cancel()\n                await tx.save_approval(request)\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_kill_switch.py::test_the_lane_cancels_each_parked_run_and_its_request_in_the_setters_name
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_the_lane_cancels_the_parked_runs_and_their_requests_in_ps_name
+  - name: AL13 R8.2 the lane audits as itself, not as the person who killed
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/control_switch_lane.py
+    old: "            actor_id=UserId(kill.set_by),\n"
+    new: "            actor_id=UserId(kill.target_id),\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_kill_switch.py::test_the_lane_cancels_each_parked_run_and_its_request_in_the_setters_name
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_the_lane_cancels_the_parked_runs_and_their_requests_in_ps_name
+  - name: R8.1 the lane cancels a simulate run too
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/killed_runs.py
+    old: "    worker_runs.c.run_mode != \"simulate\",\n"
+    new: "    sa.true(),\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_the_lane_cancels_the_parked_runs_and_their_requests_in_ps_name
+  - name: R8.2 the lane cancels under a kill already revived
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/killed_runs.py
+    old: "            sa.select(_SWITCHES.c.id, _SWITCHES.c.target_id, _SWITCHES.c.set_by).where(\n                        _SWITCHES.c.id == switch_id, _OPEN_KILL\n"
+    new: "            sa.select(_SWITCHES.c.id, _SWITCHES.c.target_id, _SWITCHES.c.set_by).where(\n                        _SWITCHES.c.id == switch_id\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_a_lifted_kill_or_another_companys_event_cancels_nothing
+  # ---- AL29, R8.10: the cancel hooks --------------------------------------------
+  - name: AL29 R8.10 the lane calls no hook
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/control_switch_lane.py
+    old: "            for hook in self.hooks.hooks():\n                await hook.on_cancel(tx, run_id, actor=kill.set_by, lane=LANE)\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_kill_switch.py::test_every_hook_is_called_once_in_the_cancel_before_the_run_is_cancelled
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_a_registered_hook_writes_in_the_cancel_and_a_failing_one_keeps_the_run
+  - name: AL29 R8.10 a hook's failure is swallowed and the run cancelled anyway
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/control_switch_lane.py
+    old: "                await hook.on_cancel(tx, run_id, actor=kill.set_by, lane=LANE)\n"
+    new: "                try:\n                    await hook.on_cancel(tx, run_id, actor=kill.set_by, lane=LANE)\n                except RuntimeError:\n                    pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_kill_switch.py::test_a_hook_that_raises_leaves_the_run_parked_and_fails_the_event
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_a_registered_hook_writes_in_the_cancel_and_a_failing_one_keeps_the_run
+  # ---- AL14, R8.6: the revive -----------------------------------------------------
+  - name: AL14 R8.6 the revive request names no switch
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/kill.py
+    old: "                    payload={\"switch_id\": str(kill.id)},\n"
+    new: "                    payload={},\n"
+    tests:
+      - apps/api/tests/integration/test_kill_api.py::test_r8_6_a_revive_needs_a_kill_and_waits_once
+  - name: AL14 R8.6 the revive request opens with nothing to revive
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/kill.py
+    old: "            if kill is None:\n"
+    new: "            if kill is None and False:\n"
+    tests:
+      - apps/api/tests/integration/test_kill_api.py::test_r8_6_a_revive_needs_a_kill_and_waits_once
+  - name: AL14 R8.6 the revive's lift is not announced to the lane
+    file: packages/python/dw_platform/src/dw_platform/application/control_switches.py
+    old: "REVIVE_LIFT = SwitchLift(LIFECYCLE_REVIVE, KILL_LIFTED, announce=True, noun=\"kill\")\n"
+    new: "REVIVE_LIFT = SwitchLift(LIFECYCLE_REVIVE, KILL_LIFTED, announce=False, noun=\"kill\")\n"
+    tests:
+      - apps/api/tests/integration/test_kill_api.py::test_r8_6_a_second_person_revives_exactly_that_switch_and_a_replay_lifts_no_new_one
+  # ---- AL28, R8.9: a call in flight -----------------------------------------------
+  - name: AL28 R8.9 a call in flight is recorded failed when the run is killed
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/executor.py
+    old: '                status="outcome_unknown" if unknown else "failed",'
+    new: '                status="failed",'
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_kill_switch_db.py::test_a_call_in_flight_ends_by_its_typed_outcome_and_the_next_door_cancels

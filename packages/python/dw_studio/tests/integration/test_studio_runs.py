@@ -37,16 +37,19 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 from studio_run_stack import DIED, FileDoor, build_runner
 
+from dw_agent_runtime.adapters.run_control import SqlRunControl
 from dw_agent_runtime.adapters.run_store import RunStatus
 from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_kernel.errors import ConflictError, DomainError
 from dw_kernel.http_conditions import ExpectedVersion
 from dw_kernel.ports import SystemClock, Uuid7Generator
+from dw_observability.telemetry import RecordingTelemetry
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.domain.audit import system_actor
 from dw_platform.testing.rbac import assign, plant_membership, plant_person, plant_role
 from dw_platform.testing.record_objects import plant_object
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
+from dw_studio.core.adapters.studio_runs import SqlStudioRunStore
 from dw_studio.core.application.registry import ArtifactKindRegistry
 from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.run_request import (
@@ -929,3 +932,72 @@ async def test_r4_25_a_worker_killed_after_a_send_resumes_after_it_and_replays_t
     calls = [c[1].split(":")[2] for c in door.calls()]
     assert calls == ["mot", "sua", "sua"], "the send before the death was made again"
     assert len({c[1] for c in door.calls() if c[1].endswith(":sua:")}) == 1
+
+
+# ---- agent-lifecycle 05: the kill at a Studio run's node head -----------------------
+
+
+async def _kill(app_engine: AsyncEngine, world: World, artifact: uuid.UUID) -> uuid.UUID:
+    """The tester's kill of `artifact`, as the kill route writes it."""
+    switch = uuid.uuid4()
+    await _as_app(
+        app_engine,
+        world,
+        "INSERT INTO platform.control_switches (id, tenant_id, scope_type, owning_workspace_id,"
+        " target_id, action, origin, reason_code, reason, set_by)"
+        " VALUES (:id, :t, 'workflow', :w, :a, 'kill', 'tenant', 'incident', 'gửi sai', :by)",
+        id=switch,
+        t=world.tenant,
+        w=world.tester.workspace_id,
+        a=artifact,
+        by=world.tester.id,
+    )
+    return switch
+
+
+async def test_al_r8_1_a_run_is_taken_for_its_own_component(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+) -> None:
+    """agent-lifecycle R8.1: the take reads the run's component from its row,
+    the one the node head's `RunControlPort` asks about."""
+    artifact, version, _ = await a_draft(service, world, doc(source, send("gui")))
+    run_id = (await door_of(store).request(ask(world, version))).run_id
+    taken = await SqlStudioRunStore(sessions, Uuid7Generator(), SystemClock()).take(
+        world.tenant, run_id
+    )
+    assert getattr(taken, "artifact_id", None) == artifact
+
+
+async def test_al_r8_1_a_killed_workflows_simulate_run_still_runs_at_the_real_node_head(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    app_engine: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+    tmp_path: Path,
+) -> None:
+    """agent-lifecycle R8.1 (ADR-0120 decision 7): a builder's run of a killed
+    workflow (`test`, which runs `simulate` in W1) goes through every node head
+    of the real `SqlRunControl` and completes, so a fix can be evaluated."""
+    artifact, version, _ = await a_draft(service, world, doc(source, send("gui")))
+    run_id = (await door_of(store).request(ask(world, version))).run_id
+    await with_deadline(migrator, run_id)
+    await _kill(app_engine, world, artifact)
+    control = SqlRunControl(
+        sessions,
+        clock=SystemClock(),
+        telemetry=RecordingTelemetry(),
+        listen_dsn=None,
+        system_actors=frozenset(),
+    )
+    door = FileDoor(tmp_path / "door.json")
+    runner, _ = build_runner(sessions, {"tool": door}, run_control=control)
+    assert await runner.run_studio(tenant_id=world.tenant, run_id=run_id) == RunStatus.COMPLETED
+    assert [c[1].split(":")[2] for c in door.calls()] == ["gui"]
