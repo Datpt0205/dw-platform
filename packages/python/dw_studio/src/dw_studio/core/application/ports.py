@@ -112,6 +112,18 @@ class ListScope:
 class ArtifactTx(Protocol):
     """One transaction, bound to the caller's tenant (RLS)."""
 
+    # The transaction's own handle, handed only to a port that must write on
+    # the caller's transaction (`ActorBoundaryPort`, record-access ticket 04).
+    session: Any
+
+    async def root_version(self, version_id: uuid.UUID) -> RootVersion | None:
+        """The version and its artifact's kind, the artifact row read `FOR
+        SHARE` first and the version read after it, so a `save_draft` (which
+        takes that row `FOR UPDATE`) waits for this transaction and the content
+        read is the content received. None for another tenant's, a missing
+        version, or a soft-deleted artifact."""
+        ...
+
     async def reach(self, permission_key: str) -> frozenset[uuid.UUID]:
         """The workspaces where the caller holds `permission_key` at a depth
         that reaches them: `platform.workspace_reach`, nothing recomputed."""
@@ -247,14 +259,6 @@ class BindingSetRow:
 class BindingTx(ArtifactTx, Protocol):
     """What the bindings read beyond the envelope, in one transaction under the
     caller's tenant (RLS)."""
-
-    async def root_version(self, version_id: uuid.UUID) -> RootVersion | None:
-        """The version and its artifact's kind, the artifact row read `FOR
-        SHARE` first and the version read after it, so a `save_draft` (which
-        takes that row `FOR UPDATE`) waits for this transaction and the content
-        read is the content received. None for another tenant's, a missing
-        version, or a soft-deleted artifact."""
-        ...
 
     async def pinned_versions(self, version_id: uuid.UUID) -> list[uuid.UUID]:
         """The `to_version_id` of each `artifact` row of the version's

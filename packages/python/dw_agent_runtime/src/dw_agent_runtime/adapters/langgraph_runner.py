@@ -5,7 +5,14 @@ Responsibilities:
 - persist run lifecycle in platform.worker_runs;
 - map LangGraph interrupts to platform ApprovalRequests (pause);
 - resume a durable run from its checkpoint after approval — including after a
-  full process restart, since all state lives in PostgreSQL.
+  full process restart, since all state lives in PostgreSQL;
+- run a Studio run taken from its `queued` row (`run_studio`, workflow-engine/03),
+  its graph compiled from the document its manifest pinned.
+
+Every compiled graph of the process, a code worker's, a tenant's wf-lite
+version's and a Studio version's, sits in one LRU of `GRAPH_CACHE_SIZE`
+(workflow-engine R4.2), so a process that meets many versions holds a bounded
+number of graphs.
 
 LangGraph never leaks outside this adapter (import-linter enforced).
 """
@@ -17,10 +24,11 @@ import contextlib
 import logging
 import time
 import uuid
-from collections.abc import AsyncIterator, Iterator
+from collections import OrderedDict
+from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, cast
+from typing import Any, Final, cast
 
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
@@ -43,10 +51,21 @@ from dw_agent_runtime.ports import (
     RunControlPort,
     RunGraphsPort,
     RunWaitsPort,
+    StudioRun,
+    StudioRunBlocked,
 )
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.run_control import HOLDING_REASONS, RunControlDoor, RunHaltedError
+from dw_agent_runtime.wflite.compile import COMPILER_VERSION, StudioWorkflow, compile_workflow
+from dw_agent_runtime.wflite.document import WorkflowDocument
+from dw_agent_runtime.wflite.node_wrapper import (
+    RunDeadlineExceededError,
+    StudioRunContext,
+    StudioRunFailedError,
+    StudioRunPorts,
+)
 from dw_kernel.errors import (
+    ConfigError,
     ConflictError,
     InfrastructureError,
     NotFoundError,
@@ -72,6 +91,11 @@ _ERROR_MESSAGE_LIMIT = 500
 # accumulate a whole run's tokens: a turn streams a few hundred chunks, and a
 # reader that has fallen this far behind is not coming back.
 _STREAM_BACKLOG_LIMIT = 256
+
+# Compiled graphs a process keeps (workflow-engine R4.2): the least recently
+# used goes first.
+GRAPH_CACHE_SIZE: Final = 256
+_DURABILITIES: Final = frozenset({"sync", "async", "exit"})
 
 
 class ResumeInterrupted(Exception):  # noqa: N818 - names what the row records
@@ -146,7 +170,10 @@ class LangGraphWorkflowRunner:
     # A tenant's published workflow is registered on its run's first use
     # (wf-ai R6.5). None keeps every wiring that predates it.
     run_graphs: RunGraphsPort | None = None
-    _compiled: dict[tuple[str, str], Any] = field(default_factory=dict)
+    # What a Studio run needs (workflow-engine/03); None for a runner that runs
+    # none, whose `run_studio` refuses.
+    studio: StudioRunPorts | None = None
+    _compiled: OrderedDict[tuple[str, ...], Any] = field(default_factory=OrderedDict)
     # Holds a reference to every in-flight streamed run; without one the task is
     # garbage-collectable mid-run.
     _running: set[asyncio.Task[None]] = field(default_factory=set)
@@ -234,14 +261,45 @@ class LangGraphWorkflowRunner:
                 worker_version=worker_version,
             )
 
+    def _cached(self, key: tuple[str, ...], build: Callable[[], Any]) -> Any:
+        """The one cache of compiled graphs, least recently used out first."""
+        if key in self._compiled:
+            self._compiled.move_to_end(key)
+            return self._compiled[key]
+        graph = build()
+        self._compiled[key] = graph
+        while len(self._compiled) > GRAPH_CACHE_SIZE:
+            self._compiled.popitem(last=False)
+        return graph
+
     def _graph(self, worker_id: str, graph_version: str) -> Any:
-        key = (worker_id, graph_version)
-        if key not in self._compiled:
+        def build() -> Any:
             factory = self.graph_registry.resolve(worker_id, graph_version)
-            self._compiled[key] = factory().compile(
-                checkpointer=self.checkpoint_saver, store=self.store
+            return factory().compile(checkpointer=self.checkpoint_saver, store=self.store)
+
+        return self._cached((worker_id, graph_version), build)
+
+    def _studio_graph(self, studio: StudioRunPorts, taken: StudioRun) -> Any:
+        """A Studio version's graph, under `(tenant, version, pinned hash,
+        COMPILER_VERSION)`: a draft edited since keeps its id and changes its
+        hash, so a new run never takes the old content's graph (R4.2)."""
+        key = (
+            "studio",
+            str(taken.tenant_id),
+            str(taken.artifact_version_id),
+            taken.pinned_hash,
+            COMPILER_VERSION,
+        )
+
+        def build() -> Any:
+            workflow = StudioWorkflow(
+                WorkflowDocument.model_validate(taken.document), taken.pinned_hash, studio.registry
             )
-        return self._compiled[key]
+            return compile_workflow(workflow, studio.nodes).compile(
+                checkpointer=self.checkpoint_saver
+            )
+
+        return self._cached(key, build)
 
     def _config(
         self,
@@ -376,6 +434,89 @@ class LangGraphWorkflowRunner:
                 raise
         await self._handle_outcome(run_context, run_context.run_id, state)
         return run_context.run_id
+
+    async def run_studio(self, *, tenant_id: uuid.UUID, run_id: uuid.UUID) -> RunStatus:
+        """Run a `queued` Studio run until it ends (workflow-engine/03 step 2).
+
+        Everything comes from the run's row, its manifest and its pinned
+        document, read under the run's tenant by `StudioRunStorePort.take`;
+        nothing is inserted (R3.5). A draft whose content changed since the
+        run pinned it is left `blocked` and nothing is compiled (R6.14). The
+        graph runs with the `durability` the manifest's `engine` pinned, never
+        the library's default (R4.25), and with a `recursion_limit` that
+        covers every node once (R4.1); the run's step ceiling across resumes
+        is workflow-engine/06's. A run with a checkpoint already (taken again
+        after a crash) goes on from it. workflow-engine/04 calls this from the
+        `studio_runs` lane."""
+        studio = self.studio
+        if studio is None:
+            raise ConfigError(
+                "this runner runs no Studio run", details={"reason": "studio_not_wired"}
+            )
+        runs = studio.nodes.runs
+        taken = await runs.take(tenant_id, run_id)
+        if isinstance(taken, StudioRunBlocked):
+            return RunStatus.BLOCKED
+        durability = taken.engine.get("durability")
+        if durability not in _DURABILITIES:
+            # Closed: a manifest without its engine section runs nothing.
+            await runs.finish(tenant_id, run_id, "failed", error={"code": "engine_unpinned"})
+            return RunStatus.FAILED
+        graph = self._studio_graph(studio, taken)
+        run = _studio_run_context(taken)
+        decisions = taken.input.get("approval_decisions")
+        context = StudioRunContext(
+            run=run,
+            deadline_at=taken.deadline_at,
+            pinned_results=taken.pinned_results,
+            approval_decisions=(
+                {str(k): str(v) for k, v in decisions.items()}
+                if isinstance(decisions, dict)
+                else {}
+            ),
+        )
+        config: dict[str, Any] = {
+            "recursion_limit": len(graph.nodes) + 1,
+            "configurable": {
+                "thread_id": str(taken.thread_id),
+                "tenant_id": str(taken.tenant_id),
+                "workspace_id": str(taken.workspace_id),
+            },
+        }
+        snapshot = await graph.aget_state(config)
+        work = {k: v for k, v in taken.input.items() if k != "approval_decisions"}
+        payload = None if snapshot.next else {"work": work}
+        try:
+            state = await graph.ainvoke(payload, config, context=context, durability=durability)
+        except RunDeadlineExceededError:
+            return RunStatus.CANCELLED
+        except StudioRunFailedError as failed:
+            await runs.finish(
+                tenant_id,
+                run_id,
+                "failed",
+                error={"code": failed.code, "step_id": failed.step_id},
+            )
+            return RunStatus.FAILED
+        except RunHaltedError as halted:
+            await runs.finish(
+                tenant_id,
+                run_id,
+                "cancelled",
+                error={"code": halted.reason.value, "door": halted.door.value},
+            )
+            return RunStatus.CANCELLED
+        except Exception as exc:
+            logger.exception("a Studio run failed", extra={"run_id": str(run_id)})
+            await runs.finish(
+                tenant_id,
+                run_id,
+                "failed",
+                error={"code": "step_failed", "type": type(exc).__name__},
+            )
+            return RunStatus.FAILED
+        await runs.finish(tenant_id, run_id, "completed", result=_jsonable(state))
+        return RunStatus.COMPLETED
 
     async def stream(
         self,
@@ -911,6 +1052,30 @@ def _loop_prompt(worker: WorkerDefinition) -> tuple[str, str]:
     if worker.agent_prompt_id is not None and worker.agent_prompt_version is not None:
         return worker.agent_prompt_id, worker.agent_prompt_version
     return f"graph:{worker.worker_id}", worker.graph_version
+
+
+def _studio_run_context(taken: StudioRun) -> RunContext:
+    """The run's context from its row: who it acts as, its mode, its manifest
+    and its tenant's plan read where it was taken, never a caller's."""
+    version = "0.0.0+draft" if taken.version_no is None else f"{taken.version_no}.0.0"
+    return RunContext(
+        run_id=taken.run_id,
+        thread_id=taken.thread_id,
+        tenant_id=taken.tenant_id,
+        workspace_id=taken.workspace_id,
+        actor_id=taken.run_as_principal_id,
+        requested_by=taken.requested_by,
+        run_as_principal_id=taken.run_as_principal_id,
+        run_manifest_hash=taken.run_manifest_hash,
+        worker_id=f"studio:{taken.artifact_kind}:{taken.artifact_version_id}",
+        worker_version=version,
+        channel="studio",
+        plan_id=taken.plan_id,
+        roles=frozenset(),
+        scopes=frozenset(),
+        trace_id=taken.trace_id,
+        run_mode=taken.run_mode,
+    )
 
 
 def _durability(run_context: RunContext) -> dict[str, Any]:

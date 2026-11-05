@@ -103,7 +103,13 @@ from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindR
 from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.run_request import RunLaneRegistry, RunRequestService
 from dw_studio.core.application.service import ArtifactService
-from dw_studio.kinds import WORKFLOW_KIND, WORKFLOWS_TEST_SCOPE, platform_kinds
+from dw_studio.kinds import (
+    WORKFLOW_KIND,
+    WORKFLOWS_TEST_SCOPE,
+    platform_kinds,
+    run_boundary_derivers,
+    run_pinnable_steps,
+)
 from dw_studio.lifecycle.adapters.store import SqlLifecycleStore
 from dw_studio.lifecycle.application.ports import SubmitCheck
 from dw_studio.lifecycle.application.service import SUBMIT_SEGMENTS, LifecycleService
@@ -215,6 +221,7 @@ def build_studio(
         runtime.tool_specs if runtime is not None else ShippedToolSpecs.load(TOOL_SPECS_DIR)
     )
     node_types = build_node_registry()
+    actor_boundaries = SqlActorBoundaries()
     registry = ArtifactKindRegistry(
         platform_kinds(
             object_store_of,
@@ -223,6 +230,7 @@ def build_studio(
             nodes=node_types,
             tools=tools,
             triggers=NoTriggerSubscriptions(),
+            boundaries=actor_boundaries,
         )
         if kinds is None
         else kinds
@@ -308,6 +316,9 @@ def build_studio(
             clock,
             ids,
             bindings=BindingPins(binding_types, usability),
+            boundaries=actor_boundaries,
+            boundary_derivers=run_boundary_derivers(node_types),
+            pinnable=run_pinnable_steps(node_types),
         ),
         run_lanes=run_lanes,
         config_versions=ConfigVersionService(config_kinds, config_store, clock, ids),
@@ -315,7 +326,7 @@ def build_studio(
         binding_status=BindingStatus(store, binding_types),
         run_bindings=SqlRunBindings(sessions),
         node_types=node_types,
-        actor_boundaries=SqlActorBoundaries(),
+        actor_boundaries=actor_boundaries,
         records=records,
         record_door=record_door,
     )

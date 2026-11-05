@@ -23,7 +23,7 @@
       "version": "1.1.0"
     },
     {
-      "checksum": "7334a5c7336af4ea355db7a583f68d05d803e77f1367c8089343564657b2dea5",
+      "checksum": "87a8c2295eca6785597bad36effe590393799c92c37424b3f57469c40a678915",
       "copy_id": "platform.audit_actions.workflow_engine",
       "version": "1.0.0"
     },
@@ -33,7 +33,7 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "3588cb7a2ded84fe1866c0d2aa085df15a76de23599a94257f14d488d1ef5639",
+      "checksum": "060932876c2273adb679c89befb7cfbf46b8f55e9e2deb8d5f6aafbf5aeae2a5",
       "copy_id": "platform.run_reason_codes.workflow_engine",
       "version": "1.0.0"
     },
@@ -75,7 +75,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "044859cfaaca03fa28047875a582f72341873512",
+  "git_sha": "b0113f497919a2771aab4e40ef2fa54891e3a649",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "model_profiles": [

@@ -168,7 +168,8 @@
   "dw": {
     "span_names": [
       "dw.egress.request",
-      "dw.knowledge.rerank"
+      "dw.knowledge.rerank",
+      "dw.node"
     ],
     "attributes": [
       "dw.channel",
@@ -189,6 +190,8 @@
       "dw.rerank.top_k",
       "dw.run_id",
       "dw.run_mode",
+      "dw.step_id",
+      "dw.step_type",
       "dw.subject_ref",
       "dw.tenant_id",
       "dw.tool_name",
@@ -206,6 +209,7 @@
       "dw_egress_requests_total",
       "dw_model_cost_usd_total",
       "dw_model_tokens_total",
+      "dw_node_failure_total",
       "dw_outbox_backlog_size",
       "dw_outbox_dead_letters",
       "dw_outbox_oldest_pending_age_seconds",
@@ -220,6 +224,7 @@
       "approval_type",
       "direction",
       "error",
+      "error_type",
       "model",
       "outcome",
       "provider",

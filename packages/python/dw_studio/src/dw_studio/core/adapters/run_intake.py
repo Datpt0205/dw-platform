@@ -35,6 +35,7 @@ async def run_by_request_key(session: AsyncSession, request_key: str) -> Existin
                 worker_runs.c.run_mode,
                 worker_runs.c.run_as_principal_id,
                 worker_runs.c.input,
+                worker_runs.c.pinned_results,
             ).where(worker_runs.c.request_key == request_key)
         )
     ).one_or_none()
@@ -46,6 +47,7 @@ async def run_by_request_key(session: AsyncSession, request_key: str) -> Existin
         run_mode=row.run_mode,
         run_as_principal_id=row.run_as_principal_id,
         input=row.input,
+        pinned_results=row.pinned_results,
     )
 
 
@@ -71,6 +73,8 @@ async def insert_queued_run(session: AsyncSession, tenant_id: uuid.UUID, run: Qu
             graph_version=run.graph_version,
             status=RunStatus.QUEUED.value,
             input=dict(run.input),
+            # SQL NULL, never JSON `null`: the CHECK reads a run with none as NULL.
+            pinned_results=sa.null() if run.pinned_results is None else dict(run.pinned_results),
             requested_by=run.requested_by,
             run_as_principal_id=run.run_as_principal_id,
             run_mode=run.run_mode,

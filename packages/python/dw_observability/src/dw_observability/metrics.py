@@ -6,10 +6,10 @@ low-cardinality: never a user id or raw prompt.
 Every name here has a call site in `src/` that emits it, and
 `test_every_declared_metric_is_emitted` holds that: a name declared and emitted
 by nothing reads like a signal on a dashboard and measures nothing
-(`failure-modes.md` #1). `dw_node_failure_total` and three rates
-(`dw_retrieval_hit_rate`, `dw_human_intervention_rate`, `dw_task_success_rate`)
-left for that reason; the node wrapper of workflow-engine/03 declares the first
-again together with its emitter.
+(`failure-modes.md` #1). Three rates (`dw_retrieval_hit_rate`,
+`dw_human_intervention_rate`, `dw_task_success_rate`) left for that reason;
+`dw_node_failure_total` came back with its emitter, the node wrapper of
+workflow-engine/03.
 """
 
 from __future__ import annotations
@@ -46,6 +46,9 @@ DW_EGRESS_BLOCKED_TOTAL: Final = "dw_egress_blocked_total"  # labels: purpose, r
 DW_USAGE_UNPRICED_TOTAL: Final = "dw_usage_unpriced_total"  # labels: provider, model
 # A door of the runtime refusing a run (agent-lifecycle R7; ADR-0120 decision 7).
 DW_CONTROL_REFUSALS_TOTAL: Final = "dw_control_refusals_total"  # labels: door, reason_code
+# A failed attempt of a Studio step (workflow-engine R4.9; telemetry-and-audit
+# R1.3): `error_type` is `error_type_label(code)`, a closed set.
+DW_NODE_FAILURE_TOTAL: Final = "dw_node_failure_total"  # labels: error_type
 
 ALL_METRICS: Final = (
     DW_RUN_TOTAL,
@@ -63,6 +66,7 @@ ALL_METRICS: Final = (
     DW_EGRESS_BLOCKED_TOTAL,
     DW_USAGE_UNPRICED_TOTAL,
     DW_CONTROL_REFUSALS_TOTAL,
+    DW_NODE_FAILURE_TOTAL,
 )
 
 # Bucket boundaries, in seconds, of each histogram (telemetry-and-audit spec,

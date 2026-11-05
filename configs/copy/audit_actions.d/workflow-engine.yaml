@@ -7,3 +7,5 @@ version: "1.0.0"
 actions:
   # workflow-engine/02: a Studio run queued by its one door.
   run.started: "Lượt chạy được xếp vào hàng"
+  # workflow-engine/03: the node wrapper met the run's deadline, as `system:studio_runs`.
+  run.deadline_exceeded: "Lượt chạy bị dừng vì quá hạn chót"

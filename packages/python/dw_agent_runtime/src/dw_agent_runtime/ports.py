@@ -345,3 +345,165 @@ class RunManifestPort(Protocol):
     async def load(self, run_manifest_hash: str) -> PinnedManifest | None:
         """The manifest and its rows, or None when this tenant has no such hash."""
         ...
+
+
+# ---- a Studio run's steps (workflow-engine/03) ---------------------------------
+
+# A step's place in the tree: each enclosing step's id with the port of the lane
+# the walk came through, outermost first; empty on the root chain (R4.21).
+LanePath = tuple[tuple[str, str], ...]
+StepStatus = Literal["succeeded", "failed", "outcome_unknown"]
+StepSource = Literal["door", "pinned"]
+
+
+@dataclass(frozen=True, slots=True)
+class StepRun:
+    """One attempt of one step, as the node wrapper records it when it ends
+    (workflow-engine R4.9, R4.21, R4.26, R4.28, R6.28).
+
+    `attempt` counts from 1. `iteration_path` is the one in the attempt's
+    idempotency key, "" outside a loop's body. `port` is the lane the step
+    took (a switch's case, an approval's decision, `error`), None when it took
+    none. `error_type` is `error_type_label(code)`, never a provider's text.
+    `simulated` and `source` tell a pinned result from a door's simulation.
+    `field_ids` maps a value's path in `inputs`/`output` to the field it is a
+    value of, for each one the wrapper knows; a value without one is masked
+    when read back (telemetry-and-audit R3.12)."""
+
+    tenant_id: UUID
+    run_id: UUID
+    node_id: str
+    lane_path: LanePath
+    iteration_path: str
+    attempt: int
+    started_at: datetime
+    status: StepStatus
+    port: str | None
+    error_type: str | None
+    simulated: bool
+    source: StepSource
+    inputs: Mapping[str, Any]
+    output: Mapping[str, Any]
+    field_ids: Mapping[str, str]
+
+
+class StepRecorderPort(Protocol):
+    """Where a Studio run's step attempts are recorded (workflow-engine R4.9,
+    R4.21, R4.26; telemetry-and-audit R3.1, R3.12). Declared here by its first
+    consumer, the node wrapper; telemetry-and-audit/03 satisfies it over
+    `platform.run_steps` and runs `dw_agent_runtime.testing.
+    step_recorder_contract` against it.
+
+    Every method refuses an `attempt` below 1 and a `lane_path` or
+    `iteration_path` that is not given (`ValueError`), before it writes."""
+
+    async def attempts(
+        self, *, tenant_id: UUID, run_id: UUID, node_id: str, iteration_path: str
+    ) -> int:
+        """How many attempts of the step are recorded already, so a run taken
+        again after a crash goes on counting instead of starting from 1."""
+        ...
+
+    async def step_started(
+        self,
+        *,
+        tenant_id: UUID,
+        run_id: UUID,
+        node_id: str,
+        lane_path: LanePath,
+        iteration_path: str,
+        attempt: int,
+    ) -> datetime:
+        """Record the attempt's start before its effect, once per `(run_id,
+        node_id, iteration_path, attempt)`; return the `started_at` of the
+        first call, so the same attempt run again after a crash gets the same
+        time without a checkpoint of its own."""
+        ...
+
+    async def step_finished(self, step: StepRun) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class StudioRun:
+    """A Studio run as its row, its manifest and its pinned document say,
+    read under the run's tenant when it is taken (workflow-engine/03 step 2).
+    Nothing here comes from the caller."""
+
+    run_id: UUID
+    thread_id: UUID
+    tenant_id: UUID
+    workspace_id: UUID
+    artifact_kind: str
+    artifact_version_id: UUID
+    # The root's pinned hash: the sealed `definition_hash`, or a draft's
+    # provisional one from its manifest; with `COMPILER_VERSION`, what the
+    # graph is cached under (R4.2).
+    pinned_hash: str
+    run_mode: Literal["live", "test", "simulate"]
+    requested_by: UUID
+    run_as_principal_id: UUID
+    run_manifest_hash: str
+    plan_id: str
+    deadline_at: datetime | None
+    input: Mapping[str, Any]
+    pinned_results: Mapping[str, Any] | None
+    document: Mapping[str, Any]
+    # The manifest's `engine` section (ADR-0109 decision 8): `durability`.
+    engine: Mapping[str, Any]
+    version_no: int | None
+    trace_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class StudioRunBlocked:
+    """A run the take refused to start and left `blocked` with its reason
+    (`incompatible_resume`: a draft whose content changed since the run pinned
+    it, R6.14)."""
+
+    run_id: UUID
+    reason_code: str
+
+
+class StudioRunStorePort(Protocol):
+    """A Studio run's row as the runner moves it (workflow-engine/03; ticket 04
+    adds the lease). Declared here, satisfied by `dw_studio`, which reads the
+    manifest and the version rows; every call runs in a transaction of its own
+    under `tenant_id`'s RLS."""
+
+    async def take(self, tenant_id: UUID, run_id: UUID) -> StudioRun | StudioRunBlocked:
+        """The `queued` run moved to `running`, with its manifest loaded and its
+        pinned versions checked (`PinnedResolver.load`), its root artifact read
+        `FOR SHARE` so a concurrent `save_draft` waits; a pinned version that
+        changed leaves the run `blocked` (`incompatible_resume`) instead. A run
+        that is not this tenant's, or not `queued`, is a `ConflictError`."""
+        ...
+
+    async def finish(
+        self,
+        tenant_id: UUID,
+        run_id: UUID,
+        status: Literal["completed", "failed", "cancelled"],
+        *,
+        error: Mapping[str, Any] | None = None,
+        result: Mapping[str, Any] | None = None,
+    ) -> None:
+        """End a `running` run; a run already ended is left as it is."""
+        ...
+
+    async def cancel_past_deadline(self, tenant_id: UUID, run_id: UUID) -> bool:
+        """End a `running` run `cancelled` with `error.code` `deadline_exceeded`
+        and audit `run.deadline_exceeded` as `system:studio_runs`, in one
+        transaction (R4.11). False when the run was no longer running."""
+        ...
+
+
+def check_step_run(attempt: int, lane_path: object, iteration_path: object) -> None:
+    """What every `StepRecorderPort` refuses before it writes (R4.21, R4.26)."""
+    if not isinstance(attempt, int) or isinstance(attempt, bool) or attempt < 1:
+        raise ValueError(f"an attempt counts from 1, not {attempt!r}")
+    if not isinstance(lane_path, tuple) or not all(
+        isinstance(pair, tuple) and len(pair) == 2 for pair in lane_path
+    ):
+        raise ValueError("a step run names its lane path")
+    if not isinstance(iteration_path, str):
+        raise ValueError("a step run names its iteration path")

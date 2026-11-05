@@ -36,6 +36,7 @@ from dw_platform.testing.rbac import (
     plant_person,
     plant_role,
 )
+from dw_studio.core.application.boundaries import ActorBoundaryPort
 from dw_studio.core.application.ports import ArtifactTx
 from dw_studio.core.application.registry import ArtifactKindEntry
 from dw_studio.kinds import (
@@ -46,6 +47,7 @@ from dw_studio.kinds import (
 )
 from dw_studio.lifecycle.application.service import VERSIONS_SUBMIT_SCOPE
 from dw_studio.testing.world import Person
+from dw_studio.workflows.testing.fakes import RecordingBoundaries
 
 WORKFLOW_KEYS = (
     WORKFLOWS_READ_SCOPE,
@@ -119,11 +121,14 @@ class FakeTriggerActivation:
             self.active[artifact] = version
 
 
-def workflow_entry(triggers: FakeTriggerActivation | None = None) -> ArtifactKindEntry:
+def workflow_entry(
+    triggers: FakeTriggerActivation | None = None, boundaries: ActorBoundaryPort | None = None
+) -> ArtifactKindEntry:
     return workflow_kind(
         nodes=fixture_node_registry(),
         tools=NoTools(),
         triggers=triggers or FakeTriggerActivation(),
+        boundaries=boundaries or RecordingBoundaries(),
     )
 
 

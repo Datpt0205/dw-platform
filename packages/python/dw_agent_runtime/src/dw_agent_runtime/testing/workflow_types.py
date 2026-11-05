@@ -13,7 +13,16 @@ the validator must handle before the Studio types that have them exist:
 - `fixture.break@1`: `exits_loop`;
 - `fixture.trigger@1`: a trigger that uses a data source (an `endpoint`
   artifact) by its id in `source`;
-- `fixture.object@1`: a step that reads an object by its id in `object`.
+- `fixture.object@1`: a step that reads an object by its id in `object`;
+- `fixture.records@1`: a step that runs one record command on an object (by
+  its `api_name`) through the `records` door, naming the fields it reads and
+  writes (`record_uses`), until workflow-nodes/04's `data.object.*`;
+- `fixture.assign@1`: a step that assigns a record through the `assign` door.
+
+The types a Studio run can run (workflow-engine/03) carry a body over
+`EffectDoors`: `fixture.effect@1` through the `tool` door, `fixture.records@1`
+and `fixture.assign@1` through theirs, `fixture.choice@1` answering the port
+its `on` names, `fixture.stop@1` ending the run.
 
 None of them is registered by any composition root: a test passes
 `fixture_node_registry()` where the root would pass `build_node_registry()`.
@@ -24,6 +33,7 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from dw_agent_runtime.wflite.doors import BodyResult, EffectDoor, EffectDoors, Routed, StepBody
 from dw_agent_runtime.wflite.registry import (
     NO_PORTS,
     Block,
@@ -34,9 +44,12 @@ from dw_agent_runtime.wflite.registry import (
     NodeTypeSpec,
     Port,
     Ports,
+    RecordUse,
+    RecordUses,
     StepDependency,
     build_node_registry,
     no_dependencies,
+    no_record_uses,
     registry_of,
 )
 
@@ -72,6 +85,9 @@ def _type(
     dependencies: Callable[[Mapping[str, Any]], tuple[StepDependency, ...]] = no_dependencies,
     is_trigger: bool = False,
     output: JsonSchema = _EMPTY,
+    effect_door: EffectDoor | None = None,
+    body: StepBody | None = None,
+    record_uses: RecordUses = no_record_uses,
 ) -> NodeTypeSpec:
     return NodeTypeSpec(
         type=name,
@@ -90,15 +106,83 @@ def _type(
         ports=ports,
         side_effect_level="internal" if name == "fixture.effect@1" else "none",
         is_trigger=is_trigger,
+        effect_door=effect_door,
+        body=body,
+        record_uses=record_uses,
     )
+
+
+# ---- the bodies a Studio run runs -------------------------------------------------
+
+
+async def _send(
+    config: Mapping[str, Any], inputs: Mapping[str, Any], doors: EffectDoors
+) -> BodyResult:
+    raw = inputs.get("input")
+    return await doors.call("tool", "fixture.send@1", dict(raw) if isinstance(raw, Mapping) else {})
+
+
+async def _records(
+    config: Mapping[str, Any], inputs: Mapping[str, Any], doors: EffectDoors
+) -> BodyResult:
+    values = inputs.get("values")
+    return await doors.call(
+        "records",
+        str(config["command"]),
+        {
+            "object": config["object"],
+            "record_id": inputs.get("record"),
+            "values": dict(values) if isinstance(values, Mapping) else {},
+        },
+    )
+
+
+async def _assign(
+    config: Mapping[str, Any], inputs: Mapping[str, Any], doors: EffectDoors
+) -> BodyResult:
+    return await doors.call(
+        "assign", "assign", {"object": config["object"], "record_id": inputs.get("record")}
+    )
+
+
+async def _choose(
+    config: Mapping[str, Any], inputs: Mapping[str, Any], doors: EffectDoors
+) -> BodyResult:
+    case = str(inputs.get("on"))
+    return Routed({"case": case}, case if case in ("yes", "no") else None)
+
+
+async def _stop(
+    config: Mapping[str, Any], inputs: Mapping[str, Any], doors: EffectDoors
+) -> BodyResult:
+    return {}
+
+
+def _record_uses(config: Mapping[str, Any]) -> tuple[RecordUse, ...]:
+    fields = config.get("fields")
+    writes = config.get("writes")
+    return (
+        RecordUse(
+            str(config["object"]),
+            config["command"],
+            tuple(fields) if isinstance(fields, list) else (),
+            tuple(writes) if isinstance(writes, list) else (),
+        ),
+    )
+
+
+def _assign_uses(config: Mapping[str, Any]) -> tuple[RecordUse, ...]:
+    return (RecordUse(str(config["object"]), "assign"),)
 
 
 def fixture_node_types() -> tuple[NodeTypeSpec, ...]:
     return (
         _type(
             "fixture.effect@1",
-            properties={"note": {"type": "string"}},
+            properties={"note": {"type": "string"}, "input": {"type": ["object", "string"]}},
             output={"type": "object", "properties": {"done": {"type": "boolean"}}},
+            effect_door="tool",
+            body=_send,
         ),
         _type(
             "fixture.choice@1",
@@ -107,6 +191,7 @@ def fixture_node_types() -> tuple[NodeTypeSpec, ...]:
             block="choice",
             ports=_ports("yes", "no"),
             output={"type": "object", "properties": {"case": {"type": "string"}}},
+            body=_choose,
         ),
         _type("fixture.wait@1", properties={"seconds": {"type": "integer", "minimum": 1}}),
         _type(
@@ -127,7 +212,7 @@ def fixture_node_types() -> tuple[NodeTypeSpec, ...]:
             block="loop",
             ports=_ports("body", "max_reached"),
         ),
-        _type("fixture.stop@1", ends_run=True),
+        _type("fixture.stop@1", ends_run=True, body=_stop),
         _type("fixture.break@1", exits_loop=True),
         _type(
             "fixture.trigger@1",
@@ -142,6 +227,37 @@ def fixture_node_types() -> tuple[NodeTypeSpec, ...]:
             required=("object",),
             dependencies=_uses("object"),
             output={"type": "object", "properties": {"record": {"type": "object"}}},
+        ),
+        _type(
+            "fixture.records@1",
+            properties={
+                "object": _ID,
+                "command": {"enum": ["read", "create", "update", "delete"]},
+                "record": {"type": "string"},
+                "fields": {"type": "array", "items": _ID},
+                "writes": {"type": "array", "items": _ID},
+                "values": {"type": "object"},
+            },
+            required=("object", "command"),
+            output={
+                "type": "object",
+                "properties": {"record": {"type": "object"}, "replayed": {"type": "boolean"}},
+            },
+            effect_door="records",
+            body=_records,
+            record_uses=_record_uses,
+        ),
+        _type(
+            "fixture.assign@1",
+            properties={"object": _ID, "record": {"type": "string"}},
+            required=("object",),
+            output={
+                "type": "object",
+                "properties": {"assignee": {"type": "string"}, "replayed": {"type": "boolean"}},
+            },
+            effect_door="assign",
+            body=_assign,
+            record_uses=_assign_uses,
         ),
     )
 

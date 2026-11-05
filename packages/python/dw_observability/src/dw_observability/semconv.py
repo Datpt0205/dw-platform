@@ -75,7 +75,9 @@ GENAI_OPERATIONS: Final = frozenset({OP_CHAT, OP_EXECUTE_TOOL, OP_INVOKE_WORKFLO
 DW_KNOWLEDGE_RERANK: Final = "dw.knowledge.rerank"
 # One call of the egress client (connections-and-vault R3).
 DW_EGRESS_REQUEST: Final = "dw.egress.request"
-DW_SPAN_NAMES: Final = frozenset({DW_KNOWLEDGE_RERANK, DW_EGRESS_REQUEST})
+# One attempt of a Studio step, inside the node wrapper (workflow-engine R4.9).
+DW_NODE: Final = "dw.node"
+DW_SPAN_NAMES: Final = frozenset({DW_KNOWLEDGE_RERANK, DW_EGRESS_REQUEST, DW_NODE})
 
 
 def chat_span_name(model: str) -> str:
@@ -139,6 +141,10 @@ DW_ATTRIBUTES: Final = frozenset(
         "dw.run_id",
         # live, test or simulate (tenant-config R4.3): a value from a set.
         "dw.run_mode",
+        # A Studio step's id and its `type@major` (the `dw.node` span): ids
+        # the document gives, never a value a step read or wrote.
+        "dw.step_id",
+        "dw.step_type",
         "dw.subject_ref",
         "dw.tenant_id",
         "dw.tool_name",
@@ -158,6 +164,8 @@ METRIC_LABELS: Final = frozenset(
         "approval_type",
         "direction",
         "error",
+        # `dw_node_failure_total`: `error_type_label(code)`, a closed set.
+        "error_type",
         "model",
         # The egress counters (connections-and-vault R3): each a value from a set.
         "outcome",

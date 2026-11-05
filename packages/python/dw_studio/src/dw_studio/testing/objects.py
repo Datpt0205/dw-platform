@@ -30,6 +30,7 @@ from dw_studio.records.adapters.definition_store import object_store_of
 from dw_studio.testing.workflows import NoTools
 from dw_studio.testing.world import Person
 from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
+from dw_studio.workflows.testing.fakes import RecordingBoundaries
 
 
 def object_field(api_name: str, type_: str = "text", **over: Any) -> dict[str, Any]:
@@ -84,4 +85,5 @@ def running_kinds() -> tuple[ArtifactKindEntry, ...]:
         nodes=build_node_registry(),
         tools=NoTools(),
         triggers=NoTriggerSubscriptions(),
+        boundaries=RecordingBoundaries(),
     )

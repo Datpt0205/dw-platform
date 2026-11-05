@@ -22,6 +22,13 @@ and `exits_loop`; `dependencies` is what a step of it uses that Studio's
 where-used index records (workflow-engine R1.3). The four have no default, so
 a type that forgot one cannot be built.
 
+What a Studio run needs of a type (workflow-engine/03): `effect_door`, the one
+door its body may reach the world through, or none (no default either: the
+wrapper hands a body only that door, and a pinned result is accepted only for
+a step that has one, R3.23); `body`, how a step of it runs in a Studio run; and
+`record_uses`, the records a step of it reads or writes, from which a
+workflow's data boundary is derived (R1.7), never from the type's name.
+
 Every field has a named reader (workflow-nodes R1.4, WN15):
 `dw_studio/tests/workflows/test_node_registry.py` holds the table, and a field
 joins this class only with its first reader, in the same change.
@@ -35,7 +42,9 @@ from types import MappingProxyType
 from typing import Any, Literal, TypedDict, get_args
 
 from dw_agent_runtime.contracts import SideEffectLevel
+from dw_agent_runtime.wflite import bodies
 from dw_agent_runtime.wflite.document import OnError
+from dw_agent_runtime.wflite.doors import EffectDoor, StepBody
 from dw_kernel.canonical import content_hash
 
 JsonSchema = Mapping[str, Any]
@@ -67,6 +76,29 @@ Dependencies = Callable[[Mapping[str, Any]], tuple[StepDependency, ...]]
 
 def no_dependencies(config: Mapping[str, Any]) -> tuple[StepDependency, ...]:
     """A type whose tools and prompts are the platform's, not Studio artifacts."""
+    return ()
+
+
+RecordCommand = Literal["read", "create", "update", "delete", "assign"]
+
+
+@dataclass(frozen=True, slots=True)
+class RecordUse:
+    """One command a step runs on one object's records through its door, and
+    the fields its config names: each read, or edited when the step writes it
+    (record-access R6.7; ADR-0103 decision 5)."""
+
+    object_api_name: str
+    command: RecordCommand
+    fields: tuple[str, ...] = ()
+    writes: tuple[str, ...] = ()
+
+
+RecordUses = Callable[[Mapping[str, Any]], tuple[RecordUse, ...]]
+
+
+def no_record_uses(config: Mapping[str, Any]) -> tuple[RecordUse, ...]:
+    """A type that touches no Studio record."""
     return ()
 
 
@@ -145,8 +177,14 @@ class NodeTypeSpec:
     ends_run: bool
     exits_loop: bool
     dependencies: Dependencies
+    # The one door a step's body may use in a Studio run (`wflite.doors`).
+    effect_door: EffectDoor | None
     side_effect_level: SideEffectLevel = "none"
     is_trigger: bool = False
+    # How a step of the type runs in a Studio run; None for a type a Studio
+    # run cannot run yet (the compiler refuses it there).
+    body: StepBody | None = None
+    record_uses: RecordUses = no_record_uses
 
     def output_schema(self, config: Mapping[str, Any]) -> JsonSchema:
         """The output of a step of this type with `config`, from `output`."""
@@ -224,6 +262,7 @@ class _Shape(TypedDict):
     ends_run: bool
     exits_loop: bool
     dependencies: Dependencies
+    effect_door: EffectDoor | None
 
 
 # The six types of wf-lite: two run one of their lanes, none ends the run or
@@ -233,8 +272,12 @@ _PLAIN: _Shape = {
     "ends_run": False,
     "exits_loop": False,
     "dependencies": no_dependencies,
+    "effect_door": None,
 }
 _CHOICE: _Shape = {**_PLAIN, "block": "choice"}
+# The two types whose step makes an effect: a model call and a tool call.
+_MODEL_STEP: _Shape = {**_PLAIN, "effect_door": "model"}
+_TOOL_STEP: _Shape = {**_PLAIN, "effect_door": "tool"}
 
 
 def _wf_lite_types() -> tuple[NodeTypeSpec, ...]:
@@ -279,7 +322,8 @@ def _wf_lite_types() -> tuple[NodeTypeSpec, ...]:
             },
             output=OutputFromConfig("output_schema"),
             ports=NO_PORTS,
-            **_PLAIN,
+            body=bodies.llm,
+            **_MODEL_STEP,
         ),
         NodeTypeSpec(
             type="tool.call@1",
@@ -297,7 +341,8 @@ def _wf_lite_types() -> tuple[NodeTypeSpec, ...]:
             # The node writes the tool's typed output under `result`.
             output=FixedOutput({"type": "object", "properties": {"result": {}}}),
             ports=NO_PORTS,
-            **_PLAIN,
+            body=bodies.tool,
+            **_TOOL_STEP,
         ),
         NodeTypeSpec(
             type="human.approval@1",
@@ -326,6 +371,7 @@ def _wf_lite_types() -> tuple[NodeTypeSpec, ...]:
                 }
             ),
             ports=FixedPorts((Port("approved", "Duyệt"), Port("rejected", "Từ chối"))),
+            body=bodies.approval,
             **_CHOICE,
         ),
         NodeTypeSpec(
@@ -361,6 +407,7 @@ def _wf_lite_types() -> tuple[NodeTypeSpec, ...]:
             },
             output=FixedOutput({"type": "object", "properties": {"case": {"type": "string"}}}),
             ports=KeyedPorts("cases", default=Port("default", "Khác")),
+            body=bodies.switch,
             **_CHOICE,
         ),
     )

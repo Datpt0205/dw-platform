@@ -33,6 +33,20 @@ the door verified, never from the request:
   the plan does not list (`model_profile_unavailable`) leaves no manifest and
   no run row.
 
+- the provisional boundary of a `simulate` run whose root is not live yet
+  (workflow-engine/03; R3.13, R3.15): a draft that passed R3.11's check, under
+  its provisional hash, or a sealed candidate (`evaluating`,
+  `awaiting_approval`) under its `definition_hash`, derived by the kind's
+  deriver over that very content and written through `ActorBoundaryPort` in
+  this transaction, after the run row; a kind with no deriver is refused
+  before anything is written. The run's boundary is gone when it ends (the
+  trigger of revision 66777ec67d16).
+- the run's pinned results (R3.16, R3.23): only for a `simulate` run, each
+  for a step of the pinned document whose type has a door, shaped
+  `{"output": ...}` or `{"error": {"code", "message"}}`; anything else is
+  `pinned_result_invalid` and no row. They go to their own column, never the
+  input.
+
 A request repeated under the same `request_key` gets the first run back, and a
 different request under it is refused (R3.20). Whether the run-as principal
 is still active is the dispatch's question (R5.15), not the door's.
@@ -41,7 +55,7 @@ is still active is the dispatch's question (R5.15), not the door's.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass, field
 from types import MappingProxyType
@@ -54,6 +68,7 @@ from dw_kernel.run_mode import RunMode
 from dw_platform.application.access_context import AccessContext
 from dw_platform.domain.audit import AuditEvent, lane_audit_event, system_actor, system_actor_label
 from dw_studio.core.application.bindings import BindingPins, PinnedBindings
+from dw_studio.core.application.boundaries import ActorBoundaryPort, BoundaryDeriver
 from dw_studio.core.application.ports import RootVersion, RunManifestTx
 from dw_studio.core.application.registry import ArtifactKindRegistry
 from dw_studio.core.application.run_manifests import RunManifestBuilder
@@ -63,6 +78,13 @@ from dw_studio.core.domain.bindings import BindingDecl
 
 RESOURCE: Final = "worker_run"
 STARTED: Final = "run.started"
+PINNED_RESULT_INVALID: Final = "pinned_result_invalid"
+# The roots a `simulate` run reads under a provisional boundary (R3.13, R3.15).
+_PROVISIONAL_STAGES: Final = frozenset({Stage.DRAFT, Stage.EVALUATING, Stage.AWAITING_APPROVAL})
+
+PinnableSteps = Callable[[Any], frozenset[str]]
+"""A kind's answer to which steps of a document a pinned result may stand in
+for (the `workflow` kind's `pinnable_steps`)."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +182,9 @@ class RunRequest:
     run_as_principal_id: uuid.UUID | None = None
     # The inbound event a `datahub` run is asked for.
     inbound_event_id: uuid.UUID | None = None
+    # What a `simulate` run's steps answer instead of their doors, by step id
+    # (R3.16): the gate's scripted case (agent-lifecycle/06) in W1.
+    pinned_results: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,6 +219,7 @@ class QueuedRun:
     priority: int
     input: Mapping[str, Any]
     release_manifest_ref: str
+    pinned_results: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -205,6 +231,7 @@ class ExistingRun:
     run_mode: str
     run_as_principal_id: uuid.UUID | None
     input: Any
+    pinned_results: Any = None
 
 
 class RunIntakeTx(RunManifestTx, Protocol):
@@ -242,6 +269,24 @@ def _run_as_mismatch(message: str) -> PermissionDeniedError:
     return PermissionDeniedError(message, details={"reason_code": "run_as_mismatch"})
 
 
+def _pinned_invalid(message: str) -> DomainError:
+    return DomainError(message, details={"reason_code": PINNED_RESULT_INVALID})
+
+
+def _pinned_shape(result: Any) -> bool:
+    """`{"output": {...}}` or `{"error": {"code": str, "message": str}}`."""
+    if not isinstance(result, Mapping) or len(result) != 1:
+        return False
+    if "output" in result:
+        return isinstance(result["output"], Mapping)
+    error = result.get("error")
+    return (
+        isinstance(error, Mapping)
+        and set(error) == {"code", "message"}
+        and all(isinstance(error[k], str) and error[k] for k in ("code", "message"))
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _Parties:
     tenant_id: uuid.UUID
@@ -266,9 +311,19 @@ class RunRequestService:
         ids: IdGenerator,
         *,
         bindings: BindingPins,
+        boundaries: ActorBoundaryPort,
+        boundary_derivers: Mapping[str, BoundaryDeriver],
+        pinnable: Mapping[str, PinnableSteps],
     ) -> None:
         self.store = store
         self.bindings = bindings
+        self.boundaries = boundaries
+        # kind -> its boundary derivation, and kind -> its pinnable steps,
+        # frozen where the composition root builds them.
+        self.boundary_derivers: Mapping[str, BoundaryDeriver] = MappingProxyType(
+            dict(boundary_derivers)
+        )
+        self.pinnable: Mapping[str, PinnableSteps] = MappingProxyType(dict(pinnable))
         self.registry = registry
         self.manifests = manifests
         # (artifact_kind, trigger_kind) -> the key a person must hold to ask.
@@ -291,6 +346,8 @@ class RunRequestService:
                 "only a data-hub run is asked for an inbound event",
                 details={"reason_code": "inbound_event_unexpected"},
             )
+        if request.pinned_results is not None and rule.run_mode != "simulate":
+            raise _pinned_invalid("only a simulated run carries pinned results")
         parties = self._parties(request, rule)  # (c) R3.19
         requester = request.requester
         opened = (
@@ -354,6 +411,15 @@ class RunRequestService:
             problems = document_problems(entry, version.document)
             if problems:
                 raise DocumentInvalidError("the draft is not valid", problems)
+        provisional = rule.run_mode == "simulate" and version.stage in _PROVISIONAL_STAGES
+        deriver = self.boundary_derivers.get(root.kind)
+        if provisional and deriver is None:
+            raise ConflictError(
+                "this kind cannot run before it is live",
+                details={"reason_code": "boundary_deriver_missing"},
+            )
+        if request.pinned_results is not None:
+            self._check_pinned(root.kind, version.document, request.pinned_results)
 
         async def pin(decls: Sequence[BindingDecl]) -> PinnedBindings | None:
             return await self.bindings.pin(
@@ -368,7 +434,7 @@ class RunRequestService:
 
         # The plan the run's model profiles are pinned under (model-connections
         # R1.4, R1.6): the tenant's own, read in this transaction.
-        manifest_hash = await self.manifests.build(
+        manifest_hash, pinned_hash = await self.manifests.build_pinned(
             tx,
             version.id,
             rule.run_mode,
@@ -397,6 +463,9 @@ class RunRequestService:
             priority=rule.priority,
             input=input_payload,
             release_manifest_ref=self.manifests.release_manifest_ref,
+            pinned_results=(
+                None if request.pinned_results is None else dict(request.pinned_results)
+            ),
         )
         if not await tx.insert_queued_run(run):
             # R3.6: a concurrent request with this key committed first.
@@ -407,8 +476,31 @@ class RunRequestService:
                     details={"reason_code": "request_key_reused"},
                 )
             return _same_request(raced, request, rule, parties, input_payload)
+        if provisional and deriver is not None:
+            # R3.13, R3.15: after the row, which the provisional boundary's
+            # trigger looks for, in its transaction; over the content hashed.
+            derived = deriver.derive(version.document)
+            await self.boundaries.record_provisional(
+                tx.session,
+                deriver.kind,
+                run.id,
+                version.id,
+                pinned_hash,
+                derived.objects,
+                derived.fields,
+            )
         await tx.audit(self._started(run, parties))  # R3.21
         return RunRequestResult(run.id, created=True)
+
+    def _check_pinned(self, kind: str, document: Any, pinned: Mapping[str, Any]) -> None:
+        """R3.23: each pinned result names a step with a door, in its shape."""
+        steps = self.pinnable.get(kind)
+        if steps is None:
+            raise _pinned_invalid("this kind takes no pinned result")
+        allowed = steps(document)
+        for step_id, result in pinned.items():
+            if step_id not in allowed or not _pinned_shape(result):
+                raise _pinned_invalid("a pinned result names no step with a door, or is malformed")
 
     async def _may_run(
         self, tx: RunIntakeTx, root: RootVersion, trigger_kind: str, workspace_id: uuid.UUID
@@ -471,6 +563,8 @@ def _same_request(
         or existing.run_mode != rule.run_mode
         or existing.run_as_principal_id != parties.run_as
         or existing.input != input_payload
+        or existing.pinned_results
+        != (None if request.pinned_results is None else dict(request.pinned_results))
     ):
         raise ConflictError(
             "this request key already started a different run",

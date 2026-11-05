@@ -23,6 +23,18 @@ something else:
 A wait is `interrupt()` on the first line of its own node, so a resumed node
 repeats nothing before it: an approval is two nodes, the gate that asks
 `DecisionGate` (and may let the DW decide alone), then the wait.
+
+A Studio run (workflow-engine/03) compiles through the same lowering and the
+same chains, joins and node names, with its own wrapper: each step's node is
+a `StudioNode` (`wflite.node_wrapper`) running its type's `body` through the
+door its type declares, a block's lanes are entered by the port its body
+answers (`port__<id>`), and a step's error lane by `err__<id>`, both meeting
+at `join__<id>`; a step whose type `ends_run` goes to the end. The graph is a
+function of the document and `COMPILER_VERSION` only: what a run pinned (its
+manifest, its mode, its pinned results) reaches the nodes at run time through
+the run's context, so two runs of one version share one compiled graph. A
+pack's run keeps everything above, and reads no `retry`, `timeout_s` or
+`on_error`, which `PACK_RULES` refuses anyway.
 """
 
 from __future__ import annotations
@@ -33,7 +45,7 @@ from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import timedelta
 from itertools import pairwise
-from typing import Annotated, Any, Protocol, TypedDict
+from typing import Annotated, Any, Final, Protocol, TypedDict, cast
 from uuid import UUID
 
 from langgraph.errors import GraphBubbleUp
@@ -48,10 +60,16 @@ from dw_agent_runtime.ports import ModelGateway, ModelOutputInvalidError, ModelR
 from dw_agent_runtime.run_control import RunHaltedError
 from dw_agent_runtime.tools import ToolBehaviour
 from dw_agent_runtime.wflite.catalog import PinnedWorkflow
-from dw_agent_runtime.wflite.document import Step
-from dw_agent_runtime.wflite.ir import lower
-from dw_agent_runtime.wflite.registry import NodeTypeSpec, build_node_registry
-from dw_kernel.errors import DWError
+from dw_agent_runtime.wflite.document import Step, WorkflowDocument
+from dw_agent_runtime.wflite.ir import ERROR_LANE, lower
+from dw_agent_runtime.wflite.node_wrapper import (
+    ERROR_PORT,
+    StudioNode,
+    StudioNodePorts,
+    port_label,
+)
+from dw_agent_runtime.wflite.registry import KeyedPorts, NodeTypeSpec, build_node_registry
+from dw_kernel.errors import ConfigError, DWError
 from dw_kernel.ids import TenantId
 from dw_kernel.ports import UtcClock
 from dw_platform.application.decision_gate import AskPerson, Auto
@@ -60,6 +78,9 @@ from dw_platform.application.work_queue import DwLookupPort, WorkScope
 
 WORKER_PREFIX = "dw:"
 _MAX_FIELD = 4000
+# Raised whenever the way a document becomes a graph changes: a Studio graph is
+# cached under it, so a process never runs a graph built the old way (R4.2).
+COMPILER_VERSION: Final = "1"
 
 
 def worker_id_of(key: str) -> str:
@@ -186,15 +207,21 @@ def _resolve(value: Any, state: Mapping[str, Any]) -> Any:
 # ------------------------------------------------------------- the graph --
 
 
+@dataclass(frozen=True)
+class StudioWorkflow:
+    """A Studio run's pinned document: the root version's content read where
+    the run is taken, its pinned hash, and the registry it is compiled with."""
+
+    document: WorkflowDocument
+    pinned_hash: str
+    registry: Mapping[str, NodeTypeSpec]
+
+
 class _Builder:
     def __init__(self, pinned: PinnedWorkflow, ports: WfPorts) -> None:
         self.pinned = pinned
         self.ports = ports
-        self.registry: Mapping[str, NodeTypeSpec] = build_node_registry()
-        self.ir = lower(pinned.document, self.registry)
-        # A pinned document passed the validator, so its ids are unique.
-        self._index = {placed.step.id: placed.index for placed in self.ir.steps}
-        self.steps: list[Step] = [placed.step for placed in self.ir.steps]
+        self._lower(pinned.document, build_node_registry())
         channels: dict[str, Any] = {
             "work": dict,
             "params": dict,
@@ -208,6 +235,16 @@ class _Builder:
             channels[f"out__{step.id}"] = dict
             if step.type == "human.approval@1":
                 channels[f"ask__{step.id}"] = dict
+        self._graph_of(channels)
+
+    def _lower(self, document: WorkflowDocument, registry: Mapping[str, NodeTypeSpec]) -> None:
+        self.registry: Mapping[str, NodeTypeSpec] = registry
+        self.ir = lower(document, registry)
+        # A pinned document passed the validator, so its ids are unique.
+        self._index = {placed.step.id: placed.index for placed in self.ir.steps}
+        self.steps: list[Step] = [placed.step for placed in self.ir.steps]
+
+    def _graph_of(self, channels: dict[str, Any]) -> None:
         self.state = TypedDict("WorkflowState", channels, total=False)  # type: ignore[misc]
         self.graph: StateGraph = StateGraph(self.state)  # type: ignore[type-arg]
 
@@ -220,11 +257,16 @@ class _Builder:
         if not steps:
             return exit_node
         nodes = [self._block(step) for step in steps]
-        # Each block's last node goes to the next block's first node.
-        for (_, last), (first, _) in pairwise(nodes):
-            self._edge(last, first)
-        self._edge(nodes[-1][1], exit_node)
+        # Each block's last node goes to the next block's first node, and the
+        # last one to `exit`; a step that ends the run goes to the end.
+        for step, ((_, last), (first, _)) in zip(steps, pairwise(nodes), strict=False):
+            self._edge(last, END if self._ends(step) else first)
+        self._edge(nodes[-1][1], END if self._ends(steps[-1]) else exit_node)
         return nodes[0][0]
+
+    def _ends(self, step: Step) -> bool:
+        """No pack type ends the run (wf-lite R2.1)."""
+        return False
 
     def _edge(self, source: str, target: str) -> None:
         """An edge that ends the run once the work is handed off."""
@@ -550,10 +592,108 @@ async def _noop(state: Mapping[str, Any]) -> dict[str, Any]:
     return {}
 
 
-def compile_workflow(pinned: PinnedWorkflow, ports: WfPorts) -> StateGraph:  # type: ignore[type-arg]
-    """R6.1: the uncompiled StateGraph of one pinned document."""
-    builder = _Builder(pinned, ports)
-    first = builder.chain(builder.pinned.document.steps, END)
+class _StudioBuilder(_Builder):
+    """The same lowering, chains and node names as a pack's, with a Studio
+    run's wrapper and routing (workflow-engine/03)."""
+
+    def __init__(self, workflow: StudioWorkflow, ports: StudioNodePorts) -> None:
+        self.workflow = workflow
+        self.studio = ports
+        self._lower(workflow.document, workflow.registry)
+        channels: dict[str, Any] = {"work": dict, "trail": Annotated[list, operator.add]}
+        for step in self.steps:
+            channels[f"out__{step.id}"] = dict
+            channels[f"port__{step.id}"] = str
+            channels[f"err__{step.id}"] = bool
+        self._graph_of(channels)
+
+    def _spec(self, step: Step) -> NodeTypeSpec:
+        spec = self.registry.get(step.type)
+        # Parallel lanes and loops are workflow-engine/06's; a type without a
+        # body (a wait) needs workflow-engine/05's durable wait.
+        if spec is None or spec.body is None or spec.block in ("parallel", "loop"):
+            raise ConfigError(
+                "this step type cannot run in a Studio run yet",
+                details={"reason_code": "step_type_unavailable", "type": step.type},
+            )
+        return spec
+
+    def _ends(self, step: Step) -> bool:
+        return self._spec(step).ends_run
+
+    def _edge(self, source: str, target: str) -> None:
+        self.graph.add_edge(source, target)
+
+    def _lane_path(self, step: Step) -> tuple[tuple[str, str], ...]:
+        path = [
+            (parent.step.id, ERROR_PORT if port == ERROR_LANE else (port_label(port) or port))
+            for parent, port in self.ir.ancestors(self._index[step.id])
+        ]
+        return tuple(reversed(path))
+
+    def _block(self, step: Step) -> tuple[str, str]:
+        spec = self._spec(step)
+        lanes = self._lanes(step)
+        # The error lane as the IR lowered it; None when the step has none.
+        errors = self.ir.lanes_of(self._index[step.id], errors=True).get(ERROR_LANE)
+        default = spec.ports.default if isinstance(spec.ports, KeyedPorts) else None
+        fallback = default.name if default is not None and default.name in lanes else None
+
+        def lane_taken(port: str | None) -> str | None:
+            """The lane a body's port names, or the type's default lane."""
+            return port if port in lanes else fallback
+
+        node: Callable[..., Awaitable[dict[str, Any]]] = StudioNode(
+            step=step,
+            spec=spec,
+            lane_path=self._lane_path(step),
+            ports=self.studio,
+            resolve=_resolve,
+            has_error_lane=errors is not None,
+            lane_taken=lane_taken,
+        ).__call__
+        self.graph.add_node(step.id, node)
+        if not lanes and errors is None and spec.block == "none":
+            return step.id, step.id
+        join = f"join__{step.id}"
+        self.graph.add_node(join, _studio_join(step.id))
+        targets = {port: self.chain(lane, join) for port, lane in lanes.items()}
+        error_entry = self.chain(errors, join) if errors is not None else None
+
+        def route(state: Mapping[str, Any]) -> str:
+            if error_entry is not None and state.get(f"err__{step.id}"):
+                return error_entry
+            return targets.get(str(state.get(f"port__{step.id}") or ""), join)
+
+        destinations = {*targets.values(), join}
+        if error_entry is not None:
+            destinations.add(error_entry)
+        self.graph.add_conditional_edges(step.id, route, sorted(destinations))
+        return step.id, join
+
+
+def _studio_join(step_id: str) -> Callable[..., Awaitable[dict[str, Any]]]:
+    """A Studio join leaves a trail entry, so a golden trace sees it fire."""
+
+    async def join(state: Mapping[str, Any]) -> dict[str, Any]:
+        return {"trail": [{"step_id": f"join__{step_id}", "status": "join"}]}
+
+    return join
+
+
+def compile_workflow(
+    pinned: PinnedWorkflow | StudioWorkflow, ports: WfPorts | StudioNodePorts
+) -> StateGraph:  # type: ignore[type-arg]
+    """R6.1: the uncompiled StateGraph of one pinned document: a pack's with
+    the pack's nodes, a Studio run's with the Studio wrapper."""
+    builder: _Builder
+    if isinstance(pinned, StudioWorkflow):
+        if not isinstance(ports, StudioNodePorts):
+            raise TypeError("a Studio workflow compiles with StudioNodePorts")
+        builder = _StudioBuilder(pinned, ports)
+    else:
+        builder = _Builder(pinned, cast(WfPorts, ports))
+    first = builder.chain(pinned.document.steps, END)
     builder.graph.add_edge(START, first)
     return builder.graph
 

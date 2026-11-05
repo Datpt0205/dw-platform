@@ -30,6 +30,7 @@ import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from dw_platform.testing.rbac import register_key, unregister_key
+from dw_studio.core.application.boundaries import BoundaryDeriver, DerivedBoundary
 from dw_studio.core.application.ports import ArtifactTx
 from dw_studio.core.application.registry import ArtifactKindEntry
 from dw_studio.core.domain.artifacts import DocumentProblem, Reference, TargetKind, Usage
@@ -134,6 +135,9 @@ async def _remove_rows(engine: AsyncEngine, kinds: Sequence[str]) -> None:
                 # An object's definition in the same company (custom-objects
                 # 02) holds its versions; its fields and options CASCADE.
                 "DELETE FROM studio.records WHERE tenant_id = ANY(:t)",
+                # A data boundary holds its objects (workflow-engine/03's
+                # publish hook and provisional boundaries record them).
+                "DELETE FROM studio.actor_boundaries WHERE tenant_id = ANY(:t)",
                 "DELETE FROM studio.object_defs WHERE tenant_id = ANY(:t)",
                 "DELETE FROM studio.artifact_versions WHERE tenant_id = ANY(:t)",
                 "DELETE FROM studio.artifacts WHERE tenant_id = ANY(:t)",
@@ -177,3 +181,15 @@ async def planted_fixture_kinds(
                 {"k": kinds, "p": list(FIXTURE_KEYS)},
             )
         assert left == 0, "the fixture kinds outlived their module"
+
+
+def fixture_boundary_derivers() -> dict[str, BoundaryDeriver]:
+    """The fixture kinds' boundary derivation for `RunRequestService`: an
+    empty boundary, recorded as a workflow's, so a `simulate` run of a draft
+    or a candidate is accepted the way a real kind's is (workflow-engine/03)
+    and reads no record."""
+
+    def empty(document: object) -> DerivedBoundary:
+        return DerivedBoundary((), ())
+
+    return {entry.kind: BoundaryDeriver("workflow", empty) for entry in FIXTURE_KINDS}

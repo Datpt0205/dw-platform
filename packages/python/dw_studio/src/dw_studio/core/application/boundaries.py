@@ -19,7 +19,7 @@ its company (R6.8, R6.10).
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
@@ -83,3 +83,23 @@ class ActorBoundaryPort(Protocol):
         is not `simulate` or not the company's, or a second boundary for it,
         is a database error. Returns the boundary id."""
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class DerivedBoundary:
+    """What a kind's derivation finds in a document: the boundary a version,
+    or a `simulate` run of a root not yet live, runs under (workflow-engine
+    R1.7, R3.13, R3.15)."""
+
+    objects: tuple[ObjectBoundary, ...]
+    fields: tuple[FieldBoundary, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class BoundaryDeriver:
+    """An artifact kind's derivation over a version's document, and the kind
+    of boundary it records, registered by artifact kind at the composition
+    root (the `workflow` kind's `derive_workflow_boundary`)."""
+
+    kind: BoundaryKind
+    derive: Callable[[Any], DerivedBoundary]

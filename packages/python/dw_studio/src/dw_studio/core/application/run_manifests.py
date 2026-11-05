@@ -80,6 +80,25 @@ class RunManifestBuilder:
         `tenant_id` is the transaction's own and `plan_id` that tenant's plan,
         both from the caller's verified context, never from a request; they
         decide which model profiles the run may use and nothing else."""
+        manifest_hash, _ = await self.build_pinned(
+            uow, root_version_id, run_mode, tenant_id=tenant_id, plan_id=plan_id, pin=pin
+        )
+        return manifest_hash
+
+    async def build_pinned(
+        self,
+        uow: RunManifestTx,
+        root_version_id: uuid.UUID,
+        run_mode: RunMode,
+        *,
+        tenant_id: uuid.UUID,
+        plan_id: str | None,
+        pin: Pin | None = None,
+    ) -> tuple[str, str]:
+        """`build`, and the root's pinned hash beside the manifest's: a sealed
+        root's `definition_hash`, or the provisional one a draft's content
+        gets here, which a provisional boundary is recorded under
+        (workflow-engine R3.13)."""
         found = await uow.root_version(root_version_id)
         entry = None if found is None else self.registry.get(found.kind)
         if found is None or entry is None:
@@ -146,4 +165,4 @@ class RunManifestBuilder:
             list(dict.fromkeys([version.id, *pinned])),
             None if bindings is None else bindings.config_version_id,
         )
-        return manifest_hash
+        return manifest_hash, pinned_hash

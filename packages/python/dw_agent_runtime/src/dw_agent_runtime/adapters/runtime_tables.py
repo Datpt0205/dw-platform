@@ -78,6 +78,9 @@ worker_runs = sa.Table(
     sa.Column("lease_until", sa.TIMESTAMP(timezone=True), nullable=True),
     sa.Column("attempt", sa.SmallInteger, nullable=False, server_default="0"),
     sa.Column("deadline_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    # What a `simulate` run's steps answer instead of their doors, fixed at
+    # insert (workflow-engine/03, revision 66777ec67d16).
+    sa.Column("pinned_results", JSONB, nullable=True),
 )
 
 run_checkpoints = sa.Table(
