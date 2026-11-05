@@ -17,6 +17,7 @@ import uuid
 from collections.abc import Awaitable, Callable, Sequence
 
 import pytest
+from absent_store import a_missing_collection_purge_is_done
 from qdrant_client import AsyncQdrantClient
 from qdrant_client.http.exceptions import ResponseHandlingException
 
@@ -221,7 +222,8 @@ async def test_deleting_from_a_collection_never_made_is_already_done(
     )
 
     await fresh.delete([uuid.uuid4()])
-    await fresh.delete_by_tenant(TENANT)
+    # The one rule every store the offboarding lane empties answers to (R11.12).
+    await a_missing_collection_purge_is_done(fresh)
 
 
 async def test_a_delete_against_a_store_that_is_down_raises() -> None:

@@ -1,5 +1,5 @@
-"""Offboarding reaches every tenant table of `studio` and every new tenant table
-of `platform` (studio-skeleton R4).
+"""Offboarding reaches every tenant table of every schema, and every new tenant
+table of `platform` (studio-skeleton R4, foundations-hardening R11.14).
 
 The offboarding lane exports then purges what the catalog says `dw_app` may
 SELECT and DELETE. A table it may only read by column, or may not delete from,
@@ -79,15 +79,27 @@ _PLATFORM_PREDATING: dict[str, str] = dict.fromkeys(
     "có trước luật, 27/10/2026",
 )
 
+# Every schema but the system's (foundations-hardening R11.14): a tenant table in
+# `memory`, `knowledge` or a product context's schema is as much the customer's
+# as one in `studio`, and reading two schemas made this check blind to the rest
+# (discovery/09, failure-modes #0).
 _TENANT_TABLES = sa.text(
     """
     SELECT n.nspname || '.' || c.relname
     FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname IN ('studio', 'platform') AND c.relkind IN ('r', 'p')
-      AND NOT c.relispartition
+    WHERE n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'
+      AND c.relkind IN ('r', 'p') AND NOT c.relispartition
       AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid
                   AND a.attname = 'tenant_id' AND NOT a.attisdropped)
     """
+)
+
+# Asked per table of `_TENANT_TABLES`, apart from the lane's own query, so the two
+# are not blind in the same place: `has_table_privilege` is false for a table
+# `dw_app` reads only by column, which the lane's catalog then skips.
+_READ_BY_COLUMN_ONLY = sa.text(
+    "SELECT has_any_column_privilege('dw_app', CAST(:t AS regclass), 'SELECT')"
+    "   AND NOT has_table_privilege('dw_app', CAST(:t AS regclass), 'SELECT')"
 )
 
 _FOREIGN_KEYS = sa.text(
@@ -143,11 +155,17 @@ async def offboarding_violations(
     edges = (await conn.execute(_FOREIGN_KEYS)).all()
     found: list[str] = []
 
-    # R4.1, R4.3: each side handled, or listed.
+    # R11.14: column-only SELECT, in every schema and predating or not.
+    for table in sorted(tables):
+        if await conn.scalar(_READ_BY_COLUMN_ONLY, {"t": table}):
+            found.append(f"R11.14 {table} is read by column only")
+
+    # R4.1, R4.3 (R11.14 outside `studio` and `platform`): each side handled, or listed.
     for table in sorted(tables):
         if table in predating:
             continue
-        rule = "R4.1" if table.startswith("studio.") else "R4.3"
+        schema = table.split(".", 1)[0]
+        rule = {"studio": "R4.1", "platform": "R4.3"}.get(schema, "R11.14")
         if table not in exported and table not in export_exclusions:
             found.append(f"{rule} {table} is not exported and has no export exclusion")
         if table not in position and table not in purge_exclusions:
@@ -288,13 +306,15 @@ _TENANT = "tenant_id = NULLIF(current_setting('app.tenant_id', true), '')::uuid"
 
 
 def _table(name: str, *, columns: str = "", purgeable: bool = True) -> list[str]:
-    """A tenant table the lane can see: a `tenant_isolation_*` policy and, when
-    `purgeable`, SELECT and DELETE for dw_app; otherwise SELECT of one column."""
+    """A tenant table with a `tenant_isolation_*` policy and, when `purgeable`,
+    SELECT and DELETE for dw_app; otherwise no privilege at all, so the lane
+    neither exports nor deletes it. Column-only SELECT is not this shape: it is
+    named whatever is listed (R11.14), and `_column_only` makes it."""
     short = name.split(".", 1)[1]
     grants = (
         [f"GRANT SELECT, DELETE ON {name} TO dw_app"]
         if purgeable
-        else [f"REVOKE ALL ON {name} FROM dw_app", f"GRANT SELECT (id) ON {name} TO dw_app"]
+        else [f"REVOKE ALL ON {name} FROM dw_app"]
     )
     return [
         f"CREATE TABLE {name} (id uuid PRIMARY KEY, tenant_id uuid NOT NULL{columns})",
@@ -348,7 +368,7 @@ async def test_a_custom_object_table_dw_app_may_not_delete_is_named(
 
 
 @pytest.mark.parametrize("schema", ["studio", "platform"])
-async def test_a_table_read_by_column_and_not_deleted_is_named_until_listed(
+async def test_a_table_the_lane_neither_reads_nor_deletes_is_named_until_listed(
     db_urls: DatabaseUrls, schema: str
 ) -> None:
     """R4.1 (studio), R4.3 (a platform table that does not predate the rule):
@@ -500,3 +520,48 @@ async def test_rows_for_tables_gone_or_handled_are_named(db_urls: DatabaseUrls) 
         "R4.6 platform.ob_new postdates the rule",
     ):
         assert line in found, (line, found)
+
+
+# discovery/09's probe shape (`db/bench/offboarding/bench_offboarding.py probe`):
+# a table `dw_app` reads by column only is skipped by `has_table_privilege`, so the
+# lane neither exported nor purged it, and only `studio` was ever looked at.
+_REGRANT_BY_COLUMN = (
+    "DO $$ DECLARE cols text; BEGIN"
+    " SELECT string_agg(quote_ident(attname), ', ' ORDER BY attnum) INTO cols"
+    " FROM pg_attribute WHERE attrelid = 'platform.feedback'::regclass"
+    " AND attnum > 0 AND NOT attisdropped;"
+    " EXECUTE 'REVOKE SELECT ON platform.feedback FROM dw_app';"
+    " EXECUTE 'GRANT SELECT (' || cols || ') ON platform.feedback TO dw_app';"
+    " END $$"
+)
+
+
+def _column_only(name: str) -> list[str]:
+    short = name.split(".", 1)[1]
+    return [
+        f"CREATE TABLE {name} (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, body text)",
+        f"ALTER TABLE {name} ENABLE ROW LEVEL SECURITY",
+        f"ALTER TABLE {name} FORCE ROW LEVEL SECURITY",
+        f"CREATE POLICY tenant_isolation_{short} ON {name} USING ({_TENANT})",
+        f"REVOKE ALL ON {name} FROM dw_app",
+        f"GRANT SELECT (id, body), DELETE ON {name} TO dw_app",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("table", "statements"),
+    [
+        ("studio.ob_cols", _column_only("studio.ob_cols")),
+        ("memory.ob_cols", _column_only("memory.ob_cols")),
+        # A table that predates the rule, read exactly as before through every column.
+        ("platform.feedback", [_REGRANT_BY_COLUMN]),
+    ],
+    ids=["studio", "memory", "platform-predating"],
+)
+async def test_a_table_read_by_column_only_is_named_in_every_schema(
+    db_urls: DatabaseUrls, table: str, statements: list[str]
+) -> None:
+    """foundations-hardening R11.14 (FH41): wherever the table lives, and whether
+    or not it predates the rule, column-only SELECT is named."""
+    found = await _violations_after(db_urls, statements)
+    assert f"R11.14 {table} is read by column only" in found, found

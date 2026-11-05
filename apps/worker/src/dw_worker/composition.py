@@ -84,6 +84,8 @@ from dw_worker.settings import WorkerSettings
 if TYPE_CHECKING:
     from minio import Minio
 
+    from dw_knowledge.adapters.minio_storage import MinioObjectStorageAdapter
+
 # The image sets DW_REPO_ROOT=/app; outside a container the checkout root is
 # four levels up from this file.
 REPO_ROOT = Path(os.environ.get("DW_REPO_ROOT", str(Path(__file__).resolve().parents[4])))
@@ -127,9 +129,11 @@ def build_object_storage(settings: WorkerSettings) -> ObjectStoragePort:
     )
 
 
-def build_export_bucket(settings: WorkerSettings) -> ObjectStoragePort:
+def build_export_bucket(settings: WorkerSettings) -> MinioObjectStorageAdapter:
     """Tenant offboarding's export destination — the `dw-exports` bucket
-    already used elsewhere, not a new one made for this feature."""
+    already used elsewhere, not a new one made for this feature. The adapter
+    itself, not `ObjectStoragePort`: the lane uploads its bundle from a file in
+    parts (`put_stream`), which no other caller of the port does."""
     from dw_knowledge.adapters.minio_storage import MinioObjectStorageAdapter
 
     return MinioObjectStorageAdapter(

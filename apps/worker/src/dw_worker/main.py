@@ -710,7 +710,6 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
                     attachments=build_feedback_bucket(settings),
                     vector_index=build_vector_index(settings),
                     memory_vectors=memory_vectors,
-                    clock=clock,
                 )
             )
         registry.register(

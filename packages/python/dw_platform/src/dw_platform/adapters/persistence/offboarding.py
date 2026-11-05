@@ -60,6 +60,7 @@ __all__ = [
     "OFFBOARDING_LANE",
     "STUDIO_EXCLUSIONS",
     "ExportedTable",
+    "OffboardingClaim",
     "OffboardingExclusion",
     "OffboardingPurgeStep",
     "OffboardingPurgeSteps",
@@ -78,6 +79,12 @@ _SET_DRAIN = text("SELECT set_config('app.worker_drain', 'on', true)")
 # treats it as abandoned by a dead worker rather than owned by a live one.
 # Comfortably above how long one tenant's export+purge should ever take.
 _STALE_CLAIM_MINUTES = 30
+
+# A live pass refreshing its own claim (R11.17); see `keep_claim`.
+_KEEP_CLAIM = text(
+    "UPDATE platform.tenant_offboarding_requests SET updated_at = now()"
+    " WHERE tenant_id = :tenant_id AND status IN ('exporting', 'purging')"
+)
 
 # Joined from `pg_policy` and privileges asked by oid, not by name through
 # the `pg_policies` view: the planner is free to evaluate a name-based
@@ -123,6 +130,26 @@ _CATALOG_EXPORTABLE = text(_CATALOG_COLUMNS + " ORDER BY schemaname, tablename")
 # instead of hand-naming `audit_events` catches that one too.
 _CATALOG_PURGEABLE = text(
     _CATALOG_COLUMNS + "   AND has_table_privilege('dw_app', c.oid, 'DELETE')"
+    " ORDER BY schemaname, tablename"
+)
+
+# Tenant tables `dw_app` may SELECT by column but not as a table (R11.13). The
+# catalog above asks `has_table_privilege`, which is false for them, so they were
+# skipped without a word: rows `dw_app` can read, never exported, never deleted
+# (discovery/09). Every schema but the system's, `tenant_id` read from
+# `pg_attribute` because `information_schema.columns` hides from `dw_app` a
+# column it holds no privilege on, and privileges asked by oid as above.
+_CATALOG_COLUMN_ONLY = text(
+    "SELECT n.nspname AS schemaname, c.relname AS tablename"
+    " FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace"
+    " WHERE c.relkind IN ('r', 'p') AND NOT c.relispartition"
+    "   AND n.nspname <> 'information_schema' AND n.nspname !~ '^pg_'"
+    "   AND EXISTS ("
+    "     SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid"
+    "       AND a.attname = 'tenant_id' AND a.attnum > 0 AND NOT a.attisdropped"
+    "   )"
+    "   AND has_any_column_privilege('dw_app', c.oid, 'SELECT')"
+    "   AND NOT has_table_privilege('dw_app', c.oid, 'SELECT')"
     " ORDER BY schemaname, tablename"
 )
 
@@ -251,6 +278,19 @@ class ExportedTable:
     schema: str
     table: str
     rows: list[dict[str, Any]]
+
+
+@dataclass(frozen=True)
+class OffboardingClaim:
+    """One request `claim_requested` handed this worker (R11.10, R11.18).
+
+    `resume_export_key` is set only for a request claimed back in `purging`: its
+    bundle is already uploaded under that key, and the pass resumes at the purge
+    rather than exporting a company that may already be deleted."""
+
+    tenant_id: UUID
+    request_id: UUID
+    resume_export_key: str | None
 
 
 class OffboardingRefusedError(Exception):
@@ -618,7 +658,19 @@ class SqlTenantOffboarding:
         """R11.7: a table holding the tenant's rows that no step deletes, and
         no CASCADE reaches, yet RESTRICTs a step's table, would stop the purge
         halfway with a raw foreign-key error. Named here, before anything moves.
+
+        R11.13 first: a tenant table `dw_app` reads only by column would be
+        neither exported nor deleted, so the whole pass refuses instead.
         """
+        column_only = [
+            f"{row.schemaname}.{row.tablename}"
+            for row in (await session.execute(_CATALOG_COLUMN_ONLY)).all()
+        ]
+        if column_only:
+            raise OffboardingRefusedError(
+                f"{', '.join(column_only)}: dw_app holds SELECT on columns but not on the table,"
+                " so the pass could neither export nor delete them"
+            )
         steps = await self._steps_for(session)
         foreign_keys = (await session.execute(_FOREIGN_KEYS)).all()
         order_purge_steps(steps, foreign_keys)  # a cycle refuses here too (R11.5)
@@ -733,38 +785,58 @@ class SqlTenantOffboarding:
             },
         )
 
-    async def claim_requested(self) -> list[UUID]:
-        """Atomically move every claimable row to `'exporting'` and return the
-        tenants claimed. `UPDATE ... RETURNING` rather than `SELECT` then
-        `UPDATE`: two worker instances polling at once must not both claim the
-        same request, and a single statement's row locks are what makes that
-        true without an explicit lock clause.
+    async def claim_requested(self) -> list[OffboardingClaim]:
+        """Atomically claim every claimable row and return what was claimed.
+        `UPDATE ... RETURNING` rather than `SELECT` then `UPDATE`: two worker
+        instances polling at once must not both claim the same request, and a
+        single statement's row locks are what makes that true without an
+        explicit lock clause.
 
         Claimable is `status='requested'` (new work) OR `status IN
         ('exporting','purging')` gone stale (`updated_at` older than the
-        window below) — a worker that claimed a request and then died leaves
-        it stuck there forever otherwise, since nothing else ever moves a
-        request off `'requested'`. Safe to resume from either status: export
-        only reads and overwrites its own key, purge deletes rows that may
-        already be gone (a second `DELETE` of nothing is not an error), and
-        `mark_status` overwrites the same row either way — every step this
-        claim unblocks is naturally idempotent, so re-running one from the
-        start is correct, not just tolerated.
+        window below): a worker that claimed a request and then died leaves it
+        there forever otherwise. A live pass keeps its claim fresh with
+        `keep_claim` (R11.17), so only a dead worker's request goes stale.
+
+        A request claimed back in `purging` stays `purging` and comes with its
+        `export_key` (R11.10): its bundle was uploaded before it got there, and
+        the SQL purge may already have committed, so exporting again would hand
+        back an empty company under a new key. Anything else restarts at
+        `exporting`, which only reads and overwrites the request's own key.
         """
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_DRAIN)
             rows = await session.execute(
                 text(
                     "UPDATE platform.tenant_offboarding_requests"
-                    " SET status = 'exporting', updated_at = now()"
+                    " SET status = CASE WHEN status = 'purging' AND export_key IS NOT NULL"
+                    "                   THEN 'purging' ELSE 'exporting' END,"
+                    "     updated_at = now()"
                     " WHERE status = 'requested'"
                     "    OR (status IN ('exporting', 'purging')"
                     "        AND updated_at < now() - make_interval(mins => :stale_minutes))"
-                    " RETURNING tenant_id"
+                    " RETURNING tenant_id, id,"
+                    "   CASE WHEN status = 'purging' THEN export_key END AS resume_export_key"
                 ),
                 {"stale_minutes": _STALE_CLAIM_MINUTES},
             )
-            return [row.tenant_id for row in rows]
+            return [
+                OffboardingClaim(
+                    tenant_id=row.tenant_id,
+                    request_id=row.id,
+                    resume_export_key=row.resume_export_key,
+                )
+                for row in rows
+            ]
+
+    async def keep_claim(self, tenant_id: UUID) -> None:
+        """Mark the tenant's in-flight request as still owned (R11.17), so a pass
+        longer than `_STALE_CLAIM_MINUTES` is not claimed by a second worker.
+        Only `updated_at`, and only the row in `exporting` or `purging`: at most
+        one per tenant (`uq_tenant_offboarding_requests_active`)."""
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_TENANT, {"tenant_id": str(tenant_id)})
+            await session.execute(_KEEP_CLAIM, {"tenant_id": str(tenant_id)})
 
     async def mark_status(
         self,
@@ -774,10 +846,14 @@ class SqlTenantOffboarding:
         export_key: str | None = None,
         error: str | None = None,
     ) -> None:
-        """Report progress back on the tenant's own request row. Runs under
-        `app.tenant_id`, not the drain — by now the caller knows exactly which
-        tenant this is, and every write from here on is an ordinary
+        """Report progress back on the tenant's own in-flight request row. Runs
+        under `app.tenant_id`, not the drain — by now the caller knows exactly
+        which tenant this is, and every write from here on is an ordinary
         tenant-scoped one.
+
+        Only the row in `exporting` or `purging`: a tenant re-filed after a
+        failure has older rows, and one of them may hold the key of the bundle
+        exported before a purge; they are history, not this pass's to rewrite.
         """
         async with self.session_factory() as session, session.begin():
             await session.execute(_SET_TENANT, {"tenant_id": str(tenant_id)})
@@ -788,7 +864,7 @@ class SqlTenantOffboarding:
                     "     export_key = coalesce(:export_key, export_key),"
                     "     error = :error,"
                     "     updated_at = now()"
-                    " WHERE tenant_id = :tenant_id"
+                    " WHERE tenant_id = :tenant_id AND status IN ('exporting', 'purging')"
                 ),
                 {
                     "status": status,

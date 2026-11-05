@@ -73,7 +73,8 @@ class MemoryVectorPurgePort(Protocol):
 
     Separate from `MemoryRankerPort`: recall only orders, and retention,
     supersession and offboarding only delete. Both raise on failure; each
-    caller decides whether that stops it.
+    caller decides whether that stops it. A collection never created holds
+    nothing to delete (`dw_knowledge.ports.ABSENT_STORE_RULE`).
     """
 
     async def delete(self, memory_ids: Sequence[uuid.UUID]) -> None: ...

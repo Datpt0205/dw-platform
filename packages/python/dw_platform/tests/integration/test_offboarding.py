@@ -17,6 +17,7 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from typing import Any
 
 import pytest
 import sqlalchemy as sa
@@ -517,7 +518,7 @@ async def test_claim_requested_moves_status_and_returns_the_tenant(
     await _file_request(db_urls, mine.tenant_id)
     offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
 
-    claimed = await offboarding.claim_requested()
+    claimed = {c.tenant_id for c in await offboarding.claim_requested()}
 
     assert mine.tenant_id in claimed
     async with sessions() as session, session.begin():
@@ -539,8 +540,8 @@ async def test_claim_requested_never_claims_the_same_request_twice(
     await _file_request(db_urls, mine.tenant_id)
     offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
 
-    first = await offboarding.claim_requested()
-    second = await offboarding.claim_requested()
+    first = {c.tenant_id for c in await offboarding.claim_requested()}
+    second = {c.tenant_id for c in await offboarding.claim_requested()}
 
     assert mine.tenant_id in first
     assert mine.tenant_id not in second, "a claimed request must not be claimed again"
@@ -575,7 +576,7 @@ async def test_a_request_stuck_in_progress_past_the_stale_window_is_reclaimed(
     await offboarding.claim_requested()  # -> 'exporting', updated_at = now()
     await _age_the_request(db_urls, mine.tenant_id, minutes_ago=31)
 
-    reclaimed = await offboarding.claim_requested()
+    reclaimed = {c.tenant_id for c in await offboarding.claim_requested()}
 
     assert mine.tenant_id in reclaimed
 
@@ -592,7 +593,7 @@ async def test_a_request_still_in_progress_within_the_window_is_left_alone(
     await offboarding.claim_requested()
     await _age_the_request(db_urls, mine.tenant_id, minutes_ago=5)
 
-    reclaimed = await offboarding.claim_requested()
+    reclaimed = {c.tenant_id for c in await offboarding.claim_requested()}
 
     assert mine.tenant_id not in reclaimed
 
@@ -623,6 +624,165 @@ async def test_mark_status_reports_progress_on_the_tenants_own_row(
         ).one()
     assert row.status == "completed"
     assert row.export_key == "x/exports/y.zip"
+
+
+async def _request_rows(db_urls: DatabaseUrls, tenant_id: uuid.UUID) -> list[Any]:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            return list(
+                (
+                    await conn.execute(
+                        sa.text(
+                            "SELECT id, status, export_key, error, updated_at"
+                            " FROM platform.tenant_offboarding_requests WHERE tenant_id = :t"
+                            " ORDER BY requested_at"
+                        ),
+                        {"t": tenant_id},
+                    )
+                ).all()
+            )
+    finally:
+        await migrator.dispose()
+
+
+async def _set_request(db_urls: DatabaseUrls, request_id: uuid.UUID, **values: Any) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.begin() as conn:
+            assignments = ", ".join(f"{column} = :{column}" for column in values)
+            await conn.execute(
+                sa.text(
+                    f"UPDATE platform.tenant_offboarding_requests SET {assignments} WHERE id = :r"
+                ),
+                {"r": request_id, **values},
+            )
+    finally:
+        await migrator.dispose()
+
+
+async def test_a_stale_purging_request_is_claimed_back_with_its_bundle(
+    sessions: async_sessionmaker[AsyncSession], db_urls: DatabaseUrls
+) -> None:
+    """foundations-hardening R11.10 (FH38): the bundle was uploaded before the
+    request reached `purging`, so the claim keeps it there and hands back the key
+    rather than restarting an export of a company that may already be gone."""
+    mine = _new_tenant()
+    await _seed_tenant(sessions, mine)
+    request_id = await _file_request(db_urls, mine.tenant_id)
+    key = f"{mine.tenant_id}/offboarding-{request_id}.zip"
+    await _set_request(db_urls, request_id, status="purging", export_key=key)
+    await _age_the_request(db_urls, mine.tenant_id, minutes_ago=31)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+
+    claims = [c for c in await offboarding.claim_requested() if c.tenant_id == mine.tenant_id]
+
+    assert [(c.request_id, c.resume_export_key) for c in claims] == [(request_id, key)]
+    (row,) = await _request_rows(db_urls, mine.tenant_id)
+    assert (row.status, row.export_key) == ("purging", key)
+
+
+async def test_a_stale_exporting_request_restarts_from_the_top(
+    sessions: async_sessionmaker[AsyncSession], db_urls: DatabaseUrls
+) -> None:
+    """R11.10: before `purging` nothing was deleted, so the export runs again,
+    under the same request (and so the same bundle key, R11.18)."""
+    mine = _new_tenant()
+    await _seed_tenant(sessions, mine)
+    request_id = await _file_request(db_urls, mine.tenant_id)
+    await _set_request(db_urls, request_id, status="exporting", export_key="half/done.zip")
+    await _age_the_request(db_urls, mine.tenant_id, minutes_ago=31)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+
+    claims = [c for c in await offboarding.claim_requested() if c.tenant_id == mine.tenant_id]
+
+    assert [(c.request_id, c.resume_export_key) for c in claims] == [(request_id, None)]
+    (row,) = await _request_rows(db_urls, mine.tenant_id)
+    assert row.status == "exporting"
+
+
+async def test_keep_claim_refreshes_only_the_tenants_request_in_flight(
+    sessions: async_sessionmaker[AsyncSession], db_urls: DatabaseUrls
+) -> None:
+    """R11.17 (FH44): the live pass's request, and nothing else: not the same
+    company's finished request, not another company's request in flight."""
+    mine, theirs = _new_tenant(), _new_tenant()
+    await _seed_tenant(sessions, mine)
+    await _seed_tenant(sessions, theirs)
+    finished = await _file_request(db_urls, mine.tenant_id)
+    await _set_request(db_urls, finished, status="completed")
+    live = await _file_request(db_urls, mine.tenant_id)
+    their_live = await _file_request(db_urls, theirs.tenant_id)
+    for request_id in (live, their_live):
+        await _set_request(db_urls, request_id, status="exporting")
+    for tenant_id in (mine.tenant_id, theirs.tenant_id):
+        await _age_the_request(db_urls, tenant_id, minutes_ago=20)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+    before = {r.id: r.updated_at for r in await _request_rows(db_urls, mine.tenant_id)}
+    before |= {r.id: r.updated_at for r in await _request_rows(db_urls, theirs.tenant_id)}
+
+    await offboarding.keep_claim(mine.tenant_id)
+
+    after = {r.id: r for r in await _request_rows(db_urls, mine.tenant_id)}
+    after |= {r.id: r for r in await _request_rows(db_urls, theirs.tenant_id)}
+    assert after[live].updated_at > before[live]
+    assert after[live].status == "exporting"
+    assert after[finished].updated_at == before[finished]
+    assert after[their_live].updated_at == before[their_live]
+
+
+async def test_mark_status_leaves_the_tenants_older_requests_alone(
+    sessions: async_sessionmaker[AsyncSession], db_urls: DatabaseUrls
+) -> None:
+    """A company re-filed after a failure keeps its failed request as it was: that
+    row may hold the key of a bundle exported before a purge."""
+    mine = _new_tenant()
+    await _seed_tenant(sessions, mine)
+    old = await _file_request(db_urls, mine.tenant_id)
+    await _set_request(
+        db_urls, old, status="failed", export_key="old/bundle.zip", error="InfrastructureError"
+    )
+    new = await _file_request(db_urls, mine.tenant_id)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+    await offboarding.claim_requested()
+
+    await offboarding.mark_status(mine.tenant_id, "completed", export_key="new/bundle.zip")
+
+    rows = {r.id: r for r in await _request_rows(db_urls, mine.tenant_id)}
+    assert (rows[old].status, rows[old].export_key, rows[old].error) == (
+        "failed",
+        "old/bundle.zip",
+        "InfrastructureError",
+    )
+    assert (rows[new].status, rows[new].export_key) == ("completed", "new/bundle.zip")
+
+
+async def test_a_purge_run_again_writes_no_second_audit_row(
+    sessions: async_sessionmaker[AsyncSession], db_urls: DatabaseUrls
+) -> None:
+    """R11.10 (FH38): a resumed pass runs the purge again after it committed; the
+    company has no workspace left to write against, so the one record of the
+    purge stays one (G8 holds for the first)."""
+    mine = _new_tenant()
+    await _seed_tenant(sessions, mine)
+    await _file_request(db_urls, mine.tenant_id)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+
+    await offboarding.purge_rows(mine.tenant_id)
+    await offboarding.purge_rows(mine.tenant_id)
+
+    async with sessions() as session, session.begin():
+        await session.execute(
+            sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(mine.tenant_id)}
+        )
+        purged = await session.scalar(
+            sa.text(
+                "SELECT count(*) FROM platform.audit_events"
+                " WHERE action = 'tenant.offboarding.purged' AND tenant_id = :t"
+            ),
+            {"t": str(mine.tenant_id)},
+        )
+    assert purged == 1
 
 
 # --- A table narrowed by workspace as well as tenant -------------------------

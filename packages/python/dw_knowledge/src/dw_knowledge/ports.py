@@ -11,6 +11,15 @@ from uuid import UUID
 from dw_knowledge.contracts import EvidenceChunk, SearchQuery
 from dw_platform.application.access_context import AccessContext
 
+# One rule for every store a tenant-wide list or delete reaches (the
+# offboarding lane's buckets and collections, foundations-hardening R11.12):
+# a bucket or collection nobody has created yet holds nothing of this tenant,
+# so listing it is empty and deleting from it is done. Discovery 09 measured
+# the lane failing on both, once after the SQL purge had committed, while the
+# memory ranker already answered this way: two answers to one question.
+# `tests/support/absent_store.py` holds every adapter to it.
+ABSENT_STORE_RULE = "a store that was never created holds nothing of any tenant"
+
 
 class KnowledgeGatewayPort(Protocol):
     """The only retrieval entry point available to workflow nodes.
@@ -147,7 +156,11 @@ class VectorIndexPort(Protocol):
     async def delete_by_tenant(self, tenant_id: UUID) -> None:
         """HARD-remove every point this tenant owns. Tenant offboarding's own
         purge, not a per-document loop — bounded by one filtered delete rather
-        than one round trip per document."""
+        than one round trip per document.
+
+        A store that was never created holds nothing of any tenant: this answers
+        as an empty one would, and a store that cannot be reached still raises
+        (`ABSENT_STORE_RULE`, foundations-hardening R11.12)."""
         ...
 
     async def search(
@@ -189,7 +202,11 @@ class ObjectStoragePort(Protocol):
     async def list_objects(self, prefix: str) -> list[str]:
         """Every key under `prefix`. Tenant offboarding's export/purge is the
         only caller that needs the whole set rather than one key it already
-        knows."""
+        knows.
+
+        A store that was never created holds nothing of any tenant: this answers
+        as an empty one would, and a store that cannot be reached still raises
+        (`ABSENT_STORE_RULE`, foundations-hardening R11.12)."""
         ...
 
     async def delete_object(self, key: str) -> None: ...

@@ -16,8 +16,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
-from typing import Any
+from typing import Any, BinaryIO
 
 import pytest
 from pg_test_db import load_env
@@ -36,7 +35,7 @@ WORKSPACE = uuid.UUID(int=0xAB02)
 
 @dataclass
 class _Store:
-    async def claim_requested(self) -> list[uuid.UUID]:
+    async def claim_requested(self) -> list[Any]:
         raise NotImplementedError("not exercised by lane.run")
 
     async def export_rows(self, tenant_id: uuid.UUID) -> AsyncIterator[Any]:
@@ -44,6 +43,9 @@ class _Store:
             yield batch
 
     async def purge_rows(self, tenant_id: uuid.UUID) -> None:
+        return None
+
+    async def keep_claim(self, tenant_id: uuid.UUID) -> None:
         return None
 
     async def mark_status(
@@ -61,9 +63,12 @@ class _Store:
 class _Bucket:
     objects: dict[str, bytes] = field(default_factory=dict)
 
-    async def put_object(self, key: str, data: bytes, content_type: str) -> str:
-        self.objects[key] = data
+    async def put_stream(self, key: str, data: BinaryIO, length: int, content_type: str) -> str:
+        self.objects[key] = data.read(length)
         return key
+
+    async def has_object(self, key: str) -> bool:
+        return key in self.objects
 
     async def get_object(self, key: str) -> bytes:
         return self.objects[key]
@@ -82,9 +87,10 @@ class _KnowledgeIndex:
 
 
 @dataclass(frozen=True)
-class _Clock:
-    def now(self) -> datetime:
-        return datetime(2026, 10, 6, tzinfo=UTC)
+class _Claim:
+    tenant_id: uuid.UUID
+    request_id: uuid.UUID
+    resume_export_key: str | None = None
 
 
 @pytest.fixture
@@ -138,10 +144,9 @@ async def test_offboarding_deletes_the_leaving_tenants_memory_vectors_and_no_oth
         attachments=_Bucket(),
         vector_index=_KnowledgeIndex(),
         memory_vectors=memory_store,
-        clock=_Clock(),
     )
 
-    await lane.run(LEAVING)
+    await lane.run(_Claim(tenant_id=LEAVING, request_id=uuid.uuid4()))
 
     assert await _points(memory_store, ids[LEAVING]) == set()
     assert await _points(memory_store, ids[STAYING]) == set(ids[STAYING])

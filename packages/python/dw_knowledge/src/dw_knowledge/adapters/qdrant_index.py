@@ -223,6 +223,11 @@ class QdrantVectorIndexAdapter:
 
     async def delete_by_tenant(self, tenant_id: uuid.UUID) -> None:
         try:
+            # ABSENT_STORE_RULE: a collection nobody created yet holds no point
+            # of this tenant, as `QdrantMemoryRanker.delete_by_tenant` answers.
+            # Asked inside the `try`, so a Qdrant that cannot be reached raises.
+            if not await self.client.collection_exists(self.collection):
+                return
             await self.client.delete(
                 self.collection,
                 points_selector=models.FilterSelector(filter=self._tenant_filter(tenant_id)),

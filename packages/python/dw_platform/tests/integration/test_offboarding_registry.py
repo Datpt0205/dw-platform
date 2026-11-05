@@ -387,6 +387,44 @@ async def test_a_table_without_a_primary_key_refuses_the_export(
             )
 
 
+async def test_a_tenant_table_read_by_column_only_refuses_the_pass(
+    sessions: async_sessionmaker[AsyncSession], migrator: AsyncEngine
+) -> None:
+    """R11.13 (FH40): discovery 09's probe in `memory`, a schema the coverage test
+    never read. `dw_app` reads its rows by column, so the catalog's
+    `has_table_privilege` skipped it: exported nothing, deleted nothing. Now the
+    export refuses before its first batch and the purge before its first delete."""
+    name = f"memory.zz_fh08_cols_{uuid.uuid4().hex[:6]}"
+    short = name.split(".", 1)[1]
+    tenant, _ = await _new_tenant(migrator)
+    statements = [
+        f"CREATE TABLE {name} (id uuid PRIMARY KEY, tenant_id uuid NOT NULL, body text)",
+        f"ALTER TABLE {name} ENABLE ROW LEVEL SECURITY",
+        f"ALTER TABLE {name} FORCE ROW LEVEL SECURITY",
+        f"CREATE POLICY tenant_isolation_{short} ON {name} USING ({_POLICY})",
+        f"REVOKE ALL ON {name} FROM dw_app",
+        f"GRANT SELECT (id, body), DELETE ON {name} TO dw_app",
+        f"INSERT INTO {name} (id, tenant_id, body) VALUES (gen_random_uuid(), '{tenant}', 'x')",
+    ]
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+    batches: list[Any] = []
+    try:
+        async with migrator.begin() as conn:
+            for statement in statements:
+                await conn.execute(sa.text(statement))
+        with pytest.raises(OffboardingRefusedError, match=name):
+            async for batch in offboarding.export_rows(tenant):
+                batches.append(batch)
+        with pytest.raises(OffboardingRefusedError, match=name):
+            await offboarding.purge_rows(tenant)
+        assert batches == [], "the refusal comes before the first batch"
+        assert await _count(migrator, name, tenant) == 1
+        assert await _count(migrator, "platform.workspaces", tenant) == 1, "nothing was deleted"
+    finally:
+        async with migrator.begin() as conn:
+            await conn.execute(sa.text(f"DROP TABLE IF EXISTS {name}"))
+
+
 async def test_a_kept_table_blocking_a_step_refuses_the_purge(
     sessions: async_sessionmaker[AsyncSession], migrator: AsyncEngine
 ) -> None:

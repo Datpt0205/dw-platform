@@ -5,8 +5,9 @@ attachments, offboarding export bundles) goes through `ObjectStoragePort`,
 and every unit test of those callers uses a fake. So nothing else asks the
 real server whether the adapter's promises hold: a missing bucket is created,
 bytes round-trip, a prefix lists every key under it at any depth and nothing
-outside it, a missing key reads as `NotFoundError`, a delete removes, and a
-request that carries no signature is refused.
+outside it, a missing key reads as `NotFoundError`, a delete removes, a request
+that carries no signature is refused, a bucket nobody created lists nothing
+(`ABSENT_STORE_RULE`), and a stream larger than one part goes up in parts.
 
 This is the test to run against a new server before the stack moves to it. The
 S3 server is replaceable: MinIO withdrew its images from two registries in one
@@ -16,12 +17,15 @@ year. The contract is not replaceable.
 from __future__ import annotations
 
 import asyncio
+import io
+import os
 import urllib.error
 import urllib.request
 import uuid
 from collections.abc import Iterator
 
 import pytest
+from absent_store import a_missing_bucket_lists_nothing
 from minio import Minio
 from runtime_harness import runtime_urls
 
@@ -112,3 +116,31 @@ def test_the_store_refuses_an_unsigned_request(client: Minio) -> None:
         assert refused.value.code == 403, (method, path)
 
     assert not client.bucket_exists(bucket)
+
+
+def test_a_bucket_nobody_made_lists_nothing(storage: MinioObjectStorageAdapter) -> None:
+    """foundations-hardening R11.12 (FH39): the `feedback` bucket exists only after
+    the first attachment, and offboarding a company that never uploaded one used to
+    fail at this list with NoSuchBucket (discovery 09)."""
+    asyncio.run(a_missing_bucket_lists_nothing(storage))
+    assert not asyncio.run(storage.has_object("t1/absent.zip"))
+
+
+def test_a_stream_larger_than_one_part_goes_up_in_parts(
+    storage: MinioObjectStorageAdapter, client: Minio
+) -> None:
+    """R11.9: the offboarding bundle is uploaded from a file it cannot hold in
+    memory. 11 MiB is more than two 5 MiB parts; an object uploaded in parts carries
+    an ETag ending in `-<parts>`, which a single PUT does not (measured on
+    SeaweedFS 4.48, 5/11/2026)."""
+    data = os.urandom(11 * 1024 * 1024)
+
+    uri = asyncio.run(
+        storage.put_stream("t1/bundle.zip", io.BytesIO(data), len(data), "application/zip")
+    )
+
+    assert uri == f"s3://{storage.bucket}/t1/bundle.zip"
+    etag = client.stat_object(storage.bucket, "t1/bundle.zip").etag
+    assert etag is not None and etag.endswith("-3"), etag
+    assert asyncio.run(storage.get_object("t1/bundle.zip")) == data
+    assert asyncio.run(storage.has_object("t1/bundle.zip"))
