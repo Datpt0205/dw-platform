@@ -1962,6 +1962,48 @@ async def test_only_dw_app_calls_the_service_account_functions_and_no_one_the_tr
         assert config == ["search_path=pg_catalog, platform"], function
 
 
+# foundations-hardening ticket 09 (migration 4fb92ed062dc).
+
+_REQUESTS = "platform.tenant_offboarding_requests"
+_TABLE_VERBS = ("SELECT", "INSERT", "UPDATE", "DELETE", "TRUNCATE", "REFERENCES", "TRIGGER")
+
+
+async def test_the_lane_counts_its_claims_and_still_files_and_removes_no_request(
+    db_urls: DatabaseUrls,
+) -> None:
+    """R11.15: `dw_app` counts a claim in `claims` with the UPDATE it already
+    held (5d9d89ffc716); it opens and removes no request, `dw_provisioner` files
+    one without naming the column, and no other role reaches the table."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (role, verb)
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+                for verb in _TABLE_VERBS
+                if await conn.scalar(
+                    sa.text("SELECT has_table_privilege(:r, :t, :v)"),
+                    {"r": role, "t": _REQUESTS, "v": verb},
+                )
+            }
+            counts = {
+                role: await conn.scalar(
+                    sa.text("SELECT has_column_privilege(:r, :t, 'claims', 'UPDATE')"),
+                    {"r": role, "t": _REQUESTS},
+                )
+                for role in ("dw_app", "dw_agent_ro", "dw_provisioner")
+            }
+    finally:
+        await migrator.dispose()
+    assert held == {
+        ("dw_app", "SELECT"),
+        ("dw_app", "UPDATE"),
+        ("dw_provisioner", "SELECT"),
+        ("dw_provisioner", "INSERT"),
+    }
+    assert counts == {"dw_app": True, "dw_agent_ro": False, "dw_provisioner": False}
+
+
 _SECRET_DOORS = (
     "platform.put_secret(text, uuid, text, integer, text, bytea, text, integer, bytea, bytea)",
     "platform.open_secret(text, uuid, text, integer)",

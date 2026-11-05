@@ -1,0 +1,66 @@
+# Mutation check of foundations-hardening ticket 09: scripts/mutate.py runs this file at the
+# queue's close (.claude/rules/wave-close.md), not at the ticket.
+# One mutation per guard of the Kiểm soát row the ticket implements (FH42). Each was broken
+# by hand once at the ticket (ticket Comments); the tool's control run comes first at the close.
+mutations:
+  - name: FH42 a claim is not counted
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: |2
+          "     claims = claims + 1,"
+    new: |2
+          "     claims = claims,"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_a_request_that_dies_three_times_while_exporting_is_stopped_by_the_lane
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_another_company_is_claimed_in_the_tick_that_stops_one
+  - name: FH42 the stop is audited as someone other than the lane
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: |2
+                              lane=OFFBOARDING_LANE,
+    new: |2
+                              lane="offboarding_requester",
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_a_request_that_dies_three_times_while_exporting_is_stopped_by_the_lane
+  - name: FH42 the stop record does not name the operator who asked
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: |2
+                                  "requested_by": str(stopped.requested_by),
+    new: |2
+                                  "requested_by": None,
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_a_request_that_dies_three_times_while_exporting_is_stopped_by_the_lane
+  - name: FH42 a stop that fails takes the claim of every other tenant down with it
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: |2
+                  try:
+                      await self._stop(row.id, row.tenant_id)
+                  except Exception:
+    new: |2
+                  try:
+                      await self._stop(row.id, row.tenant_id)
+                  except ZeroDivisionError:
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_a_stop_that_cannot_be_audited_holds_back_only_its_own_request
+  - name: FH42 an export claimed three times is claimed a fourth time
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: |2
+          "    OR (status = 'exporting' AND claims < :max_claims"
+    new: |2
+          "    OR (status = 'exporting' AND true"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_a_stop_that_cannot_be_audited_holds_back_only_its_own_request
+  - name: FH42 a purge claimed three times is no longer claimed
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: '    "    OR (status = ''purging'' AND updated_at'
+    new: '    "    OR (status = ''purging'' AND claims < :max_claims AND updated_at'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_a_purge_claimed_three_times_is_claimed_again_and_stays_purging
+  - name: FH42 a stop audits a row it did not change
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: |2
+                  if stopped is None:
+                      return
+    new: |2
+                  if stopped is None:
+                      stopped = (await session.execute(text("SELECT gen_random_uuid() AS requested_by, 3 AS claims"))).one()
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_a_stop_that_finds_the_request_already_moved_writes_no_record

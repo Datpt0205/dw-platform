@@ -32,14 +32,19 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 from tenant_wide_scopes import OFFBOARDING_SCOPES
 
+from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.offboarding import (
     _FOREIGN_KEYS,
+    MAX_EXPORT_CLAIMS,
+    OFFBOARDING_LANE,
+    STOPPED_ACTION,
     STUDIO_EXCLUSIONS,
     ExportedTable,
     OffboardingPurgeStep,
     SqlTenantOffboarding,
     order_purge_steps,
 )
+from dw_platform.domain.audit import system_actor, system_actor_label
 from dw_platform.testing.members import add_tenant_member
 
 pytestmark = pytest.mark.integration
@@ -1486,3 +1491,202 @@ async def test_offboarding_exports_and_deletes_the_companys_switches(
     assert await _count(sessions, mine.tenant_id, "platform", "control_switches") == 0
     assert await _count(sessions, theirs.tenant_id, "platform", "control_switches") == 2
     assert "platform.control_switches" not in STUDIO_EXCLUSIONS
+
+
+# --- Counted claims: a request that dies every export is stopped (R11.15) ----
+#
+# foundations-hardening ticket 09 (FH42). Each company here is planted by the
+# migrator with a workspace and nothing else, so a test can delete the
+# workspace without a RESTRICT key in the way.
+
+
+async def _plant_company(migrator: AsyncEngine) -> _Tenant:
+    t = _new_tenant()
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO platform.tenants (id, slug, name, status)"
+                " VALUES (:t, :slug, :slug, 'offboarding')"
+            ),
+            {"t": t.tenant_id, "slug": f"stop-{t.tenant_id.hex[-10:]}"},
+        )
+        await conn.execute(
+            sa.text(
+                "INSERT INTO platform.workspaces (id, tenant_id, slug, name)"
+                " VALUES (:w, :t, 'main', 'Main')"
+            ),
+            {"w": t.workspace_id, "t": t.tenant_id},
+        )
+    return t
+
+
+async def _stuck_export(db_urls: DatabaseUrls, tenant_id: uuid.UUID, claims: int) -> uuid.UUID:
+    """A request in `exporting`, claimed `claims` times, past the stale window."""
+    request_id = await _file_request(db_urls, tenant_id)
+    await _set_request(db_urls, request_id, status="exporting", claims=claims)
+    await _age_the_request(db_urls, tenant_id, minutes_ago=31)
+    return request_id
+
+
+async def _request(migrator: AsyncEngine, request_id: uuid.UUID) -> Any:
+    async with migrator.connect() as conn:
+        return (
+            await conn.execute(
+                sa.text(
+                    "SELECT status, claims, error, export_key, requested_by, updated_at"
+                    " FROM platform.tenant_offboarding_requests WHERE id = :r"
+                ),
+                {"r": request_id},
+            )
+        ).one()
+
+
+async def _stop_audits(migrator: AsyncEngine, tenant_id: uuid.UUID) -> list[Any]:
+    a = tables.audit_events
+    async with migrator.connect() as conn:
+        return list(
+            (
+                await conn.execute(
+                    sa.select(a.c.actor_id, a.c.workspace_id, a.c.resource_id, a.c.details).where(
+                        a.c.tenant_id == tenant_id, a.c.action == STOPPED_ACTION
+                    )
+                )
+            ).all()
+        )
+
+
+async def test_a_request_that_dies_three_times_while_exporting_is_stopped_by_the_lane(
+    sessions: async_sessionmaker[AsyncSession], db_urls: DatabaseUrls, migrator: AsyncEngine
+) -> None:
+    """R11.15 (FH42): three claims, the first from `requested`, each pass dying
+    before the bundle is uploaded; the fourth tick fails the request instead of
+    claiming it, and the record stands in the lane's name, not the operator's."""
+    company = await _plant_company(migrator)
+    request_id = await _file_request(db_urls, company.tenant_id)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+    for claim in range(1, MAX_EXPORT_CLAIMS + 1):
+        claimed = {c.request_id for c in await offboarding.claim_requested()}
+        assert request_id in claimed, f"claim {claim}"
+        row = await _request(migrator, request_id)
+        assert (row.status, row.claims) == ("exporting", claim)
+        await _age_the_request(db_urls, company.tenant_id, minutes_ago=31)
+
+    claimed = {c.tenant_id for c in await offboarding.claim_requested()}
+
+    assert company.tenant_id not in claimed, "a fourth claim of a dying export"
+    row = await _request(migrator, request_id)
+    assert (row.status, row.claims) == ("failed", 3)
+    assert "after 3 claims" in row.error
+    [audit] = await _stop_audits(migrator, company.tenant_id)
+    assert audit.actor_id == system_actor(OFFBOARDING_LANE).value
+    assert audit.actor_id != row.requested_by
+    assert audit.details["actor"] == system_actor_label(OFFBOARDING_LANE) == "system:offboarding"
+    assert audit.details["requested_by"] == str(row.requested_by)
+    assert audit.details["claims"] == 3
+    assert (audit.workspace_id, audit.resource_id) == (company.workspace_id, str(request_id))
+
+    await _age_the_request(db_urls, company.tenant_id, minutes_ago=31)
+    assert company.tenant_id not in {c.tenant_id for c in await offboarding.claim_requested()}
+    assert len(await _stop_audits(migrator, company.tenant_id)) == 1
+
+
+async def test_a_purge_claimed_three_times_is_claimed_again_and_stays_purging(
+    sessions: async_sessionmaker[AsyncSession], db_urls: DatabaseUrls, migrator: AsyncEngine
+) -> None:
+    """R11.15 (FH42): from `purging` the company may already be deleted, so the
+    lane keeps retrying (R11.11); the count goes on, the stop never comes."""
+    company = await _plant_company(migrator)
+    request_id = await _file_request(db_urls, company.tenant_id)
+    key = f"{company.tenant_id}/offboarding-{request_id}.zip"
+    await _set_request(
+        db_urls, request_id, status="purging", export_key=key, claims=MAX_EXPORT_CLAIMS
+    )
+    await _age_the_request(db_urls, company.tenant_id, minutes_ago=31)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+
+    claims = [c for c in await offboarding.claim_requested() if c.tenant_id == company.tenant_id]
+
+    assert [(c.request_id, c.resume_export_key) for c in claims] == [(request_id, key)]
+    row = await _request(migrator, request_id)
+    assert (row.status, row.claims, row.export_key) == ("purging", 4, key)
+    assert await _stop_audits(migrator, company.tenant_id) == []
+
+
+async def test_another_company_is_claimed_in_the_tick_that_stops_one(
+    sessions: async_sessionmaker[AsyncSession], db_urls: DatabaseUrls, migrator: AsyncEngine
+) -> None:
+    """R11.20 (FH42): the stop of A changes nothing of B's request but the claim
+    itself, which counts one."""
+    stuck, other = await _plant_company(migrator), await _plant_company(migrator)
+    stuck_request = await _stuck_export(db_urls, stuck.tenant_id, claims=MAX_EXPORT_CLAIMS)
+    other_request = await _file_request(db_urls, other.tenant_id)
+    before = await _request(migrator, other_request)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+
+    claimed = {c.request_id for c in await offboarding.claim_requested()}
+
+    assert other_request in claimed
+    assert stuck_request not in claimed
+    assert (await _request(migrator, stuck_request)).status == "failed"
+    after = await _request(migrator, other_request)
+    assert (after.status, after.claims) == ("exporting", 1)
+    assert (after.error, after.export_key, after.requested_by) == (
+        before.error,
+        before.export_key,
+        before.requested_by,
+    )
+    assert await _stop_audits(migrator, other.tenant_id) == []
+
+
+async def test_a_stop_that_cannot_be_audited_holds_back_only_its_own_request(
+    sessions: async_sessionmaker[AsyncSession], db_urls: DatabaseUrls, migrator: AsyncEngine
+) -> None:
+    """R11.20 (FH42): A has no workspace left, so its stop cannot be recorded and
+    rolls back alone; C, stuck the same way, is stopped with its record, and B is
+    claimed in the same tick."""
+    lost, stuck, fresh = (
+        await _plant_company(migrator),
+        await _plant_company(migrator),
+        await _plant_company(migrator),
+    )
+    lost_request = await _stuck_export(db_urls, lost.tenant_id, claims=MAX_EXPORT_CLAIMS)
+    stuck_request = await _stuck_export(db_urls, stuck.tenant_id, claims=MAX_EXPORT_CLAIMS)
+    fresh_request = await _file_request(db_urls, fresh.tenant_id)
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text("DELETE FROM platform.workspaces WHERE tenant_id = :t"), {"t": lost.tenant_id}
+        )
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+    try:
+        claimed = {c.request_id for c in await offboarding.claim_requested()}
+
+        assert fresh_request in claimed
+        assert lost_request not in claimed, "a stop that rolled back must not become a claim"
+        lost_row = await _request(migrator, lost_request)
+        assert (lost_row.status, lost_row.claims, lost_row.error) == (
+            "exporting",
+            MAX_EXPORT_CLAIMS,
+            None,
+        )
+        assert await _stop_audits(migrator, lost.tenant_id) == []
+        assert (await _request(migrator, stuck_request)).status == "failed"
+        assert len(await _stop_audits(migrator, stuck.tenant_id)) == 1
+    finally:
+        # Out of every later test's tick: nothing else would ever end it.
+        await _set_request(db_urls, lost_request, status="failed")
+
+
+async def test_a_stop_that_finds_the_request_already_moved_writes_no_record(
+    sessions: async_sessionmaker[AsyncSession], db_urls: DatabaseUrls, migrator: AsyncEngine
+) -> None:
+    """R11.20: only a row the stop itself changed is audited, so a second worker
+    reaching the same request after the first stopped it writes nothing."""
+    company = await _plant_company(migrator)
+    request_id = await _stuck_export(db_urls, company.tenant_id, claims=MAX_EXPORT_CLAIMS)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+    await offboarding.claim_requested()
+    assert len(await _stop_audits(migrator, company.tenant_id)) == 1
+
+    await offboarding._stop(request_id, company.tenant_id)
+
+    assert len(await _stop_audits(migrator, company.tenant_id)) == 1

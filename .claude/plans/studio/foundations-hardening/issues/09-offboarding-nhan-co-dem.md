@@ -1,6 +1,6 @@
 # 09 — Offboarding nhận yêu cầu có đếm, yêu cầu chết mãi thành `failed`
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 08
 Area: studio
 Yêu cầu: R11.15, R11.20, FH42
@@ -40,18 +40,18 @@ thử lại mỗi `_STALE_CLAIM_MINUTES` (Quyết định 5/11/2026, gate ticket
 
 ## Tiêu chí chấp nhận
 
-- [ ] R11.15 (FH42): yêu cầu `exporting` đã nhận ba lần, quá hạn → lần nhận kế trả danh sách không có tenant đó, trạng
+- [x] R11.15 (FH42): yêu cầu `exporting` đã nhận ba lần, quá hạn → lần nhận kế trả danh sách không có tenant đó, trạng
       thái `failed`, `error` nêu 3 lần nhận, một audit `tenant.offboarding.stopped` với actor `system_actor('offboarding')`,
       `details.actor` bằng `system:offboarding` và `details.requested_by` là người yêu cầu; sai nếu yêu cầu được nhận
       lần thứ tư, hay audit đứng tên người yêu cầu.
-- [ ] R11.15 (FH42): yêu cầu `purging` đã nhận ba lần, quá hạn → lần nhận kế trả nó với `resume_export_key`, trạng thái
+- [x] R11.15 (FH42): yêu cầu `purging` đã nhận ba lần, quá hạn → lần nhận kế trả nó với `resume_export_key`, trạng thái
       giữ `purging`; sai nếu nó thành `failed`.
-- [ ] R11.20 (FH42): yêu cầu `requested` của tenant B được nhận cùng lượt A bị dừng, `claims` của B bằng 1, và yêu cầu
+- [x] R11.20 (FH42): yêu cầu `requested` của tenant B được nhận cùng lượt A bị dừng, `claims` của B bằng 1, và yêu cầu
       của B không đổi gì khác; sai nếu B đổi hay không được nhận.
-- [ ] R11.20 (FH42): tenant A không còn workspace nào (xóa trong test bằng vai migrator) và tenant C cũng có yêu cầu
+- [x] R11.20 (FH42): tenant A không còn workspace nào (xóa trong test bằng vai migrator) và tenant C cũng có yêu cầu
       `exporting` đã nhận ba lần, quá hạn → A giữ `exporting`, không được nhận, không có audit; C thành `failed` với
       audit; B vẫn được nhận; sai nếu A thành `failed` không audit, C không thành `failed`, hay B không được nhận.
-- [ ] Xong: `uv run pytest -m integration packages/python/dw_platform/tests/integration/test_offboarding.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py`
+- [x] Xong: `uv run pytest -m integration packages/python/dw_platform/tests/integration/test_offboarding.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py`
       xanh.
 
 ## Nguồn
@@ -83,3 +83,17 @@ thử lại mỗi `_STALE_CLAIM_MINUTES` (Quyết định 5/11/2026, gate ticket
   yêu cầu mới bắt đầu từ 0. (3) Hai worker dừng cùng lúc một yêu cầu: khóa dòng của `UPDATE ... RETURNING` cho đúng một
   audit; không cần test đồng thời riêng. LOW: yêu cầu không ghi được audit chỉ hiện trong log.
 - 2026-11-05 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): dựng xong. Migration `4fb92ed062dc` thêm `claims` với
+  `ck_tenant_offboarding_requests_claims`; không đổi quyền. `claim_requested` đọc `id` và `tenant_id` của yêu cầu cần
+  dừng dưới drain, rồi dừng từng yêu cầu dưới `app.tenant_id` của chính nó, không dưới drain như câu nhận, vì từ lúc
+  biết tenant mọi bước của lane chạy theo tenant (`dd1db8ca43a2`); câu dừng hỏi lại `tenant_id`, trạng thái, số lần
+  nhận và hạn. Lỗi của một lần dừng (không có workspace hay audit hỏng) được log và lane đi tiếp, không ném ra khỏi
+  `claim_requested`. `SqlTenantOffboarding` nhận `clock` (mặc định `SystemClock`, composition root của worker truyền
+  đồng hồ của nó) cho `occurred_at`. `resource_type` của audit là `tenant_offboarding_request`, `resource_id` là id
+  của yêu cầu. Workspace của audit, như của `_record_purge_audit`, đọc qua một câu chung `_A_WORKSPACE`, nay có
+  `ORDER BY id` nên hai lần đọc chọn cùng một workspace. Nếu sai thì: dừng dưới drain, và audit nêu tenant làm
+  tài nguyên như `tenant.offboarding.purged`.
+- 2026-11-05 (agent): FH42 có năm test ở `test_offboarding.py` và một ở `test_privileges.py`; `mutations/09.yaml`
+  bảy đột biến, sáu đã bẻ bằng tay một lần, đều đỏ (bỏ phép đếm, audit đứng tên lane khác, lần dừng hỏng lan sang
+  câu nhận, nhận lần thứ tư, `purging` bị bỏ khi đã nhận ba lần, audit dòng câu dừng không đổi). `scripts/mutate.py`,
+  độ trễ của câu nhận và `/code-review` chạy lúc đóng hàng.
