@@ -9,12 +9,12 @@ from typing import Any
 
 import pytest
 
+from dw_kernel.phone import normalize_phone
 from dw_studio.records.domain.document import FieldDefinition, OptionDefinition, definition_of
 from dw_studio.records.domain.values import (
     coerce_input,
     decimal_text,
     from_json,
-    normalize_phone,
     present,
     to_json,
 )

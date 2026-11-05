@@ -267,7 +267,8 @@ class _Builder:
         kind = "same_phone_other_format_no_email"
         p = self.person()
         # Two of the writings R2.1 and the ticket name, the 84-without-plus among
-        # them, which the platform's `phone_vn` format refuses today.
+        # them, which the platform's `phone_vn` format refused until
+        # custom-objects ticket 10 gave it RecordService's rule.
         f1, f2 = "country", self._rng.choice(("spaced", "dashed"))
         leads += [self.lead(p, phone=self.phone(p, f), email=None, planted=kind) for f in (f1, f2)]
         return leads

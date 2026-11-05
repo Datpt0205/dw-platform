@@ -37,6 +37,18 @@ _SEPARATORS = re.compile(r"[\s.\-()]")
 # A Vietnamese subscriber number after the country code: a mobile (3, 5, 7, 8 or
 # 9, then eight digits) or a landline (2, then nine digits).
 _SUBSCRIBER = re.compile(r"[35789]\d{8}|2\d{9}")
+# Quyết định 798/QĐ-BTTTT (25/5/2018), II.2.1: 21 mobile codes moved to two
+# digits, the last seven kept. The oracle's own copy, not an import of the
+# platform's (R1.2, MP17); `dw_studio`'s test_phone_rule.py holds the two to
+# one set of vectors (custom-objects ticket 10).
+_RENUMBERED_2018 = {
+    **dict(zip(("120", "121", "122", "126", "128"), ("70", "79", "77", "76", "78"), strict=True)),
+    **dict(zip(("123", "124", "125", "127", "129"), ("83", "84", "85", "81", "82"), strict=True)),
+    **{f"16{d}": f"3{d}" for d in "23456789"},
+    "186": "56",
+    "188": "58",
+    "199": "59",
+}
 # In free text, any run of nine or more digits with single separators is read as
 # a phone number and must normalise into the test range: a number the oracle
 # cannot read fails the check, it is not skipped (failure-modes #7).
@@ -46,16 +58,21 @@ _EMAIL_IN_TEXT = re.compile(r"[^\s<>()\[\]\"',;:]+@[^\s<>()\[\]\"',;:]+")
 
 
 def normalize_phone(raw: str) -> str:
-    """ "0901 234 567", "+84901234567" and "84901234567" -> "+84901234567"."""
+    """ "0901 234 567", "+84901234567" and "84901234567" -> "+84901234567";
+    "0168 456 7890", a mobile code renumbered in 2018, -> "+84384567890"."""
     digits = _SEPARATORS.sub("", raw)
     if digits.startswith("+84"):
         subscriber = digits[3:]
+    elif digits.startswith("0084"):
+        subscriber = digits[4:]
     elif digits.startswith("84") and len(digits) in (11, 12):
         subscriber = digits[2:]
     elif digits.startswith("0"):
         subscriber = digits[1:]
     else:
         raise ValueError("not a Vietnamese phone number")
+    if len(subscriber) == 10 and subscriber[:3] in _RENUMBERED_2018:
+        subscriber = _RENUMBERED_2018[subscriber[:3]] + subscriber[3:]
     if _SUBSCRIBER.fullmatch(subscriber) is None:
         raise ValueError("not a Vietnamese phone number")
     return f"+84{subscriber}"

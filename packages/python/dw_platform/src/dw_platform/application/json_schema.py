@@ -29,6 +29,7 @@ from referencing import Registry
 
 from dw_kernel.errors import ConfigError
 from dw_kernel.pagination import canonical_json
+from dw_kernel.phone import is_vietnamese_phone
 
 __all__ = [
     "TOOL_FORMATS",
@@ -71,20 +72,16 @@ def problems(schema: Mapping[str, Any], value: object) -> list[str]:
 
 # --------------------------------------------------------------- a tool's check --
 
-# A Vietnamese number with its separators removed: a mobile (0 then 3, 5, 7, 8
-# or 9, ten digits) or a landline (02 then nine digits, eleven), `+84` standing
-# for the leading 0.
-_PHONE_VN = re.compile(r"(?:\+84|0)(?:[35789]\d{8}|2\d{9})")
-_PHONE_SEPARATORS = re.compile(r"[\s.\-()]")
 # A mã số thuế: ten digits, ten and a three-digit branch suffix, or the twelve
 # of a personal code (the citizen id). The check digit is not verified.
 _TAX_CODE_VN = re.compile(r"\d{10}(?:-\d{3})?|\d{12}")
 
 
 def _phone_vn(value: object) -> bool:
-    return not isinstance(value, str) or (
-        _PHONE_VN.fullmatch(_PHONE_SEPARATORS.sub("", value)) is not None
-    )
+    """A Vietnamese number in use, by the rule RecordService stores a `phone`
+    field with (`dw_kernel.phone`, custom-objects ticket 10): every writing it
+    reads as a `+84` number, a pre-2018 mobile code included."""
+    return not isinstance(value, str) or is_vietnamese_phone(value)
 
 
 def _tax_code_vn(value: object) -> bool:

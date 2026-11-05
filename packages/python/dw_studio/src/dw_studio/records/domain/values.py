@@ -12,9 +12,9 @@ One function turns what a caller sent into what the store keeps
 - text, `url` and `name`: NFC, surrounding white space removed, empty read as
   null;
 - `email`: as text, then lower case, one `@` and a dot in the domain;
-- `phone`: E.164, "0901 234 567" is "+84901234567" (a leading `0` is a
-  Vietnamese national number, `00` and `+` an international one, and a bare
-  `84` followed by nine or ten digits is read as Vietnam's code);
+- `phone`: E.164 by `dw_kernel.phone`, the rule's one owner: "0901 234 567"
+  is "+84901234567", a pre-2018 "0168 456 7890" is "+84384567890", and a
+  Vietnamese number outside the current plan is `invalid_type` (ticket 10);
 - an `exact` number and a currency: a JSON string `-?[0-9]+(.[0-9]+)?`, kept as
   the integer `value * 10^scale`, never a JSON number (gate (e)): a binary
   float cannot carry 0.1, and a string can. More decimals than `scale`, past
@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from typing import Any, Final
 
+from dw_kernel.phone import normalize_phone
 from dw_studio.core.domain.artifacts import DocumentProblem
 from dw_studio.records.domain.document import NAME, FieldDefinition
 
@@ -67,8 +68,6 @@ _DECIMAL: Final = re.compile(r"^(-?)([0-9]+)(?:\.([0-9]+))?$")
 _DATE: Final = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 _EMAIL: Final = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s.][^@\s]*$")
 _URL: Final = re.compile(r"^https?://\S+$", re.IGNORECASE)
-_PHONE_SEPARATORS: Final = re.compile(r"[\s.\-()]")
-_DIGITS: Final = re.compile(r"^[0-9]+$")
 
 Stored = str | int | float | bool | date | datetime
 
@@ -95,28 +94,6 @@ def _text(raw: Any) -> str | None:
         raise _Refused(INVALID_TYPE)
     text = unicodedata.normalize("NFC", raw).strip()
     return text or None
-
-
-def normalize_phone(raw: str) -> str | None:
-    """E.164 of ``raw``, or None when it is no telephone number."""
-    compact = _PHONE_SEPARATORS.sub("", raw)
-    if compact.startswith("+"):
-        digits = compact[1:]
-    elif compact.startswith("00"):
-        digits = compact[2:]
-    elif compact.startswith("0"):
-        digits = "84" + compact[1:]
-    elif compact.startswith("84") and len(compact) in (11, 12):
-        digits = compact
-    else:
-        return None
-    if not _DIGITS.fullmatch(digits) or not 8 <= len(digits) <= 15:
-        return None
-    if digits.startswith("84"):
-        national = digits[2:]
-        if not 9 <= len(national) <= 10 or national.startswith("0"):
-            return None
-    return "+" + digits
 
 
 def _scaled(raw: Any, scale: int) -> int:
