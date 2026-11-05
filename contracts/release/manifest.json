@@ -75,7 +75,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "30308dd03756ae1f556b55d50472008a19d4b0f6",
+  "git_sha": "044859cfaaca03fa28047875a582f72341873512",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "model_profiles": [
@@ -133,7 +133,7 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "5ac6df14ebec5714eb5d1887cb4692f2cb4ef0e06d8a73866e631ba104fed133",
+      "checksum": "2b98c7b51e04da741bad5a1431b3d2c4e13416e4acd89345df4a1d4ddc9075f0",
       "policy_id": "retention.d",
       "version": "fragments"
     }

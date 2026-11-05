@@ -62,6 +62,15 @@ class WorkerSettings(BaseSettings):
     # is the OTel/Prometheus exporter's own convention default; dw-api has no
     # equivalent setting because it serves `/metrics` on its existing HTTP port.
     metrics_port: int = Field(default=9464, ge=1, le=65535)
+    # How many worker processes serve the same callers. Each process's share of
+    # a company's rate limit is `floor(limit / worker_replicas)`
+    # (usage-and-limits R7.1): the duplicate-probe limit of an agent's record
+    # writes counts here (custom-objects R7.6). Required in a deployed profile,
+    # since 1 on N processes multiplies the limit by N; local and test read it
+    # unset as 1.
+    worker_replicas: int | None = Field(
+        default=None, ge=1, validation_alias=AliasChoices("DW_WORKER_REPLICAS")
+    )
 
     # Infrastructure for the knowledge ingest consumer (B5). When database_url /
     # s3_endpoint_url are unset, the consumer is skipped (heartbeat-only worker).
@@ -381,5 +390,11 @@ class WorkerSettings(BaseSettings):
         if len(self.unsubscribe_signing_secret.get_secret_value().encode()) < 32:
             raise RuntimeError(
                 "UNSUBSCRIBE_SIGNING_SECRET of at least 32 bytes is required in the "
+                f"{self.profile} profile"
+            )
+        # usage-and-limits R7.1, custom-objects R7.6: unset reads as one process.
+        if self.worker_replicas is None:
+            raise RuntimeError(
+                "DW_WORKER_REPLICAS (how many worker processes run) is required in the "
                 f"{self.profile} profile"
             )

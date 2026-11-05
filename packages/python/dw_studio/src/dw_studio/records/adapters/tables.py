@@ -393,3 +393,28 @@ records = sa.Table(
     ),
     postgresql_partition_by="HASH (tenant_id)",
 )
+
+# The `wf:` key of each record write a workflow step sends (revision
+# 902ac246a9dc, custom-objects ticket 03): one principal's row, written in the
+# transaction of the write and read back on a replay.
+record_write_keys = sa.Table(
+    "record_write_keys",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("write_key", sa.Text, nullable=False),
+    sa.Column("record_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("op", sa.Text, nullable=False),
+    sa.Column("version", sa.Integer, nullable=False),
+    sa.Column("created", sa.Boolean, nullable=False, server_default=sa.text("false")),
+    sa.Column("owner_kind", sa.Text, nullable=True),
+    sa.Column("owner_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("owner_workspace_id", UUID(as_uuid=True), nullable=True),
+    sa.Column("actor_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("created_at", _TS, nullable=False, server_default=sa.text("now()")),
+    sa.PrimaryKeyConstraint("tenant_id", "write_key"),
+    sa.ForeignKeyConstraint(
+        ["tenant_id", "record_id"], [records.c.tenant_id, records.c.id], ondelete="CASCADE"
+    ),
+    sa.Index(None, "tenant_id", "record_id"),
+    sa.Index(None, "created_at"),
+)

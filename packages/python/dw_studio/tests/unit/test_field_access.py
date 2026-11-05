@@ -396,7 +396,22 @@ async def test_a_user_request_reads_its_own_grants_and_no_boundary() -> None:
     inputs = _inputs("user")
     access = await FieldAccessService(inputs).for_object("tx", uuid.uuid4())
     assert access.level_of("email") == "read"
-    assert [kind for kind, _ in inputs.asked] == ["actor", "object", "principal"]
+    assert [kind for kind, _ in inputs.asked] == ["actor", "principal", "object"]
+
+
+async def test_a_caller_read_once_decides_every_action_of_its_transaction() -> None:
+    """custom-objects/03: RecordService reads the caller once, asks the
+    object key from its grants, then the field decision of each action from
+    the same grants: the actor and the keys are not read again."""
+    inputs = _inputs("user")
+    service = FieldAccessService(inputs)
+    caller = await service.caller("tx")
+    assert caller.holds("obj.lead.read") and not caller.holds("obj.lead.update")
+    decided = await service.for_actions("tx", uuid.uuid4(), ("read", "create"), caller=caller)
+    assert decided["read"].level_of("email") == "read"
+    assert decided["create"].level_of("email") == "read"
+    assert set(decided) == {"read", "create"}
+    assert [kind for kind, _ in inputs.asked] == ["actor", "principal", "object"]
 
 
 async def test_r2_5_a_run_reads_its_chain_and_r2_8_an_empty_one_hides_all() -> None:

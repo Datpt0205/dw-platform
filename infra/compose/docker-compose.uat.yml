@@ -28,6 +28,9 @@ services:
   worker:
     environment:
       DW_API_PROFILE: uat
+      # How many worker processes run; each takes `limit / N` of a company's
+      # rate limit (usage-and-limits R7.1, custom-objects R7.6).
+      DW_WORKER_REPLICAS: "1"
     deploy:
       resources:
         limits:

@@ -31,6 +31,8 @@ JSON_SCHEMA: Final = "https://json-schema.org/draft/2020-12/schema"
 DEFAULT_CACHE_ENTRIES: Final = 1024
 # Sortable beside the slot fields: the indexes of `studio.records` carry them.
 SYSTEM_SORTS: Final = ("name", "created_at", "updated_at")
+# An exact number and a currency travel as a decimal string at every door.
+DECIMAL_PATTERN: Final = r"^-?[0-9]+(\.[0-9]+)?$"
 
 _FORMATS: Final[Mapping[str, str]] = {
     "email": "email",
@@ -62,7 +64,10 @@ class ObjectSchemas:
 def value_schema(field: FieldDefinition) -> dict[str, Any]:
     """One value of the field: its JSON type and bounds, nothing it was called."""
     schema: dict[str, Any]
-    if field.type in ("number", "currency"):
+    if field.type == "currency" or (field.type == "number" and field.number_mode == "exact"):
+        # A decimal string, never a JSON number (custom-objects/03, gate (e)).
+        schema = {"type": "string", "pattern": DECIMAL_PATTERN}
+    elif field.type == "number":
         schema = {"type": "number"}
     elif field.type == "boolean":
         schema = {"type": "boolean"}
@@ -159,3 +164,42 @@ class ObjectSchemaProjector:
         self._cache.move_to_end(key)
         while len(self._cache) > self.max_entries:
             self._cache.popitem(last=False)
+
+
+def narrowed(
+    schemas: ObjectSchemas,
+    *,
+    readable: frozenset[str],
+    editable: frozenset[str],
+    creatable: frozenset[str],
+) -> ObjectSchemas:
+    """``schemas`` as one caller may use them (R3.6, R3.7; custom-objects
+    ticket 03 step 9): the create schema with the fields `create` lets it
+    write, the update schema with those it edits, the query schema, the sorts
+    and the company's words without any field hidden from it. Applied to
+    each call after the cache, never stored in it (gate M5), so a field
+    secured without a new `schema_version` is out at the next call."""
+
+    def keep(schema: Mapping[str, Any], names: frozenset[str]) -> dict[str, Any]:
+        out = dict(schema)
+        out["properties"] = {k: v for k, v in schema["properties"].items() if k in names}
+        required = [k for k in schema.get("required", ()) if k in names]
+        if required:
+            out["required"] = required
+        else:
+            out.pop("required", None)
+        return out
+
+    system = frozenset(SYSTEM_SORTS) - {NAME}
+    return ObjectSchemas(
+        object_id=schemas.object_id,
+        schema_version=schemas.schema_version,
+        create=keep(schemas.create, creatable),
+        update=keep(schemas.update, editable),
+        query=keep(schemas.query, readable),
+        sortable=tuple(s for s in schemas.sortable if s in readable or s in system),
+        ai_descriptions=AiDescriptions(
+            object=schemas.ai_descriptions.object,
+            fields={k: v for k, v in schemas.ai_descriptions.fields.items() if k in readable},
+        ),
+    )

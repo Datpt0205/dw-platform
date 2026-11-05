@@ -69,6 +69,7 @@ from dw_api.routes.v1.zalo import webhook_router as zalo_webhook_router
 from dw_platform.application.ports import VerifiedIdentity
 from dw_studio.core.application.registry import ArtifactKindEntry
 from dw_studio.core.domain.artifacts import DocumentInvalidError
+from dw_studio.records.domain.errors import DuplicateThrottledError
 
 _LOG = logging.getLogger(__name__)
 
@@ -132,6 +133,20 @@ def mount_studio(app: FastAPI, container: ApiContainer) -> None:
         )
 
     app.add_exception_handler(DocumentInvalidError, document_invalid)
+
+    async def duplicate_throttled(request: Request, exc: Exception) -> Response:
+        # R7.6: 429 with `Retry-After`, the moment the oldest refusal leaves
+        # the window (the whole window when no wait would help).
+        assert isinstance(exc, DuplicateThrottledError)
+        return problem_response(
+            request,
+            exc.code,
+            exc.message,
+            details=exc.details,
+            headers={"Retry-After": str(exc.retry_after_seconds)},
+        )
+
+    app.add_exception_handler(DuplicateThrottledError, duplicate_throttled)
 
 
 def create_app(

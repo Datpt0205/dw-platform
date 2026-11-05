@@ -874,6 +874,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
         "sổ tầm dẫn xuất của một chủ thể và epoch của cả tenant: một dòng đếm mỗi công ty"
         " (record-access ticket 02, ADR-0105 quyết 4, DO-01)"
     ),
+    ("studio", "record_write_keys"): (
+        "khóa `wf:` của một chủ thể chạy, không của workspace nào: bản ghi nó trỏ tới mang"
+        " workspace sở hữu (custom-objects ticket 03, R5.9-R5.11, ADR-0108 quyết 6)"
+    ),
     **{
         ("studio", table): (
             "giới hạn dữ liệu của một phiên bản agent hay quy trình đã phát hành, hay giới hạn"
@@ -1163,6 +1167,11 @@ _PRIVATE_TO_ONE_PERSON: dict[tuple[str, str], tuple[str, str]] = {
     ("studio", "principal_scopes"): (
         "principal_id",
         "sổ tầm của một chủ thể, chỉ người đó đọc (record-access ticket 02, gate (b))",
+    ),
+    ("studio", "record_write_keys"): (
+        "actor_id",
+        "khóa `wf:` của một chủ thể chạy: chủ thể khác không thấy, chỉ gặp PK (custom-objects"
+        " ticket 03, R5.11)",
     ),
 }
 

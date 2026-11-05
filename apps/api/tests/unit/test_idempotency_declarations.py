@@ -37,6 +37,7 @@ from dw_api.routes.v1 import digital_workers as digital_workers_routes
 from dw_api.routes.v1 import studio_artifacts as studio_routes
 from dw_api.routes.v1 import studio_bindings as bindings_routes
 from dw_api.routes.v1 import studio_lifecycle as lifecycle_routes
+from dw_api.routes.v1 import studio_records as records_routes
 from dw_api.routes.v1 import work_items as work_items_routes
 from dw_platform.application import (
     control_switches,
@@ -49,6 +50,7 @@ from dw_platform.application.connection_admin import ConnectionService
 from dw_platform.application.service_principals import ServicePrincipalService
 from dw_studio.core.application.service import ArtifactService
 from dw_studio.lifecycle.application.service import SUBMIT_SEGMENTS, LifecycleService
+from dw_studio.records.application.record_service import RecordService
 
 pytestmark = pytest.mark.unit
 
@@ -150,6 +152,10 @@ DECLARED: dict[tuple[str, str], object] = {
         for segment in SUBMIT_SEGMENTS
         for action in ("submit", "withdraw", "retire")
     },
+    # The object, then `obj.<api_name>.create`, RecordService's own check
+    # (custom-objects ticket 03).
+    ("POST", "/api/v1/studio/objects/{api_name}/records"): records_routes._may_create,
+    ("POST", "/api/v1/studio/objects/{api_name}/records/upsert"): records_routes._may_create,
     # The owning workspace is the company's, then `.manage` reaches it
     # (org-and-principals R6.1).
     ("POST", "/api/v1/admin/service-principals"): service_principal_routes._may_create,
@@ -302,6 +308,8 @@ def test_each_declaration_is_the_check_its_service_makes() -> None:
     ):
         assert service_check in ast.dump(ast.parse(_source_of(check))), service_check
         assert hasattr(ArtifactService, service_check)
+    assert "require" in ast.dump(ast.parse(_source_of(records_routes._may_create)))
+    assert hasattr(RecordService, "require")
     for check in (lifecycle_routes._may_submit, lifecycle_routes._may_retire):
         assert "check" in ast.dump(ast.parse(_source_of(check)))
         assert hasattr(LifecycleService, "check")

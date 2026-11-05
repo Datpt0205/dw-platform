@@ -116,6 +116,7 @@ from dw_platform.adapters.persistence.zalo_link_repo import (
     SqlChannelLinkNonceRetention,
     SqlZaloLink,
 )
+from dw_platform.adapters.rate_limit import InProcessRateLimiter
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.approval_codes import ApprovalSubjectVersions, DecisionCodeKey
 from dw_platform.application.authorization import ScopeAuthorizationService
@@ -133,6 +134,10 @@ from dw_platform.application.dw_autonomy import (
 from dw_platform.application.egress_allowlist import EGRESS_ALLOWED_HOST, AllowedHostSettler
 from dw_platform.application.work_queue import WorkQueue
 from dw_platform.retention_policy import RetentionPurgerRegistry, load_retention_policy
+from dw_studio.records.adapters.record_store import (
+    RECORD_WRITE_KEYS,
+    SqlRecordWriteKeyRetention,
+)
 from dw_usage.adapters.sql import SqlTenantTimezones, SqlUsageRollupStore
 from dw_usage.application.calendar import UsageCalendar
 from dw_usage.application.rollup import UsageRollup
@@ -398,7 +403,19 @@ def build_retention_purgers(
     purgers = RetentionPurgerRegistry()
     purgers.register(EFFECT_KEYS, SqlEffectKeyRetention(session_factory).purge)
     purgers.register(IDEMPOTENCY_KEYS, SqlIdempotencyKeyRetention(session_factory).purge)
+    # custom-objects 03: a definer function, since the lane sees no other
+    # principal's key through the table's RESTRICTIVE policy (gate (p)).
+    purgers.register(RECORD_WRITE_KEYS, SqlRecordWriteKeyRetention(session_factory).purge)
     return purgers.freeze()
+
+
+def build_rate_limiter(settings: WorkerSettings, clock: UtcClock) -> InProcessRateLimiter:
+    """This process's one `RateLimiterPort` (usage-and-limits R7.1): each of
+    `DW_WORKER_REPLICAS` processes allows its share of a company's limit. The
+    duplicate-probe limit of an agent's record writes (custom-objects R7.6)
+    reads it through `ObjectDataPort`, which tools-and-skills/03 wires here
+    with the worker's `RecordService`; no module keeps one of its own."""
+    return InProcessRateLimiter(replicas=settings.worker_replicas or 1, clock=clock)
 
 
 def build_registry(settings: WorkerSettings) -> ConsumerRegistry:

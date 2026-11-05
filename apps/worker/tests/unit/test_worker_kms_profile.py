@@ -24,6 +24,7 @@ def _deployed_worker(profile: str, **overrides: object) -> WorkerSettings:
         "qdrant_url": "https://qdrant.example:6333",
         "qdrant_api_key": "unit-test-qdrant-key",
         "unsubscribe_signing_secret": "unit-test-unsubscribe-secret-0123456789",
+        "worker_replicas": 1,
     }
     values.update(overrides)
     return WorkerSettings(**values)  # type: ignore[arg-type]

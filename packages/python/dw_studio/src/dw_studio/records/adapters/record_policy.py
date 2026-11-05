@@ -85,6 +85,18 @@ def reach_sql(command: Command) -> str:
     )
 
 
+def may_sql(command: Literal["update", "soft_delete"]) -> str:
+    """Whether the bound actor may run ``command`` on a record row, from the
+    same arms its policy reads: `update` is `_update`'s USING, `soft_delete`
+    its WITH CHECK on a row whose `deleted_at` is set. RecordService's
+    `permissions` (custom-objects/03, gate (l)) selects it beside the row, so
+    what a reader is told and what the policy enforces are one text."""
+    update = f"{actor_sql('update')} AND {reach_sql('update')}"
+    if command == "update":
+        return f"({SCOPE} OR ({update}))"
+    return f"({SCOPE} OR ({update} AND {actor_sql('delete')} AND {reach_sql('delete')}))"
+
+
 def _guarded(command: BoundaryCommand, reach: str) -> str:
     return f"({TENANT}) AND ({SCOPE} OR ({actor_sql(command)} AND {reach}))"
 

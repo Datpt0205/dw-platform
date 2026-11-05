@@ -2145,6 +2145,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/studio/objects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Objects
+         * @description R3.5: the objects whose read key the caller holds, with its actions.
+         */
+        get: operations["list_objects_api_v1_studio_objects_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/objects/{api_name}/describe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Describe Object */
+        get: operations["describe_object_api_v1_studio_objects__api_name__describe_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/objects/{api_name}/records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Record */
+        post: operations["create_record_api_v1_studio_objects__api_name__records_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/objects/{api_name}/records/upsert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upsert Record
+         * @description R7.2: 201 `created: true` or 200 `created: false`. A retry after the
+         *     first attempt committed and died before answering reads the record back
+         *     and answers 200 (gate (t)); a stored answer keeps its first status.
+         */
+        post: operations["upsert_record_api_v1_studio_objects__api_name__records_upsert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/objects/{api_name}/records/{record_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read Record */
+        get: operations["read_record_api_v1_studio_objects__api_name__records__record_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Record
+         * @description R5.5: a soft delete; the record comes back with `deleted_at`.
+         */
+        delete: operations["delete_record_api_v1_studio_objects__api_name__records__record_id__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Update Record
+         * @description A JSON Merge Patch on `name` and `fields`; `owner` and
+         *     `workspace_id` are `field_not_writable` (R6.7).
+         */
+        patch: operations["update_record_api_v1_studio_objects__api_name__records__record_id__patch"];
+        trace?: never;
+    };
     "/api/v1/studio/workflows/{artifact_id}/versions/{version_id}/retire": {
         parameters: {
             query?: never;
@@ -3383,6 +3485,24 @@ export interface components {
             candidate: components["schemas"]["DependentGroupView"];
             live: components["schemas"]["DependentGroupView"];
         };
+        /** DescriptionView */
+        DescriptionView: {
+            /** Ai Description */
+            ai_description?: string | null;
+            /** Api Name */
+            api_name: string;
+            /** Fields */
+            fields: components["schemas"]["FieldOut"][];
+            /** Label */
+            label: string;
+            /**
+             * Object Id
+             * Format: uuid
+             */
+            object_id: string;
+            /** Schema Version */
+            schema_version: number;
+        };
         /** DevSessionRequest */
         DevSessionRequest: {
             /** Subject */
@@ -3660,6 +3780,51 @@ export interface components {
             page_path?: string | null;
             /** Suggestion */
             suggestion?: string | null;
+        };
+        /**
+         * FieldOut
+         * @description One field; a hidden one carries `api_name`, `label` and `access` only.
+         */
+        FieldOut: {
+            /**
+             * Access
+             * @description `edit`, `read` or `hidden`.
+             */
+            access: string;
+            /**
+             * Ai Description
+             * @description The company's own words, to be treated as untrusted data.
+             */
+            ai_description?: string | null;
+            /** Api Name */
+            api_name: string;
+            /** Currency Code */
+            currency_code?: string | null;
+            /** Editable */
+            editable?: boolean | null;
+            /** Filterable */
+            filterable?: boolean | null;
+            /** Label */
+            label: string;
+            /** Max Length */
+            max_length?: number | null;
+            /** Number Mode */
+            number_mode?: string | null;
+            /**
+             * Options
+             * @description Every option, an inactive one with `active: false`.
+             */
+            options?: components["schemas"]["OptionOut"][] | null;
+            /** Required */
+            required?: boolean | null;
+            /** Scale */
+            scale?: number | null;
+            /** Sortable */
+            sortable?: boolean | null;
+            /** Type */
+            type?: string | null;
+            /** Unique */
+            unique?: boolean | null;
         };
         /** FieldPermissionView */
         FieldPermissionView: {
@@ -4264,6 +4429,28 @@ export interface components {
             /** Title */
             title: string;
         };
+        /** ObjectEntryView */
+        ObjectEntryView: {
+            /**
+             * Actions
+             * @description The caller's actions on the object: create, read, update, delete, assign.
+             */
+            actions: string[];
+            /** Api Name */
+            api_name: string;
+            /** Label */
+            label: string;
+            /**
+             * Object Id
+             * Format: uuid
+             */
+            object_id: string;
+        };
+        /** ObjectList */
+        ObjectList: {
+            /** Items */
+            items: components["schemas"]["ObjectEntryView"][];
+        };
         /** ObjectPrivilegeView */
         ObjectPrivilegeView: {
             /**
@@ -4351,6 +4538,17 @@ export interface components {
              */
             user_id: string;
         };
+        /** OptionOut */
+        OptionOut: {
+            /** Active */
+            active: boolean;
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Position */
+            position: number;
+        };
         /** OutlineLaneView */
         OutlineLaneView: {
             /** Port */
@@ -4372,6 +4570,16 @@ export interface components {
             tool: string | null;
             /** Type */
             type: string;
+        };
+        /** OwnerView */
+        OwnerView: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Kind */
+            kind: string;
         };
         /**
          * Page
@@ -4662,6 +4870,13 @@ export interface components {
             /** Permissions */
             permissions?: components["schemas"]["PrivilegeView"][] | null;
         };
+        /** PermissionsView */
+        PermissionsView: {
+            /** Delete */
+            delete: boolean;
+            /** Update */
+            update: boolean;
+        };
         /** PlatformFreezeRequest */
         PlatformFreezeRequest: {
             /** Reason */
@@ -4817,6 +5032,93 @@ export interface components {
              * Format: uuid
              */
             id: string;
+        };
+        /**
+         * RecordInput
+         * @description A record to create. `owner` and `workspace_id` are refused by the
+         *     service with `field_not_writable` (R6.7); other members describing a
+         *     record are ignored.
+         */
+        RecordInput: {
+            /**
+             * Fields
+             * @description Values by field `api_name`. An exact number or a currency is a decimal string, "1000.50"; a number in JSON is `invalid_type`.
+             */
+            fields?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Name
+             * @description The record's name, 1 to 255 characters.
+             */
+            name?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /** RecordOut */
+        RecordOut: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Deleted By */
+            deleted_by: string | null;
+            /** Etag */
+            etag: string;
+            /**
+             * Fields
+             * @description The values the caller reads, by `api_name`.
+             */
+            fields: {
+                [key: string]: unknown;
+            };
+            /**
+             * Hidden Fields
+             * @description Every field hidden from the caller, empty or not; shown as Đã ẩn.
+             */
+            hidden_fields: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Name
+             * @description Null when `name` is hidden from the caller.
+             */
+            name: string | null;
+            /** Object */
+            object: string;
+            owner: components["schemas"]["OwnerView"];
+            permissions: components["schemas"]["PermissionsView"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * Format: uuid
+             */
+            updated_by: string;
+            /**
+             * Version
+             * @description The record's ETag; `If-Match` of its writes.
+             */
+            version: number;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
         };
         /** ReferenceList */
         ReferenceList: {
@@ -5537,6 +5839,95 @@ export interface components {
             record_visibility?: string | null;
             /** Timezone */
             timezone?: string | null;
+        };
+        /** UpsertInput */
+        UpsertInput: {
+            /**
+             * Fields
+             * @description Values by field `api_name`. An exact number or a currency is a decimal string, "1000.50"; a number in JSON is `invalid_type`.
+             */
+            fields?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Match Field
+             * @description The unique field whose value finds the record.
+             */
+            match_field: string;
+            /**
+             * Name
+             * @description The record's name, 1 to 255 characters.
+             */
+            name?: unknown;
+        } & {
+            [key: string]: unknown;
+        };
+        /** UpsertOut */
+        UpsertOut: {
+            /** Created */
+            created: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Deleted By */
+            deleted_by: string | null;
+            /** Etag */
+            etag: string;
+            /**
+             * Fields
+             * @description The values the caller reads, by `api_name`.
+             */
+            fields: {
+                [key: string]: unknown;
+            };
+            /**
+             * Hidden Fields
+             * @description Every field hidden from the caller, empty or not; shown as Đã ẩn.
+             */
+            hidden_fields: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Name
+             * @description Null when `name` is hidden from the caller.
+             */
+            name: string | null;
+            /** Object */
+            object: string;
+            owner: components["schemas"]["OwnerView"];
+            permissions: components["schemas"]["PermissionsView"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * Format: uuid
+             */
+            updated_by: string;
+            /**
+             * Version
+             * @description The record's ETag; `If-Match` of its writes.
+             */
+            version: number;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
         };
         /** UsageGroupView */
         UsageGroupView: {
@@ -11709,6 +12100,319 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["NodeTypeCatalogueView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    list_objects_api_v1_studio_objects_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ObjectList"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    describe_object_api_v1_studio_objects__api_name__describe_get: {
+        parameters: {
+            query?: {
+                /** @description `create` describes the creation form, with the create key (R3.1). */
+                action?: "read" | "create";
+            };
+            header?: never;
+            path: {
+                api_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DescriptionView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    create_record_api_v1_studio_objects__api_name__records_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                api_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RecordInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    upsert_record_api_v1_studio_objects__api_name__records_upsert_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                api_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpsertInput"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpsertOut"];
+                };
+            };
+            /** @description Created */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UpsertOut"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    read_record_api_v1_studio_objects__api_name__records__record_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                api_name: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    delete_record_api_v1_studio_objects__api_name__records__record_id__delete: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                api_name: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    update_record_api_v1_studio_objects__api_name__records__record_id__patch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required. The strong ETag of the version you read, for example "7". A stale or weak one is a 412; none, *, a list or a repeat is a 428. */
+                "If-Match"?: string[] | null;
+            };
+            path: {
+                api_name: string;
+                record_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordOut"];
                 };
             };
             /** @description The request was refused */

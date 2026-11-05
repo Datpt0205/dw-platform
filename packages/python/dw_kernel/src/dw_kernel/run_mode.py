@@ -13,9 +13,16 @@ A child run never runs looser than its parent (`child_mode`).
 
 from __future__ import annotations
 
-from typing import Literal
+from datetime import timedelta
+from typing import Final, Literal
 
 RunMode = Literal["live", "test", "simulate"]
+
+# How long a Studio run may live from the moment its lane first takes it
+# (workflow-engine R5.22, `deadline_at`). A key a run's step leaves behind, such
+# as `studio.record_write_keys`, is kept longer than this, so the step's last
+# possible replay still meets it (custom-objects ticket 03, R5.9).
+STUDIO_RUN_DEADLINE: Final = timedelta(days=30)
 
 # Strictest first: a child takes whichever of its parent's and its own
 # request comes first.
@@ -27,4 +34,4 @@ def child_mode(parent: RunMode, requested: RunMode) -> RunMode:
     return parent if _ORDER.index(parent) <= _ORDER.index(requested) else requested
 
 
-__all__ = ["RunMode", "child_mode"]
+__all__ = ["STUDIO_RUN_DEADLINE", "RunMode", "child_mode"]

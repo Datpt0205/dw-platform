@@ -40,6 +40,17 @@ the approval flow (its prefix is strict in `bootstrap.runtime`); the door's
 `BindingPins`; `BindingStatus`, the `PublishBindingsCheck` agent-lifecycle/04
 asks; and the connections' dependents answered from approved Binding sets.
 Without the connection rule (no database) Studio is not built at all.
+
+Records (custom-objects ticket 03): one `RecordService` over `SqlRecordStore`,
+the field decision of field-security/01 (`FieldAccessService` over
+`SqlFieldSecurityInputs`, wired here and nowhere else), the process's one
+`RateLimiterPort` from the container and the schema projector. A person's
+request reaches it through `record_door`, whose transactions open in
+`user_session` (record-access/03): tenant, principal, the actor `user` and the
+reach door, bound before the service's first statement. A workflow step's
+`RecordsPort` (workflow-nodes/04) and an agent's `ObjectDataPort`
+(tools-and-skills/03) take this same service when they ship, each with its
+run's door.
 """
 
 from __future__ import annotations
@@ -67,6 +78,7 @@ from dw_platform.adapters.persistence.plan_model_profiles import (
     CachingPlanModelProfiles,
     SqlPlanModelProfiles,
 )
+from dw_platform.application.access_context import AccessContext
 from dw_platform.application.config_versions import (
     CONFIG_VERSION,
     ConfigKindRegistry,
@@ -74,6 +86,7 @@ from dw_platform.application.config_versions import (
     ConfigVersionService,
 )
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
+from dw_studio.core.adapters.field_security_inputs import SqlFieldSecurityInputs
 from dw_studio.core.adapters.run_bindings import SqlRunBindings
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestEngines, SqlRunManifestStore
 from dw_studio.core.application.bindings import (
@@ -85,6 +98,7 @@ from dw_studio.core.application.bindings import (
     platform_binding_types,
 )
 from dw_studio.core.application.boundaries import ActorBoundaryPort
+from dw_studio.core.application.field_access import FieldAccessService
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.run_request import RunLaneRegistry, RunRequestService
@@ -94,7 +108,14 @@ from dw_studio.lifecycle.adapters.store import SqlLifecycleStore
 from dw_studio.lifecycle.application.ports import SubmitCheck
 from dw_studio.lifecycle.application.service import SUBMIT_SEGMENTS, LifecycleService
 from dw_studio.records.adapters.actor_boundaries import SqlActorBoundaries
-from dw_studio.records.adapters.definition_store import object_store_of
+from dw_studio.records.adapters.definition_store import (
+    SqlObjectDefinitionReader,
+    object_store_of,
+)
+from dw_studio.records.adapters.record_store import SqlRecordStore
+from dw_studio.records.adapters.user_session import user_session
+from dw_studio.records.application.record_service import RecordDoor, RecordService
+from dw_studio.records.application.schema_projector import ObjectSchemaProjector
 from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
 
 if TYPE_CHECKING:
@@ -158,6 +179,10 @@ class StudioContainer:
     # workflow-engine/03) and the run door's derivations (workflow-engine/03)
     # take it from here.
     actor_boundaries: ActorBoundaryPort
+    # custom-objects 03: the one record service, and the door a person's
+    # request reaches it through.
+    records: RecordService
+    record_door: Callable[[AccessContext], RecordDoor]
 
 
 def build_studio(
@@ -173,6 +198,7 @@ def build_studio(
         or container.run_control is None
         or container.connection_usability is None
         or container.connections is None
+        or container.rate_limiter is None
     ):
         return None
     # From the runtime seam's when it is wired; the database's own otherwise,
@@ -239,12 +265,25 @@ def build_studio(
         container.connections, dependents_port=BindingConnectionDependents(store, registry)
     )
 
+    records = RecordService(
+        SqlRecordStore(),
+        FieldAccessService(SqlFieldSecurityInputs()),
+        container.rate_limiter,
+        ObjectSchemaProjector(SqlObjectDefinitionReader(sessions)),
+        clock,
+        ids,
+    )
+
+    def record_door(context: AccessContext) -> RecordDoor:
+        return RecordDoor(lambda: user_session(sessions, context))
+
     # Imported here, not at the top: the routes import the container's
     # dependencies, which import this package.
     from dw_api.routes.v1.studio_artifacts import router as artifacts_router
     from dw_api.routes.v1.studio_bindings import router as bindings_router
     from dw_api.routes.v1.studio_lifecycle import lifecycle_router
     from dw_api.routes.v1.studio_node_types import router as node_types_router
+    from dw_api.routes.v1.studio_records import router as records_router
 
     return StudioContainer(
         kinds=registry,
@@ -256,6 +295,7 @@ def build_studio(
             bindings_router,
             lifecycle_router(segments),
             node_types_router,
+            records_router,
         ),
         run_manifests=run_manifests,
         pinned_manifests=SqlRunManifestStore,
@@ -276,4 +316,6 @@ def build_studio(
         run_bindings=SqlRunBindings(sessions),
         node_types=node_types,
         actor_boundaries=SqlActorBoundaries(),
+        records=records,
+        record_door=record_door,
     )

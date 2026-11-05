@@ -38,7 +38,13 @@ sys.path.insert(0, str(REPO / "scripts"))
 # Writes of a versioned resource that do not turn `RequireIfMatch` on yet, each
 # with why: an upsert or a batch until its spec defines a per-item comparison,
 # or a resource until its spec turns R3 on. Frozen: a new one is a decision.
-EXEMPT_WRITES: dict[tuple[str, str], str] = {}
+EXEMPT_WRITES: dict[tuple[str, str], str] = {
+    ("POST", "/api/v1/studio/objects/{api_name}/records/upsert"): (
+        "an upsert: it finds its record by a unique field, so there is no version to name"
+        " before the call; the conditional write is on the version it read, and"
+        " `Idempotency-Key` is required instead (custom-objects R7.2, R7.7)"
+    ),
+}
 
 # Writes of a resource the schema reading cannot see as versioned (wrapped in
 # an envelope), declared here under the same rule (the spec's "API" section).

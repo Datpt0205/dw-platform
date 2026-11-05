@@ -62,12 +62,24 @@ def _studio_only(name: str | None, type_: str, parent: dict[str, Any]) -> bool:
     return True
 
 
+def _not_into_a_partition(
+    obj: Any, name: str | None, type_: str, reflected: bool, compare_to: Any
+) -> bool:
+    """A foreign key to the partitioned `studio.records` (`record_write_keys`,
+    custom-objects ticket 03) is one constraint in the description and, in the
+    catalog, one more per partition that PostgreSQL makes and names itself."""
+    if type_ == "foreign_key_constraint" and reflected:
+        return not _PARTITION.match(obj.referred_table.name)
+    return True
+
+
 def _differences(conn: Connection) -> list[Any]:
     context = MigrationContext.configure(
         conn,
         opts={
             "include_schemas": True,
             "include_name": _studio_only,
+            "include_object": _not_into_a_partition,
             "compare_type": True,
             "compare_server_default": True,
         },

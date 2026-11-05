@@ -16,7 +16,7 @@ from typing import Any
 import pytest
 
 from dw_studio.records.application.ports import AppliedObject, FieldStorage
-from dw_studio.records.application.schema_projector import ObjectSchemaProjector
+from dw_studio.records.application.schema_projector import ObjectSchemaProjector, narrowed
 from dw_studio.records.domain.document import definition_of
 
 pytestmark = pytest.mark.unit
@@ -181,3 +181,61 @@ async def test_another_companys_object_is_not_found() -> None:
     reader, object_id = FakeReader(), uuid.uuid4()
     reader.objects[(uuid.uuid4(), object_id)] = applied(object_id, lead(), slots={})
     assert await ObjectSchemaProjector(reader).schemas(uuid.uuid4(), object_id, 1) is None
+
+
+async def test_r6_4_gate_e_an_exact_number_and_a_currency_are_decimal_strings() -> None:
+    """custom-objects/03 (gate (e)): `{"type": "string"}` with the decimal
+    pattern, never `{"type": "number"}`; a float stays a number."""
+    reader, tenant, object_id = FakeReader(), uuid.uuid4(), uuid.uuid4()
+    money = {**text("amount"), "type": "currency", "currency_code": "VND"}
+    exact = {**text("price"), "type": "number", "number_mode": "exact", "scale": 2}
+    loose = {**text("score"), "type": "number", "number_mode": "float"}
+    reader.objects[(tenant, object_id)] = applied(object_id, lead(money, exact, loose), slots={})
+
+    schemas = await ObjectSchemaProjector(reader).schemas(tenant, object_id, 1)
+
+    assert schemas is not None
+    properties = schemas.create["properties"]
+    for name in ("amount", "price"):
+        assert properties[name]["anyOf"][0] == {
+            "type": "string",
+            "pattern": r"^-?[0-9]+(\.[0-9]+)?$",
+        }
+    assert properties["score"]["anyOf"][0] == {"type": "number"}
+
+
+async def test_r3_6_r3_7_m5_the_caller_narrows_after_the_cache_never_inside_it() -> None:
+    """A hidden field is in no schema, no sort and no description; the
+    create schema has what `create` lets the caller write, the update schema
+    what it edits; the cached entry keeps every field."""
+    reader, tenant, object_id = FakeReader(), uuid.uuid4(), uuid.uuid4()
+    reader.objects[(tenant, object_id)] = applied(
+        object_id,
+        lead(
+            text("phone", indexed=True, ai_description="Số gọi"),
+            text("note", ai_description="Ghi chú", required=True),
+            text("score", indexed=True),
+        ),
+        slots={"phone": "t01", "score": "t02"},
+    )
+    projector = ObjectSchemaProjector(reader)
+    full = await projector.schemas(tenant, object_id, 1)
+    assert full is not None
+
+    mine = narrowed(
+        full,
+        readable=frozenset({"name", "note", "score"}),
+        editable=frozenset({"note"}),
+        creatable=frozenset({"name", "note"}),
+    )
+
+    assert set(mine.create["properties"]) == {"name", "note"}
+    assert mine.create["required"] == ["name", "note"]
+    assert set(mine.update["properties"]) == {"note"}
+    assert set(mine.query["properties"]) == {"score"}
+    assert mine.sortable == ("name", "created_at", "updated_at", "score")
+    assert mine.ai_descriptions.fields == {"note": "Ghi chú"}
+    again = await projector.schemas(tenant, object_id, 1)
+    assert again is full
+    assert set(full.query["properties"]) == {"phone", "score"}
+    assert full.ai_descriptions.fields == {"phone": "Số gọi", "note": "Ghi chú"}

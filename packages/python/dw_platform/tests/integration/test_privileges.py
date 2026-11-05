@@ -676,6 +676,11 @@ _STUDIO_DEFINERS: dict[str, str] = {
         "trigger: reads the company's status and the parent boundary whatever the caller's"
         " settings, to refuse a change of a boundary (ck_actor_boundaries_frozen)"
     ),
+    # custom-objects ticket 03 (migration 902ac246a9dc, gate (p)).
+    "purge_expired_record_write_keys": (
+        "the retention purge of every company's expired `wf:` keys, which the lane sees"
+        " none of through the table's RESTRICTIVE policy; it reads its term and fails without"
+    ),
 }
 
 
@@ -820,6 +825,9 @@ _STUDIO_WRITES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
     "actor_boundaries": (frozenset({"DELETE"}), frozenset()),
     "actor_boundary_objects": (frozenset({"DELETE"}), frozenset()),
     "actor_boundary_fields": (frozenset({"DELETE"}), frozenset()),
+    # A step's `wf:` keys (custom-objects ticket 03): inserted with the write,
+    # deleted by offboarding and the purge, never rewritten.
+    "record_write_keys": (frozenset({"INSERT", "DELETE"}), frozenset()),
     "records": (
         frozenset({"INSERT", "DELETE"}),
         frozenset(
@@ -2584,6 +2592,11 @@ _LEDGER_INTERNALS = (
         ("studio.access_input_tables", {("dw_app", "SELECT")}),
         # R4.5 (RA11): records too are no provisioner's and no agent role's.
         ("studio.records", {("dw_app", "SELECT"), ("dw_app", "INSERT"), ("dw_app", "DELETE")}),
+        # custom-objects 03: a step's keys, never rewritten, nobody else's.
+        (
+            "studio.record_write_keys",
+            {("dw_app", "SELECT"), ("dw_app", "INSERT"), ("dw_app", "DELETE")},
+        ),
         ("studio.v_principal_grants", set()),
         ("studio.v_principal_workspaces", set()),
     ],
@@ -2627,6 +2640,39 @@ async def test_dw_app_calls_the_door_and_the_readers_and_no_one_the_computation(
     finally:
         await migrator.dispose()
     assert {k for k, v in calls.items() if v} == {("dw_app", f) for f in _LEDGER_DOORS}
+
+
+async def test_only_dw_app_runs_the_write_key_purge_and_as_its_definer(
+    db_urls: DatabaseUrls,
+) -> None:
+    """custom-objects 03 (gate (p)): the purge of `studio.record_write_keys` is
+    the migrator's definer function, pinned to its search path; `dw_app` alone
+    may call it, not PUBLIC nor any other role."""
+    function = "studio.purge_expired_record_write_keys()"
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            calls = {
+                role: await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+            }
+            shape = (
+                await conn.execute(
+                    sa.text(
+                        "SELECT p.prosecdef, pg_get_userbyid(p.proowner) AS owner, p.proconfig"
+                        " FROM pg_proc p WHERE p.oid = CAST(:f AS regprocedure)"
+                    ),
+                    {"f": function},
+                )
+            ).one()
+    finally:
+        await migrator.dispose()
+    assert {role for role, held in calls.items() if held} == {"dw_app"}
+    assert shape.prosecdef and shape.owner == "dw_migrator"
+    assert shape.proconfig == ["search_path=pg_catalog, pg_temp"]
 
 
 # record-access ticket 04 (migration 996c234cfde3): the data boundaries.

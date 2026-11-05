@@ -2260,6 +2260,54 @@
         "title": "DependentsView",
         "type": "object"
       },
+      "DescriptionView": {
+        "properties": {
+          "ai_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Description"
+          },
+          "api_name": {
+            "title": "Api Name",
+            "type": "string"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/FieldOut"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "object_id": {
+            "format": "uuid",
+            "title": "Object Id",
+            "type": "string"
+          },
+          "schema_version": {
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "object_id",
+          "api_name",
+          "label",
+          "schema_version",
+          "fields"
+        ],
+        "title": "DescriptionView",
+        "type": "object"
+      },
       "DevSessionRequest": {
         "properties": {
           "subject": {
@@ -2893,6 +2941,168 @@
           "created_at"
         ],
         "title": "FeedbackView",
+        "type": "object"
+      },
+      "FieldOut": {
+        "description": "One field; a hidden one carries `api_name`, `label` and `access` only.",
+        "properties": {
+          "access": {
+            "description": "`edit`, `read` or `hidden`.",
+            "title": "Access",
+            "type": "string"
+          },
+          "ai_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The company's own words, to be treated as untrusted data.",
+            "title": "Ai Description"
+          },
+          "api_name": {
+            "title": "Api Name",
+            "type": "string"
+          },
+          "currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency Code"
+          },
+          "editable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Editable"
+          },
+          "filterable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filterable"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "max_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Length"
+          },
+          "number_mode": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Number Mode"
+          },
+          "options": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/OptionOut"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Every option, an inactive one with `active: false`.",
+            "title": "Options"
+          },
+          "required": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Required"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "sortable": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sortable"
+          },
+          "type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Type"
+          },
+          "unique": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unique"
+          }
+        },
+        "required": [
+          "api_name",
+          "label",
+          "access"
+        ],
+        "title": "FieldOut",
         "type": "object"
       },
       "FieldPermissionView": {
@@ -4319,6 +4529,55 @@
         "title": "NotificationView",
         "type": "object"
       },
+      "ObjectEntryView": {
+        "properties": {
+          "actions": {
+            "description": "The caller's actions on the object: create, read, update, delete, assign.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Actions",
+            "type": "array"
+          },
+          "api_name": {
+            "title": "Api Name",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "object_id": {
+            "format": "uuid",
+            "title": "Object Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "object_id",
+          "api_name",
+          "label",
+          "actions"
+        ],
+        "title": "ObjectEntryView",
+        "type": "object"
+      },
+      "ObjectList": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/ObjectEntryView"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "ObjectList",
+        "type": "object"
+      },
       "ObjectPrivilegeView": {
         "additionalProperties": false,
         "properties": {
@@ -4491,6 +4750,34 @@
         "title": "OperatorView",
         "type": "object"
       },
+      "OptionOut": {
+        "properties": {
+          "active": {
+            "title": "Active",
+            "type": "boolean"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "key",
+          "label",
+          "position",
+          "active"
+        ],
+        "title": "OptionOut",
+        "type": "object"
+      },
       "OutlineLaneView": {
         "properties": {
           "port": {
@@ -4572,6 +4859,25 @@
           "lanes"
         ],
         "title": "OutlineStepView",
+        "type": "object"
+      },
+      "OwnerView": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "id"
+        ],
+        "title": "OwnerView",
         "type": "object"
       },
       "Page_AllowedHostView_": {
@@ -5201,6 +5507,24 @@
         "title": "PermissionsBody",
         "type": "object"
       },
+      "PermissionsView": {
+        "properties": {
+          "delete": {
+            "title": "Delete",
+            "type": "boolean"
+          },
+          "update": {
+            "title": "Update",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "update",
+          "delete"
+        ],
+        "title": "PermissionsView",
+        "type": "object"
+      },
       "PlatformFreezeRequest": {
         "properties": {
           "reason": {
@@ -5579,6 +5903,147 @@
           "id"
         ],
         "title": "Received",
+        "type": "object"
+      },
+      "RecordInput": {
+        "additionalProperties": true,
+        "description": "A record to create. `owner` and `workspace_id` are refused by the\nservice with `field_not_writable` (R6.7); other members describing a\nrecord are ignored.",
+        "properties": {
+          "fields": {
+            "additionalProperties": true,
+            "description": "Values by field `api_name`. An exact number or a currency is a decimal string, \"1000.50\"; a number in JSON is `invalid_type`.",
+            "title": "Fields",
+            "type": "object"
+          },
+          "name": {
+            "description": "The record's name, 1 to 255 characters.",
+            "title": "Name"
+          }
+        },
+        "title": "RecordInput",
+        "type": "object"
+      },
+      "RecordOut": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "deleted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted By"
+          },
+          "etag": {
+            "title": "Etag",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "description": "The values the caller reads, by `api_name`.",
+            "title": "Fields",
+            "type": "object"
+          },
+          "hidden_fields": {
+            "description": "Every field hidden from the caller, empty or not; shown as Đã ẩn.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Hidden Fields",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when `name` is hidden from the caller.",
+            "title": "Name"
+          },
+          "object": {
+            "title": "Object",
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/OwnerView"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/PermissionsView"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "version": {
+            "description": "The record's ETag; `If-Match` of its writes.",
+            "title": "Version",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "version",
+          "etag",
+          "owner",
+          "workspace_id",
+          "created_at",
+          "created_by",
+          "updated_at",
+          "updated_by",
+          "deleted_at",
+          "deleted_by",
+          "name",
+          "fields",
+          "hidden_fields",
+          "permissions"
+        ],
+        "title": "RecordOut",
         "type": "object"
       },
       "ReferenceList": {
@@ -7484,6 +7949,159 @@
           }
         },
         "title": "UpdateTenantBody",
+        "type": "object"
+      },
+      "UpsertInput": {
+        "additionalProperties": true,
+        "properties": {
+          "fields": {
+            "additionalProperties": true,
+            "description": "Values by field `api_name`. An exact number or a currency is a decimal string, \"1000.50\"; a number in JSON is `invalid_type`.",
+            "title": "Fields",
+            "type": "object"
+          },
+          "match_field": {
+            "description": "The unique field whose value finds the record.",
+            "title": "Match Field",
+            "type": "string"
+          },
+          "name": {
+            "description": "The record's name, 1 to 255 characters.",
+            "title": "Name"
+          }
+        },
+        "required": [
+          "match_field"
+        ],
+        "title": "UpsertInput",
+        "type": "object"
+      },
+      "UpsertOut": {
+        "properties": {
+          "created": {
+            "title": "Created",
+            "type": "boolean"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "deleted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted By"
+          },
+          "etag": {
+            "title": "Etag",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "description": "The values the caller reads, by `api_name`.",
+            "title": "Fields",
+            "type": "object"
+          },
+          "hidden_fields": {
+            "description": "Every field hidden from the caller, empty or not; shown as Đã ẩn.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Hidden Fields",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when `name` is hidden from the caller.",
+            "title": "Name"
+          },
+          "object": {
+            "title": "Object",
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/OwnerView"
+          },
+          "permissions": {
+            "$ref": "#/components/schemas/PermissionsView"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "version": {
+            "description": "The record's ETag; `If-Match` of its writes.",
+            "title": "Version",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "version",
+          "etag",
+          "owner",
+          "workspace_id",
+          "created_at",
+          "created_by",
+          "updated_at",
+          "updated_by",
+          "deleted_at",
+          "deleted_by",
+          "name",
+          "fields",
+          "hidden_fields",
+          "permissions",
+          "created"
+        ],
+        "title": "UpsertOut",
         "type": "object"
       },
       "UsageGroupView": {
@@ -16838,6 +17456,513 @@
           }
         },
         "summary": "List Node Types",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/objects": {
+      "get": {
+        "description": "R3.5: the objects whose read key the caller holds, with its actions.",
+        "operationId": "list_objects_api_v1_studio_objects_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ObjectList"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Objects",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/objects/{api_name}/describe": {
+      "get": {
+        "operationId": "describe_object_api_v1_studio_objects__api_name__describe_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "title": "Api Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "`create` describes the creation form, with the create key (R3.1).",
+            "in": "query",
+            "name": "action",
+            "required": false,
+            "schema": {
+              "default": "read",
+              "description": "`create` describes the creation form, with the create key (R3.1).",
+              "enum": [
+                "read",
+                "create"
+              ],
+              "title": "Action",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DescriptionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Describe Object",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/objects/{api_name}/records": {
+      "post": {
+        "operationId": "create_record_api_v1_studio_objects__api_name__records_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "title": "Api Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Optional. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecordInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Create Record",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/objects/{api_name}/records/upsert": {
+      "post": {
+        "description": "R7.2: 201 `created: true` or 200 `created: false`. A retry after the\nfirst attempt committed and died before answering reads the record back\nand answers 200 (gate (t)); a stored answer keeps its first status.",
+        "operationId": "upsert_record_api_v1_studio_objects__api_name__records_upsert_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "title": "Api Name",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409.",
+              "title": "Idempotency-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpsertOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpsertOut"
+                }
+              }
+            },
+            "description": "Created"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Upsert Record",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/objects/{api_name}/records/{record_id}": {
+      "delete": {
+        "description": "R5.5: a soft delete; the record comes back with `deleted_at`.",
+        "operationId": "delete_record_api_v1_studio_objects__api_name__records__record_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "title": "Api Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Delete Record",
+        "tags": [
+          "studio"
+        ]
+      },
+      "get": {
+        "operationId": "read_record_api_v1_studio_objects__api_name__records__record_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "title": "Api Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Read Record",
+        "tags": [
+          "studio"
+        ]
+      },
+      "patch": {
+        "description": "A JSON Merge Patch on `name` and `fields`; `owner` and\n`workspace_id` are `field_not_writable` (R6.7).",
+        "operationId": "update_record_api_v1_studio_objects__api_name__records__record_id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "title": "Api Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "record_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Record Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Required. The strong ETag of the version you read, for example \"7\". A stale or weak one is a 412; none, *, a list or a repeat is a 428.",
+              "title": "If-Match"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Update Record",
         "tags": [
           "studio"
         ]

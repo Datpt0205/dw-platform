@@ -1,0 +1,13 @@
+# Khóa `wf:` của lệnh sửa bản ghi từ một Bước quy trình (`studio.record_write_keys`),
+# custom-objects ticket 03 (R5.9-R5.11, CO26).
+#
+# 31 ngày: dài hơn hạn chót 30 ngày của một lượt chạy Studio (workflow-engine:R5.22,
+# `STUDIO_RUN_DEADLINE`), nên một Bước chạy lại muộn nhất vẫn gặp khóa của lần đầu và
+# không sửa lần hai; một test đọc cả hai số. Khóa không phải dữ liệu cá nhân: id bản ghi,
+# phiên bản và chủ thể chạy. Dòng vận hành, không là bản ghi của ai: bộ xóa (hàm
+# SECURITY DEFINER `studio.purge_expired_record_write_keys()`) ghi số dòng vào log,
+# không ghi audit (`CLAUDE.md` "Agent and tool rules"; ADR-0011 "Not applied").
+days: 31
+purger: row_delete
+enforced: true
+description: Khóa của lệnh sửa bản ghi từ một Bước quy trình, theo chủ thể chạy

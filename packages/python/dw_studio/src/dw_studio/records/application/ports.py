@@ -18,9 +18,13 @@ from __future__ import annotations
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Protocol
 
 from dw_platform.application.access_context import AccessContext
+from dw_platform.application.effect_keys import EffectClaim
+from dw_platform.domain.audit import AuditEvent
+from dw_platform.domain.outbox import OutboxEvent
 from dw_studio.records.domain.document import DocumentDefinition, FieldDefinition, OptionDefinition
 
 
@@ -118,4 +122,164 @@ class ObjectDefinitionStore(Protocol):
 class ObjectDefinitionReader(Protocol):
     async def read(self, tenant_id: uuid.UUID, object_id: uuid.UUID) -> AppliedObject | None:
         """The object of that tenant only, as the store holds it under RLS."""
+        ...
+
+
+# ---- the records (custom-objects ticket 03) -----------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class Binding:
+    """What the door bound the transaction to, read back from it: the
+    company, the working workspace a new record belongs to, and the mode
+    `bind_actor` read from a run's row (empty for a person)."""
+
+    tenant_id: uuid.UUID
+    workspace_id: uuid.UUID | None
+    run_mode: str
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectSummary:
+    object_id: uuid.UUID
+    api_name: str
+    labels: Mapping[str, str]
+    ai_description: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class StoredRecord:
+    """A record as the caller's transaction reads it under the record
+    policies, its values by `api_name` in their kept form, and whether the
+    same policies' arms admit an update or a soft delete by this actor."""
+
+    id: uuid.UUID
+    object_id: uuid.UUID
+    workspace_id: uuid.UUID
+    owner_kind: str
+    owner_id: uuid.UUID
+    name: str
+    version: int
+    created_at: datetime
+    created_by: uuid.UUID
+    updated_at: datetime
+    updated_by: uuid.UUID
+    deleted_at: datetime | None
+    deleted_by: uuid.UUID | None
+    values: Mapping[str, Any]
+    may_update: bool
+    may_delete: bool
+
+
+@dataclass(frozen=True, slots=True)
+class NewRecord:
+    id: uuid.UUID
+    workspace_id: uuid.UUID
+    owner_id: uuid.UUID
+    name: str
+    values: Mapping[str, Any]
+    create_key: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class KeyedRecord:
+    """A record a `wf:` key already wrote: its id, who wrote it, and the
+    result the first write gave (`version`, `created`)."""
+
+    record_id: uuid.UUID
+    actor_id: uuid.UUID
+    version: int
+    created: bool
+
+
+class DuplicateSlotError(Exception):
+    """A unique field's value is another live record's: the `u` slot's partial
+    UNIQUE refused the write. The transaction is lost."""
+
+    def __init__(self, api_name: str) -> None:
+        super().__init__(api_name)
+        self.api_name = api_name
+
+
+class CreateKeyTakenError(Exception):
+    """`create_key` is another record's of the object (its UNIQUE refused the
+    insert). The transaction is lost."""
+
+
+class WriteRefusedError(Exception):
+    """The record policies (WITH CHECK) or the owner check refused the row.
+    The transaction is lost."""
+
+
+class RecordTx(Protocol):
+    """One transaction of a record operation, bound by its door. Every
+    statement names the bound company's `tenant_id`; the record policies
+    decide which rows it sees and changes."""
+
+    @property
+    def binding(self) -> Binding: ...
+
+    async def object_id(self, api_name: str) -> uuid.UUID | None: ...
+
+    async def objects(self) -> Sequence[ObjectSummary]: ...
+
+    async def lock_shared(self, object_id: uuid.UUID) -> None:
+        """`pg_advisory_xact_lock_shared` on `object_lock_key(tenant, object)`."""
+        ...
+
+    async def definition(self, object_id: uuid.UUID) -> AppliedObject | None: ...
+
+    async def read(self, obj: AppliedObject, record_id: uuid.UUID) -> StoredRecord | None: ...
+
+    async def match(self, obj: AppliedObject, api_name: str, value: Any) -> StoredRecord | None:
+        """The live record whose unique field ``api_name`` holds ``value``,
+        if the caller reads it."""
+        ...
+
+    async def by_create_key(self, object_id: uuid.UUID, key: str) -> KeyedRecord | None: ...
+
+    async def written(self, write_key: str) -> KeyedRecord | None:
+        """The caller's own `studio.record_write_keys` row of ``write_key``."""
+        ...
+
+    async def insert(self, obj: AppliedObject, record: NewRecord, *, arbiter: str | None) -> bool:
+        """False when ``arbiter``'s value is another live record's
+        (`ON CONFLICT ... DO NOTHING` on its `u` slot); raises
+        `DuplicateSlotError`, `CreateKeyTakenError` or `WriteRefusedError`."""
+        ...
+
+    async def update(
+        self,
+        obj: AppliedObject,
+        record_id: uuid.UUID,
+        version: int,
+        changes: Mapping[str, Any],
+        by: uuid.UUID,
+    ) -> int | None:
+        """The new version, or None when no live row at ``version`` let the
+        caller change it."""
+        ...
+
+    async def soft_delete(self, record_id: uuid.UUID, version: int, by: uuid.UUID) -> int | None:
+        """As `update`; `WriteRefusedError` when the new row is outside the
+        caller's `delete` reach (WITH CHECK)."""
+        ...
+
+    async def keep_write_key(
+        self, write_key: str, record_id: uuid.UUID, op: str, version: int, by: uuid.UUID
+    ) -> bool:
+        """False when the key is already a row (anyone's)."""
+        ...
+
+    async def outbox(self, event: OutboxEvent) -> None: ...
+
+    async def audit(self, event: AuditEvent) -> None: ...
+
+    async def claim(self, claim: EffectClaim) -> None: ...
+
+
+class RecordStore(Protocol):
+    async def bind(self, tx: Any) -> RecordTx:
+        """The record operations of the door's open transaction;
+        `ActorUnboundError` when it is bound to no company."""
         ...

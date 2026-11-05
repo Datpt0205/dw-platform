@@ -501,6 +501,29 @@ source_modules = [
 forbidden_modules = ["dw_studio.*.adapters"]
 
 [[tool.importlinter.contracts]]
+# custom-objects 03 (step 8; R5.6): every record write goes through
+# RecordService, so no route, dependency or other package reaches the records
+# adapter; `dw_api.bootstrap` and `dw_worker` build it, the test fixtures of
+# `dw_studio.testing` plant through it.
+name = "Only a composition root imports the records adapter"
+type = "forbidden"
+source_modules = [
+    "dw_api.routes",
+    "dw_api.dependencies",
+    "dw_api.middleware",
+    "dw_studio.core",
+    "dw_studio.lifecycle",
+    "dw_studio.workflows",
+    "dw_platform",
+    "dw_agent_runtime",
+    "dw_usage",
+]
+forbidden_modules = ["dw_studio.records.adapters"]
+# A route reaches `dw_api.bootstrap` through its container dependency, and
+# bootstrap is a composition root: only a direct import is a second door.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
 # The compilers (`dw_studio.workflows.workflows`, `dw_studio.agents.workflows`)
 # are the only exceptions ADR 0100 allows; neither exists yet, so none is
 # ignored here. The capability that brings one adds its `ignore_imports` line.

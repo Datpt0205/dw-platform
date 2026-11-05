@@ -90,29 +90,68 @@ class FieldSecurityInputsPort(Protocol):
         ...
 
 
+@dataclass(frozen=True, slots=True)
+class Caller:
+    """The transaction's actor and what its principal holds, read once and
+    handed back to `for_object` within the same transaction: RecordService
+    asks the object action key (custom-objects/03) from the same grants the
+    field decision then reads, never from a second read of them."""
+
+    actor: BoundActor
+    grants: PrincipalGrants
+
+    def holds(self, key: str) -> bool:
+        return key in self.grants.keys
+
+
 class FieldAccessService:
     def __init__(self, inputs: FieldSecurityInputsPort) -> None:
         self.inputs = inputs
 
+    async def caller(self, tx: Any) -> Caller:
+        """Who the transaction acts as, and the principal's keys in the bound
+        company; `ActorUnboundError` when it acts as no one."""
+        actor = await self.inputs.actor(tx)
+        return Caller(actor, await self.inputs.principal(tx, actor.principal_id))
+
     async def for_object(
-        self, tx: Any, object_id: uuid.UUID, action: FieldAction = "update"
+        self,
+        tx: Any,
+        object_id: uuid.UUID,
+        action: FieldAction = "update",
+        *,
+        caller: Caller | None = None,
     ) -> FieldAccess:
         """The transaction's own actor on ``object_id``: the person of a `user`
         request, or the principal of an `agent` or `workflow` run within every
-        boundary of its chain."""
-        actor = await self.inputs.actor(tx)
+        boundary of its chain. ``caller`` is `caller(tx)` of this very
+        transaction, when the caller already read it."""
+        return (await self.for_actions(tx, object_id, (action,), caller=caller))[action]
+
+    async def for_actions(
+        self,
+        tx: Any,
+        object_id: uuid.UUID,
+        actions: Sequence[FieldAction],
+        *,
+        caller: Caller | None = None,
+    ) -> dict[FieldAction, FieldAccess]:
+        """`for_object` for each of ``actions``, its inputs read once."""
+        caller = caller or await self.caller(tx)
         security = await self.inputs.object_security(tx, object_id)
-        principal = await self.inputs.principal(tx, actor.principal_id)
         boundary = None
-        if actor.kind != "user":
-            boundary = await self.inputs.boundary(tx, actor.boundary_ids, object_id)
-        return resolve_field_access(
-            principal.keys,
-            security,
-            boundary,
-            action,
-            service_account=principal.service_account,
-        )
+        if caller.actor.kind != "user":
+            boundary = await self.inputs.boundary(tx, caller.actor.boundary_ids, object_id)
+        return {
+            action: resolve_field_access(
+                caller.grants.keys,
+                security,
+                boundary,
+                action,
+                service_account=caller.grants.service_account,
+            )
+            for action in actions
+        }
 
     async def for_person(self, tx: Any, user_id: uuid.UUID, object_id: uuid.UUID) -> FieldAccess:
         """What ``user_id``, someone other than the caller (an approver

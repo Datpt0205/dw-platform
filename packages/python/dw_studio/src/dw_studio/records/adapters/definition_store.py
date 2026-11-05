@@ -4,7 +4,7 @@ definitions over schema `studio`, as `dw_app` under the caller's tenant (RLS).
 The store works inside the session of the `SqlArtifactTx` it is made from
 (`object_store_of`), so the publish hook's writes are the publish
 transaction's. The reader opens its own transaction under the tenant it is
-given. Both read a definition through `_applied`, one function, so the hook's
+given. Both read a definition through `applied_object`, one function, so the hook's
 idempotence check and the schema projector see the same shape.
 """
 
@@ -61,7 +61,7 @@ _FIELD_COLUMNS = (
 )
 
 
-async def _applied(session: AsyncSession, object_id: uuid.UUID) -> AppliedObject | None:
+async def applied_object(session: AsyncSession, object_id: uuid.UUID) -> AppliedObject | None:
     row = (
         await session.execute(sa.select(object_defs).where(object_defs.c.id == object_id))
     ).one_or_none()
@@ -132,7 +132,7 @@ class SqlObjectDefinitionStore:
         return None if row is None else ObjectVersion(row.artifact_id, row.version_no, row.document)
 
     async def applied(self, object_id: uuid.UUID) -> AppliedObject | None:
-        return await _applied(self.session, object_id)
+        return await applied_object(self.session, object_id)
 
     async def insert_object(
         self,
@@ -293,4 +293,4 @@ class SqlObjectDefinitionReader:
         async with tenant_session(
             self.session_factory, TenantScope(tenant_id=tenant_id)
         ) as session:
-            return await _applied(session, object_id)
+            return await applied_object(session, object_id)
