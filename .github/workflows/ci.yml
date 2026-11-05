@@ -18,9 +18,14 @@ on:
       - "docs/adr/**"
   pull_request:
 
+# On main a running run is never cancelled: two build lanes push code every
+# half hour or so, and on 2026-11-05 every run from 88cf13d on was cancelled by
+# the next push, so seven tickets reached main with no finished integration
+# run. A run already going finishes; GitHub keeps only the newest pending one
+# behind it. Pull requests still cancel, where only the head matters.
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   # 1. config / contract validation ------------------------------------------
