@@ -1,0 +1,26 @@
+# Mutation check of custom-objects ticket 11: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per acceptance criterion's
+# guard: the row's `may_update` decides a write that runs no UPDATE (nothing
+# changed), for the upsert (R7.4, CO16) and for `PATCH` (R5.8). The simulated
+# branch's half of the same expression is ticket 03's (mutations/03.yaml).
+mutations:
+  - name: R7.4 R5.8 an unchanged write skips the update reach
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_service.py
+    old: "                raise _stale()\n            if not may_change:\n                raise _refused(\"change\")\n            if write_key"
+    new: "                raise _stale()\n            if write_key"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_service.py::test_r7_4_co16_an_unchanged_upsert_out_of_update_reach_is_a_duplicate
+      - packages/python/dw_studio/tests/integration/test_record_service.py::test_r5_8_an_unchanged_patch_out_of_update_reach_is_refused
+  - name: R7.4 CO16 may_change reads the object key only
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_service.py
+    old: '        may_change = call.holds("update") and current.may_update'
+    new: '        may_change = call.holds("update")'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_service.py::test_r7_4_co16_an_unchanged_upsert_out_of_update_reach_is_a_duplicate
+      - packages/python/dw_studio/tests/integration/test_record_service.py::test_r5_8_an_unchanged_patch_out_of_update_reach_is_refused
+  - name: R7.4 an unchanged write in reach is refused too
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_service.py
+    old: '        may_change = call.holds("update") and current.may_update'
+    new: "        may_change = False"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_service.py::test_r7_4_an_unchanged_upsert_in_reach_answers_with_the_record

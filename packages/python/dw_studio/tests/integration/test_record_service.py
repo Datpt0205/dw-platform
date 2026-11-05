@@ -789,14 +789,21 @@ async def test_r7_4_co16_a_match_the_caller_cannot_change_is_a_plain_duplicate(
 
 
 async def _refused_upsert(
-    world: World, prober: Person, body: dict[str, Any], made: uuid.UUID, number: str
+    world: World,
+    prober: Person,
+    body: dict[str, Any],
+    made: uuid.UUID,
+    number: str,
+    *,
+    door: RecordDoor | None = None,
+    write_key: str | None = None,
 ) -> None:
     """One upsert onto ``made``, refused as a plain duplicate: the field's
     pointer and nothing else, no record id or number in what the caller gets,
     one audit of keys only, and ``made`` as its owner left it."""
     before = await records_of(world)
     with pytest.raises(DuplicateValueError) as refused:
-        await world.service.upsert(world.door(prober), LEAD, body)
+        await world.service.upsert(door or world.door(prober), LEAD, body, write_key=write_key)
     assert [(p.pointer, p.code) for p in refused.value.problems] == [
         ("/fields/phone", "duplicate_value")
     ]
@@ -873,6 +880,95 @@ async def test_r7_4_co16_a_readable_match_out_of_update_reach_is_a_plain_duplica
     )
     got = await world.service.get(world.door(owner), LEAD, made.record.id)
     assert (got.name, got.version, got.fields["note"]) == ("Gốc", 1, "gốc")
+
+
+async def _keys(world: World, key: str) -> int:
+    return await world.count(
+        "SELECT count(*) FROM studio.record_write_keys WHERE write_key = :k", k=key
+    )
+
+
+async def _out_of_reach(world: World) -> tuple[Person, uuid.UUID, str]:
+    """A record in the second workspace and a prober who reads it across the
+    company and changes only its own workspace's records: `may_update` is
+    false by the record's reach alone, the key `update` held."""
+    owner = await world.person(workspace=world.tenant.workspaces[1])
+    number = phone()
+    made = await world.service.create(
+        world.door(owner), LEAD, {"name": "Gốc", "fields": {"phone": number, "note": "gốc"}}
+    )
+    prober = await world.person({"read": "tenant", "create": "workspace", "update": "workspace"})
+    seen = await world.service.get(world.door(prober), LEAD, made.record.id)
+    assert not seen.permissions.update
+    return prober, made.record.id, number
+
+
+async def test_r7_4_co16_an_unchanged_upsert_out_of_update_reach_is_a_duplicate(
+    world: World,
+) -> None:
+    """Custom-objects ticket 11: an upsert that changes nothing runs no UPDATE
+    for the policy to refuse, so the row's `may_update` does; every shape of
+    the unchanged upsert is the plain 409 of R7.4, and a step's `wf:` key
+    keeps no row for a record it may not change."""
+    prober, made, number = await _out_of_reach(world)
+    for body in (
+        {"match_field": "phone", "name": "Gốc", "fields": {"phone": number, "note": "gốc"}},
+        {"match_field": "phone", "fields": {"phone": number}},
+        {"match_field": "phone", "name": "Gốc", "fields": {"phone": "+84" + number[1:]}},
+        {"match_field": "phone", "fields": {"phone": number[:4] + " " + number[4:], "note": "gốc"}},
+    ):
+        await _refused_upsert(world, prober, body, made, number)
+
+    run = await world.run(prober.id)
+    key = wf_key()
+    await _refused_upsert(
+        world,
+        prober,
+        {"match_field": "phone", "fields": {"phone": number}},
+        made,
+        number,
+        door=run,
+        write_key=key,
+    )
+    assert await _keys(world, key) == 0
+
+
+async def test_r5_8_an_unchanged_patch_out_of_update_reach_is_refused(world: World) -> None:
+    """The same branch through `PATCH` (app-standards R3.16): 403, nothing
+    written, no key kept."""
+    prober, made, _ = await _out_of_reach(world)
+    run = await world.run(prober.id)
+    for door, patch, key in (
+        (world.door(prober), {"name": "Gốc", "fields": {"note": "gốc"}}, None),
+        (world.door(prober), {}, None),
+        (run, {"fields": {"note": "gốc"}}, wf_key()),
+    ):
+        with pytest.raises(PermissionDeniedError):
+            await world.service.update(door, LEAD, made, patch, write_key=key)
+        if key is not None:
+            assert await _keys(world, key) == 0
+    assert await events(world, made) == ["studio.record.created"]
+    seen = await world.service.get(world.door(prober), LEAD, made)
+    assert (seen.version, seen.fields["note"]) == (1, "gốc")
+
+
+async def test_r7_4_an_unchanged_upsert_in_reach_answers_with_the_record(world: World) -> None:
+    """The other side of ticket 11's check: in the prober's own workspace the
+    unchanged upsert is still 200 `created: false`, and a step's key is kept
+    (R5.9)."""
+    prober = await world.person({"read": "tenant", "create": "workspace", "update": "workspace"})
+    number = phone()
+    made = await world.service.create(
+        world.door(prober), LEAD, {"name": "Mình", "fields": {"phone": number}}
+    )
+    same = {"match_field": "phone", "fields": {"phone": number}}
+    again = await world.service.upsert(world.door(prober), LEAD, same)
+    assert (again.created, again.version, again.record.permissions.update) == (False, 1, True)
+    key = wf_key()
+    stepped = await world.service.upsert(await world.run(prober.id), LEAD, same, write_key=key)
+    assert (stepped.created, stepped.version) == (False, 1)
+    assert await _keys(world, key) == 1
+    assert await events(world, made.record.id) == ["studio.record.created"]
 
 
 # ---- R7.6: the duplicate-probe limit, by actor kind (gate (d)) -------------------

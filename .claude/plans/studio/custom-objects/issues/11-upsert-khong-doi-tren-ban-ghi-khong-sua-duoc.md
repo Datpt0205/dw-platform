@@ -1,6 +1,6 @@
 # 11 — Tạo hoặc cập nhật không đổi gì trên bản ghi người gọi không sửa được trả 409 như R7.4
 
-Status: ready-for-agent
+Status: resolved
 Area: studio
 Yêu cầu: R5.8, R7.4, CO16
 
@@ -29,15 +29,15 @@ cùng cách: 200 thay 403.
 
 ## Tiêu chí chấp nhận
 
-- [ ] R7.4 (CO16): người đọc toàn công ty, sửa trong workspace mình, upsert đúng giá trị đang có lên bản ghi ở workspace
+- [x] R7.4 (CO16): người đọc toàn công ty, sửa trong workspace mình, upsert đúng giá trị đang có lên bản ghi ở workspace
       kia → 409 `duplicate_value` chỉ con trỏ trường, một audit `studio.record.duplicate_refused`, `version` không đổi;
       cùng người qua cửa lượt `workflow` (lượt `run_as` chính người đó, ranh giới mở `update` của đối tượng) với khóa
       `wf:` → 409, một audit, 0 dòng `studio.record_write_keys` của khóa đó; gỡ phép kiểm `may_update` → 200, test đỏ.
-- [ ] R5.8: cùng người `PATCH` đúng giá trị đang có lên bản ghi đó, không `If-Match` và có khóa `wf:` qua cửa lượt → 403
+- [x] R5.8: cùng người `PATCH` đúng giá trị đang có lên bản ghi đó, không `If-Match` và có khóa `wf:` qua cửa lượt → 403
       `permission_denied`, `version` không đổi, 0 dòng khóa; gỡ phép kiểm → 200, test đỏ.
-- [ ] R7.4: cùng người upsert đúng giá trị lên bản ghi trong workspace mình → 200 `created: false`, `version` không đổi;
+- [x] R7.4: cùng người upsert đúng giá trị lên bản ghi trong workspace mình → 200 `created: false`, `version` không đổi;
       qua cửa lượt với khóa `wf:` → 200 và một dòng khóa (R5.9).
-- [ ] Xong: `DW_TEST_DB_SUFFIX=_lane2 uv run python -m pytest packages/python/dw_studio/tests/integration/test_record_service.py` xanh.
+- [x] Xong: `DW_TEST_DB_SUFFIX=_lane2 uv run python -m pytest packages/python/dw_studio/tests/integration/test_record_service.py` xanh.
 
 ## Nguồn
 
@@ -60,3 +60,20 @@ cùng cách: 200 thay 403.
   tiêu chí. (M2) Sau sửa, upsert không đổi gì lên bản ghi đọc được mà ngoài tầm sửa là một lần 409 đếm vào giới hạn dò
   trùng của người và agent (R7.6 đếm mọi 409); đúng như spec, ghi để người đọc số đếm không ngạc nhiên.
 - 2026-11-05 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, lane 2): resolved. Một biểu thức `may_change = call.holds("update") and current.may_update` trong
+  `_apply` cho cả nhánh không đổi gì (mới) và nhánh mô phỏng (có sẵn); thứ tự 412 rồi 403 như `_why_not`. Test: ba ca
+  mới trong `packages/python/dw_studio/tests/integration/test_record_service.py`
+  (`test_r7_4_co16_an_unchanged_upsert_out_of_update_reach_is_a_duplicate`: bốn thân không đổi gì gồm chỉ trường khớp,
+  số viết `+84` và số có cách, rồi qua cửa lượt với khóa `wf:`, mỗi lần 409 chỉ con trỏ, một audit, 0 dòng khóa;
+  `test_r5_8_an_unchanged_patch_out_of_update_reach_is_refused`: hai `PATCH` qua cửa người, một qua cửa lượt có khóa,
+  cả ba 403, 0 dòng khóa; `test_r7_4_an_unchanged_upsert_in_reach_answers_with_the_record`: 200, `version` 1, một dòng
+  khóa); tệp 27/27 xanh, `apps/api/tests/integration/test_studio_records.py` 20/20. Phá tay trên cây làm việc, bản gốc
+  trong scratchpad, sha256 so lại: gỡ phép kiểm ở nhánh không đổi gì → hai ca từ chối đỏ, ca trong tầm xanh.
+  `mutations/11.yaml` ba mục. Cổng trên bản xuất sạch của `d32e095f` cộng thay đổi (cây chung có việc dở của lane 1):
+  unit toàn repo 3770 qua, 9 bỏ qua, phủ 76,28%; mypy Linux 910 tệp sạch; lint-imports 16 hợp đồng giữ;
+  verify_invariants, verify_architecture, `release_manifest --check` xanh; ruff và format sạch.
+  `reviewing-feature-security`: (2) phép kiểm ở chỗ ghi, test âm gọi thẳng service ở hai cửa; (3) hẹp lại, một Bước không
+  còn giữ khóa cho bản ghi không sửa được; (5) audit 409 là đường R7.5 có sẵn; (6) `may_update` sai thì từ chối; (1), (4)
+  không áp dụng: không câu truy vấn, không nội dung mới. Nợ lúc đóng hàng: `scripts/mutate.py` cho `mutations/11.yaml`;
+  P50/P95/P99 của upsert và `PATCH` so với điểm bắt đầu hàng (không thêm câu truy vấn: `may_update` đọc cùng dòng);
+  `/code-review`.
