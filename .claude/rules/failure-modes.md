@@ -107,7 +107,7 @@ move on.
 
 A new guard ships with a demonstration that removing the guard turns a test red.
 
-## 4. Trusting a library instead of measuring it — NOT THINKABLE (found 9×)
+## 4. Trusting a library instead of measuring it — NOT THINKABLE (found 10×)
 
 MinIO withdrew both its images from Docker Hub; the error read as a credentials
 problem. The move to quay.io held until MinIO withdrew them there too: twelve
@@ -136,6 +136,13 @@ so a harness could not tell the subclass that calls the access door from a plain
 connection by type; the check passed for the connection it was meant to refuse
 (record-access/01, 4/11/2026). It was caught before any committed number depended
 on it, by a self-check that tried the wrong connection on purpose.
+
+A patch release changed the standard library under one pin. `.python-version` says
+`3.12`; the working venv was 3.12.10 and CI's was 3.12.15, where
+`HTMLParser.close()` drops an unfinished `<b {{ x }}` instead of handing it to
+`handle_data`. The html sink's refusal passed every local run and failed only in
+CI (workflow-nodes/02, 5/11/2026). A local venv older than CI's is a second
+target platform nobody chose.
 
 No amount of care catches these. The habit that does:
 
