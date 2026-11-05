@@ -1,0 +1,61 @@
+# Mutation check of foundations-hardening ticket 10: scripts/mutate.py runs this file at the
+# queue's close (.claude/rules/wave-close.md), not at the ticket.
+# One mutation per guard of the Kiểm soát row the ticket implements (FH43). The test database is
+# rebuilt from the migrations at each session, so a mutated migration reaches it. Four were broken
+# by hand once at the ticket (ticket Comments); the tool's control run comes first at the close.
+mutations:
+  - name: FH43 the waiver purge deletes for a tenant other than the transaction's
+    file: db/migrations/versions/9cc87820a05f_offboarding_purges_sod_waivers.py
+    old: "        IF p_tenant IS DISTINCT FROM NULLIF(current_setting('app.tenant_id', true), '')::uuid THEN"
+    new: "        IF false THEN"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_the_waiver_purge_refuses_any_tenant_but_its_own_offboarding_one
+  - name: FH43 the waiver purge deletes for a live company
+    file: db/migrations/versions/9cc87820a05f_offboarding_purges_sod_waivers.py
+    old: "SELECT 1 FROM platform.tenants WHERE id = p_tenant AND status = 'offboarding'"
+    new: "SELECT 1 FROM platform.tenants WHERE id = p_tenant"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_the_waiver_purge_refuses_any_tenant_but_its_own_offboarding_one
+  - name: FH43 every role may call the waiver purge
+    file: db/migrations/versions/9cc87820a05f_offboarding_purges_sod_waivers.py
+    old: '    op.execute(f"REVOKE ALL ON FUNCTION {_FUNCTION} FROM PUBLIC")'
+    new: '    op.execute(f"GRANT EXECUTE ON FUNCTION {_FUNCTION} TO PUBLIC")'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_the_read_only_agent_role_cannot_call_the_waiver_purge
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_only_dw_app_calls_the_waiver_purge_and_still_deletes_no_waiver
+  - name: FH43 the lane does not run the waiver step
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: |2
+              steps.register(sod_waivers_purge_step())
+    new: |2
+              pass
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding.py::test_offboarding_deletes_the_companys_waivers_and_no_one_elses
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_offboarding_covers_every_table_it_has_to
+  - name: FH43 a table that predated the rule loses its exclusion row
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: |2
+              "platform.channel_deliveries": OffboardingExclusion(
+                  reason="dw_app không DELETE; xóa theo FK CASCADE khi lane xóa workspace",
+                  cascade_from="platform.workspaces",
+              ),
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_offboarding_covers_every_table_it_has_to
+  - name: FH43 a second table joins the lane's never-purge set
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: '_NEVER_PURGE = frozenset({("platform", "tenant_offboarding_requests")})'
+    new: '_NEVER_PURGE = frozenset({("platform", "tenant_offboarding_requests"), ("platform", "feedback")})'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_offboarding_covers_every_table_it_has_to
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_a_second_table_the_lane_never_purges_is_named
+  - name: FH43 a cascade link is not read from the catalog
+    file: packages/python/dw_platform/tests/integration/test_offboarding_coverage.py
+    old: |2
+              if not cascades(table, parent):
+                  return False
+    new: |2
+              if False:
+                  return False
+    tests:
+      - packages/python/dw_platform/tests/integration/test_offboarding_coverage.py::test_a_two_link_cascade_is_checked_link_by_link

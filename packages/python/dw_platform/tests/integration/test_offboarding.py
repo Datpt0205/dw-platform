@@ -21,8 +21,9 @@ from typing import Any
 
 import pytest
 import sqlalchemy as sa
-from pg_harness import DatabaseUrls
+from pg_harness import DatabaseUrls, admin_url
 from sqlalchemy import event
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -1500,15 +1501,15 @@ async def test_offboarding_exports_and_deletes_the_companys_switches(
 # workspace without a RESTRICT key in the way.
 
 
-async def _plant_company(migrator: AsyncEngine) -> _Tenant:
+async def _plant_company(migrator: AsyncEngine, status: str = "offboarding") -> _Tenant:
     t = _new_tenant()
     async with migrator.begin() as conn:
         await conn.execute(
             sa.text(
                 "INSERT INTO platform.tenants (id, slug, name, status)"
-                " VALUES (:t, :slug, :slug, 'offboarding')"
+                " VALUES (:t, :slug, :slug, :status)"
             ),
-            {"t": t.tenant_id, "slug": f"stop-{t.tenant_id.hex[-10:]}"},
+            {"t": t.tenant_id, "slug": f"stop-{t.tenant_id.hex[-10:]}", "status": status},
         )
         await conn.execute(
             sa.text(
@@ -1690,3 +1691,150 @@ async def test_a_stop_that_finds_the_request_already_moved_writes_no_record(
     await offboarding._stop(request_id, company.tenant_id)
 
     assert len(await _stop_audits(migrator, company.tenant_id)) == 1
+
+
+# --- The separation-of-duty waivers (R11.16, R11.21) -------------------------
+#
+# foundations-hardening ticket 10 (FH43). `dw_app` holds no DELETE on
+# `platform.sod_waivers`; the lane's step calls a SECURITY DEFINER function that
+# refuses any tenant but the transaction's own, offboarding.
+
+_PURGE_WAIVERS = sa.text("SELECT platform.purge_tenant_sod_waivers(CAST(:t AS uuid))")
+
+
+@pytest.fixture
+async def waivable_rule(migrator: AsyncEngine) -> AsyncIterator[str]:
+    key = f"sod_fh10_{uuid.uuid4().hex[:10]}"
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO platform.sod_rules (key, description, left_scopes, right_scopes,"
+                " waivable) VALUES (:k, 'probe', '[\"fh10.left\"]', '[\"fh10.right\"]', true)"
+            ),
+            {"k": key},
+        )
+    yield key
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text("DELETE FROM platform.sod_waivers WHERE rule_key = :k"), {"k": key}
+        )
+        await conn.execute(sa.text("DELETE FROM platform.sod_rules WHERE key = :k"), {"k": key})
+
+
+async def _waive(migrator: AsyncEngine, tenant_id: uuid.UUID, rule: str) -> None:
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "INSERT INTO platform.sod_waivers (id, tenant_id, rule_key, reason, granted_by)"
+                " VALUES (gen_random_uuid(), :t, :k, 'a team of two', gen_random_uuid())"
+            ),
+            {"t": tenant_id, "k": rule},
+        )
+
+
+async def _waivers(migrator: AsyncEngine, tenant_id: uuid.UUID) -> int:
+    async with migrator.connect() as conn:
+        return (
+            await conn.scalar(
+                sa.text("SELECT count(*) FROM platform.sod_waivers WHERE tenant_id = :t"),
+                {"t": tenant_id},
+            )
+        ) or 0
+
+
+def _sqlstate(exc: BaseException) -> str | None:
+    assert isinstance(exc, DBAPIError), exc
+    orig: Any = exc.orig
+    return getattr(orig, "sqlstate", None)
+
+
+async def test_offboarding_deletes_the_companys_waivers_and_no_one_elses(
+    sessions: async_sessionmaker[AsyncSession], migrator: AsyncEngine, waivable_rule: str
+) -> None:
+    """R11.16 (FH43): the bundle carries them, then the step deletes them; the
+    other company's waiver stays."""
+    mine, theirs = await _plant_company(migrator), await _plant_company(migrator)
+    for company in (mine, theirs):
+        await _waive(migrator, company.tenant_id, waivable_rule)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
+
+    exported = [
+        t
+        for t in await _collect(offboarding.export_rows(mine.tenant_id))
+        if (t.schema, t.table) == ("platform", "sod_waivers")
+    ]
+    await offboarding.purge_rows(mine.tenant_id)
+
+    assert [len(t.rows) for t in exported] == [1]
+    assert await _waivers(migrator, mine.tenant_id) == 0
+    assert await _waivers(migrator, theirs.tenant_id) == 1
+
+
+@pytest.mark.parametrize("case", ["live company", "another company", "no tenant set"])
+async def test_the_waiver_purge_refuses_any_tenant_but_its_own_offboarding_one(
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    waivable_rule: str,
+    case: str,
+) -> None:
+    """R11.21 (FH43): `dw_app` calling the function for a company still live
+    (under its own `app.tenant_id`), for an offboarding company other than the
+    transaction's, or with no `app.tenant_id` at all, is refused with 23514 and
+    nothing is deleted."""
+    status = "active" if case == "live company" else "offboarding"
+    target, bound = await _plant_company(migrator, status), await _plant_company(migrator)
+    await _waive(migrator, target.tenant_id, waivable_rule)
+    setting = {
+        "live company": target.tenant_id,
+        "another company": bound.tenant_id,
+        "no tenant set": None,
+    }[case]
+
+    with pytest.raises(DBAPIError) as refused:
+        async with sessions() as session, session.begin():
+            if setting is not None:
+                await session.execute(
+                    sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(setting)}
+                )
+            await session.execute(_PURGE_WAIVERS, {"t": str(target.tenant_id)})
+
+    assert _sqlstate(refused.value) == "23514"
+    assert await _waivers(migrator, target.tenant_id) == 1
+
+
+async def test_the_waiver_purge_deletes_under_its_own_offboarding_tenant(
+    sessions: async_sessionmaker[AsyncSession], migrator: AsyncEngine, waivable_rule: str
+) -> None:
+    """R11.21: the one call the function accepts, the control for the refusals."""
+    target = await _plant_company(migrator)
+    await _waive(migrator, target.tenant_id, waivable_rule)
+
+    async with sessions() as session, session.begin():
+        await session.execute(
+            sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(target.tenant_id)}
+        )
+        removed = await session.scalar(_PURGE_WAIVERS, {"t": str(target.tenant_id)})
+
+    assert removed == 1
+    assert await _waivers(migrator, target.tenant_id) == 0
+
+
+async def test_the_read_only_agent_role_cannot_call_the_waiver_purge(
+    db_urls: DatabaseUrls, migrator: AsyncEngine, waivable_rule: str
+) -> None:
+    """R11.21 (FH43): EXECUTE is `dw_app`'s alone."""
+    target = await _plant_company(migrator)
+    await _waive(migrator, target.tenant_id, waivable_rule)
+    admin = create_async_engine(admin_url(db_urls), poolclass=NullPool)
+    try:
+        with pytest.raises(DBAPIError, match="permission denied"):
+            async with admin.begin() as conn:
+                await conn.execute(sa.text("SET LOCAL ROLE dw_agent_ro"))
+                await conn.execute(
+                    sa.text("SELECT set_config('app.tenant_id', :t, true)"),
+                    {"t": str(target.tenant_id)},
+                )
+                await conn.execute(_PURGE_WAIVERS, {"t": str(target.tenant_id)})
+    finally:
+        await admin.dispose()
+    assert await _waivers(migrator, target.tenant_id) == 1

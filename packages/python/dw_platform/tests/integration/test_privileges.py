@@ -2004,6 +2004,51 @@ async def test_the_lane_counts_its_claims_and_still_files_and_removes_no_request
     assert counts == {"dw_app": True, "dw_agent_ro": False, "dw_provisioner": False}
 
 
+# foundations-hardening ticket 10 (migration 9cc87820a05f).
+
+
+async def test_only_dw_app_calls_the_waiver_purge_and_still_deletes_no_waiver(
+    db_urls: DatabaseUrls,
+) -> None:
+    """R11.21: EXECUTE revoked from PUBLIC and granted to `dw_app` alone, the
+    function SECURITY DEFINER on a fixed `search_path`; `dw_app` still holds no
+    DELETE on `platform.sod_waivers`, so the function is its one way to delete."""
+    function = "platform.purge_tenant_sod_waivers(uuid)"
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            calls = {
+                role: await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+            }
+            definer, config = (
+                await conn.execute(
+                    sa.text(
+                        "SELECT prosecdef, proconfig FROM pg_proc"
+                        " WHERE oid = CAST(:f AS regprocedure)"
+                    ),
+                    {"f": function},
+                )
+            ).one()
+            deletes = await conn.scalar(
+                sa.text("SELECT has_table_privilege('dw_app', 'platform.sod_waivers', 'DELETE')")
+            )
+    finally:
+        await migrator.dispose()
+    assert calls == {
+        "public": False,
+        "dw_app": True,
+        "dw_agent_ro": False,
+        "dw_provisioner": False,
+    }
+    assert definer is True
+    assert config == ["search_path=pg_catalog, platform"]
+    assert deletes is False
+
+
 _SECRET_DOORS = (
     "platform.put_secret(text, uuid, text, integer, text, bytea, text, integer, bytea, bytea)",
     "platform.open_secret(text, uuid, text, integer)",

@@ -1,6 +1,6 @@
 # 10 — Bảng có trước luật của test phủ offboarding: xuất, xóa hay loại trừ đã kiểm
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02, 08, 09
 Area: studio
 Yêu cầu: R11.16, R11.21, FH43
@@ -52,17 +52,17 @@ theo catalog, sửa bảng nào thật sự bị bỏ lại, rồi gỡ danh sá
 
 ## Tiêu chí chấp nhận
 
-- [ ] R11.16 (FH43): không còn `_PLATFORM_PREDATING`, `test_offboarding_covers_every_table_it_has_to` vẫn `[]` trên
+- [x] R11.16 (FH43): không còn `_PLATFORM_PREDATING`, `test_offboarding_covers_every_table_it_has_to` vẫn `[]` trên
       checkout đã migrate; bỏ một dòng loại trừ vừa thêm → test nêu tên bảng đó; sai nếu test xanh khi thiếu dòng.
-- [ ] R11.16 (FH43): một chuỗi thử hai bậc mà mắt giữa là `ON DELETE SET NULL` thay vì `CASCADE` → test nêu tên bảng
+- [x] R11.16 (FH43): một chuỗi thử hai bậc mà mắt giữa là `ON DELETE SET NULL` thay vì `CASCADE` → test nêu tên bảng
       cuối; sai nếu test xanh.
-- [ ] R11.16 (FH43): thêm một bảng thứ hai vào `_NEVER_PURGE` → test đỏ; sai nếu xanh.
-- [ ] R11.16 (FH43): purge tenant A khi A và B đều có dòng `platform.sod_waivers` → của A mất, của B còn; sai nếu dòng
+- [x] R11.16 (FH43): thêm một bảng thứ hai vào `_NEVER_PURGE` → test đỏ; sai nếu xanh.
+- [x] R11.16 (FH43): purge tenant A khi A và B đều có dòng `platform.sod_waivers` → của A mất, của B còn; sai nếu dòng
       của A còn hay của B mất.
-- [ ] R11.21 (FH43): bằng `dw_app`, gọi `platform.purge_tenant_sod_waivers` cho tenant `active` với `app.tenant_id` của
+- [x] R11.21 (FH43): bằng `dw_app`, gọi `platform.purge_tenant_sod_waivers` cho tenant `active` với `app.tenant_id` của
       chính nó, cho tenant `offboarding` khác `app.tenant_id`, và cho tenant `offboarding` khi `app.tenant_id` chưa đặt →
       23514, 0 dòng bị xóa; `dw_agent_ro` gọi hàm → `permission denied`; gỡ từng phép kiểm → test của nó đỏ.
-- [ ] Xong: `uv run pytest -m integration packages/python/dw_platform/tests/integration/test_offboarding.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_rls_coverage.py`
+- [x] Xong: `uv run pytest -m integration packages/python/dw_platform/tests/integration/test_offboarding.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_rls_coverage.py`
       xanh.
 
 ## Nguồn
@@ -97,3 +97,22 @@ theo catalog, sửa bảng nào thật sự bị bỏ lại, rồi gỡ danh sá
   (`packages/python/dw_platform/src/dw_platform/application/provisioning.py:396-411`), nên phép kiểm trạng thái của hàm
   không chặn lượt làm tiếp (R11.10).
 - 2026-11-05 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): đo lại bước 1 trên head có migration `4fb92ed062dc` của ticket 09
+  (test phủ với danh sách rỗng, mọi schema): đúng 9 bảng của danh sách đo, không bảng nào ngoài nó; mọi mắt
+  `cascade_from` đọc ở `pg_constraint` là `ON DELETE CASCADE`. Dựng xong: migration `9cc87820a05f` tạo
+  `platform.purge_tenant_sod_waivers` (lỗi mang `ck_sod_waivers_purge`), bước `platform.purge_tenant_sod_waivers`
+  đăng ký trong `OffboardingPurgeSteps.platform()`; bảy dòng `STUDIO_EXCLUSIONS` (sáu `cascade_from`, một `kept`), hai
+  dòng `EXPORT_EXCLUSIONS`. Test phủ nhận tham số `never_purge` (mặc định `_NEVER_PURGE`) để ca "thêm bảng thứ hai"
+  chạy được mà không sửa mã của lane, và nêu một dòng R11.16 khi tập đó khác bảng yêu cầu. Gỡ `_PLATFORM_PREDATING`
+  kéo theo gỡ kiểm R4.6 (OID sau `platform.time_partitioned_tables`) và ca R4.5 "predating names no table"; ca
+  `platform-predating` của FH41 đổi tên thành `platform`. Dòng FH35 của bảng nằm ở test riêng
+  `test_offboarding_deletes_the_companys_waivers_and_no_one_elses` (`test_offboarding.py`), không ở
+  `test_steps_delete_only_the_offboarded_tenant`, vì test đó dựng sổ chỉ có bước thử. Nếu sai thì: test FH35 dùng
+  `OffboardingPurgeSteps.platform()` cộng bước thử và đếm thêm `platform.sod_waivers`. Hai nơi khác gọi
+  `offboarding_violations` với danh sách cũ (`test_append_only_purge_db.py` của `dw_usage`,
+  `db/bench/offboarding/bench_offboarding.py`) bỏ tham số đó trong cùng commit.
+- 2026-11-05 (agent): FH43 có bốn test ở `test_offboarding.py` (purge A còn B, ba lời gọi bị từ chối 23514 của
+  `dw_app`, một lời gọi đúng làm đối chứng, `dw_agent_ro` bị `permission denied`), năm test mới ở
+  `test_offboarding_coverage.py` và một ở `test_privileges.py`; `mutations/10.yaml` có bảy đột biến, bốn đã bẻ bằng
+  tay một lần, đều đỏ. `scripts/mutate.py`, độ trễ của lượt purge (thêm một lời gọi hàm) và `/code-review` chạy lúc
+  đóng hàng.
