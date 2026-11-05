@@ -1,6 +1,6 @@
 # 03 — RecordService: tạo, đọc, sửa, xóa mềm, trường duy nhất, upsert và describe theo người gọi
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02, .claude/plans/studio/telemetry-and-audit/issues/01-otel-khong-noi-dung-va-metric.md, .claude/plans/studio/record-access/issues/03-policy-ban-ghi-va-mac-dinh-truy-cap.md, .claude/plans/studio/record-access/issues/04-ngu-canh-actor-o-moi-cua.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/app-standards/issues/02-khoa-chong-lap-gan-nguoi-goi.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md, .claude/plans/studio/tenant-config/issues/03-che-do-chay-va-gia-lap-o-executor.md, .claude/plans/studio/usage-and-limits/issues/05-cong-gioi-han-toc-do-theo-tien-trinh.md
 Area: studio
 Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R4.3, R4.4, R4.5, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R7.1, R7.2, R7.3, R7.4, R7.5, R7.6, R7.7, R7.8, CO1, CO7, CO8, CO9, CO10, CO11, CO12, CO13, CO14, CO15, CO16, CO17, CO18, CO20, CO22, CO25, CO26
@@ -358,3 +358,66 @@ người gọi (R3) đến ở đây, sau khóa đọc đối tượng của ten
   record-access/05.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (B:custom-objects/03~field-security/01, HIGH): (r) hứa vai chỉ tạo tạo được bản ghi, nhưng describe đòi `obj.read` và tính quyền trường như `update`, nên vai đó nhận 403 hay mọi control `disabled` ở biểu mẫu tạo của ticket 05; nay describe có biến thể `?action=create` dùng nhánh `create` của field-security/01, bộ chiếu lược đồ tạo cũng vậy, tiêu chí R3.1 mới. Nếu sai thì: một route `GET .../create-form` riêng thay tham số.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): quyết khi dựng. (D1) Tạo hoặc cập nhật là SELECT khớp dưới RLS, rồi
+  `INSERT ... ON CONFLICT (tenant_id, object_id, uNN) WHERE uNN IS NOT NULL AND deleted_at IS NULL DO NOTHING`, rồi
+  đọc lại và sửa có điều kiện theo phiên bản, thay một câu `DO UPDATE`: nhánh sửa là Merge Patch có quyết định trường
+  hành động `update`, `changed_fields` và không ghi khi không đổi (s), mà một câu `DO UPDATE` không cho biết nhánh trước
+  khi quyết; vẫn một dòng khi đua (R7.3 có test). Nếu sai thì: một câu `DO UPDATE ... WHERE` với quyết định trường tính
+  trước cho cả hai nhánh. (D2) Lối vào upsert đòi `obj.<api_name>.create`; nhánh sửa đòi thêm `update`, thiếu thì 409
+  `duplicate_value` như R7.4. Nếu sai thì: lối vào nhận `create` hay `update`. (D3) Ba cột của `assign` trong
+  `studio.record_write_keys` là `owner_kind`, `owner_id`, `owner_workspace_id`, không `workspace_id`: một cột tên
+  `workspace_id` làm bảng thành bảng hẹp theo workspace với `test_rls_coverage.py` (R9.2), trái dòng lý do bảng toàn
+  tenant mà bước 2 đòi. Nếu sai thì: record-access/05 đổi tên trong revision của nó. (D4) Giá trị trường không slot nằm
+  trong `data` theo khóa `field_no` (chuỗi), không theo `api_name`, vì `field_no` không dùng lại. Nếu sai thì: một
+  revision chuyển khóa. (D5) Chế độ chạy là chặt hơn giữa `app.run_mode` mà `bind_actor` đọc từ dòng lượt (rỗng với
+  người) và `RunMode` cửa truyền; giá trị lạ đọc là `simulate`. Người gọi, workspace của bản ghi mới và chế độ đều đọc
+  từ giao dịch cửa đã gắn, không từ tham số. Nếu sai thì: chỉ tham số của cửa. (D6) Khóa hành động đối tượng đọc từ
+  `platform.effective_grants` trong giao dịch, cùng lần đọc mà quyết định trường dùng (`FieldAccessService.caller()`,
+  `for_actions()` mới), không từ `AccessContext.scopes`, nên cửa API, bước và công cụ hỏi cùng một câu. Nếu sai thì:
+  đọc `AccessContext` ở route. (D7) Chuẩn hóa viết lại theo bộ vector (M2): chữ NFC, bỏ khoảng trắng hai đầu, rỗng là
+  null; `"1.500"` vào `scale` 2 nhận (bỏ số 0 đuôi); điện thoại: `0` đầu là số trong nước, `00` và `+` là quốc tế, `84`
+  trần với 9-10 số là Việt Nam, còn lại `invalid_type`. Nếu sai thì: sửa `values.py` và bộ vector. (D8) `RecordsPort`
+  (workflow-nodes/04) và `ObjectDataPort` (tools-and-skills/03) chưa có ở mã: `RecordService` nhận `RecordDoor`
+  (nhà máy giao dịch đã gắn), `write_key` và `run_mode`; hai ticket đó khai Protocol hẹp của mình và gốc ghép đáp
+  bằng service này. Test qua cửa lượt chạy thật (`bind_actor` từ dòng `platform.worker_runs`). Nếu sai thì: service
+  khai luôn hai Protocol. (D9) Lane offboarding xóa bảng khóa bằng bước mặc định (bảng có trong catalog, phạm vi
+  `tenant` mở policy RESTRICTIVE, và CASCADE từ `studio.records`), không thêm bước vào sổ; test R4.4 xuất đúng một dòng
+  khóa và còn 0 sau purge. Nếu sai thì: một bước riêng trong `build_purge_steps`. (D10) `GET /api/v1/studio/objects`
+  trả `{items}` không phân trang (một công ty có vài đối tượng). (D11) Tạo không dùng `RETURNING` (đòi policy đọc của
+  vai chỉ tạo); phản hồi là bản ghi đọc lại, hay khi người tạo không đọc được: mọi trường ẩn, không quyền. (D12) Upsert
+  miễn `If-Match` (`EXEMPT_WRITES` của `test_list_and_write_conventions.py`), `Idempotency-Key` bắt buộc thay.
+  (D13) `Retry-After` là số giây tới lúc lần 409 cũ nhất ra khỏi cửa sổ; port không cho thời điểm thì 600. (D14)
+  Worker phụ thuộc `dw-studio` để đăng ký bộ xóa; `DW_WORKER_REPLICAS` vào hai overlay triển khai. (D15) Hạn chót 30
+  ngày của lượt là `STUDIO_RUN_DEADLINE` ở `dw_kernel.run_mode`, workflow-engine:R5.22 đọc khi dựng. Nếu sai thì (D9-D15):
+  sửa ở lần dựng ticket dùng nó.
+- 2026-11-05 (agent): MEDIUM, chưa sửa. (M8) Instance `RateLimiterPort` của worker (`build_rate_limiter`) và
+  `RecordService.schemas` chưa có người gọi sản xuất tới tools-and-skills/03 và workflow-nodes/04; failure-modes #1
+  đứng mở tới đó. (M9) Một lần ghi là khoảng 12-15 câu (gắn, cài đặt, đối tượng, khóa, định nghĩa ba câu, quyết định
+  trường hai câu, ghi, outbox, audit, đọc lại); đo ở lúc đóng hàng. (M10) Image worker nay cài `cel-expr-python` và
+  `protobuf` (đã có ở image API): trivy image worker ở lúc đóng hàng. (M11) Thiếu `obj.<api_name>.read` trả 403 nên lộ
+  rằng đối tượng có (R3.4 muốn vậy). (M12) Describe đánh dấu `name` sắp được, không lọc được; ngữ pháp lọc là của
+  ticket 04.
+- 2026-11-05 (agent): resolved. Revision `902ac246a9dc` (`studio.record_write_keys`, policy tenant và RESTRICTIVE
+  theo chủ thể, `dw_app` SELECT/INSERT/DELETE, hàm definer `studio.purge_expired_record_write_keys()`, mảnh lưu giữ 31
+  ngày đăng ký ở worker). Test: `tests/integration/test_record_service.py` 22 ca (R5.2/CO11 với outbox và audit hỏng,
+  R5.3/CO12 song song, R5.9-R5.11/CO26 qua cửa lượt `workflow` thật, gate (b), (u), purge (p) hai công ty, R5.9 giao
+  dịch không actor, R5.4/CO13 `simulate` và `test`, R7.2-R7.4/CO17, R7.6/CO18 `agent` đếm và `workflow` không, cửa sổ
+  trượt, R5.8 (f) và (l) so với policy, R6.6 `name`, tài khoản dịch vụ và trường nhạy cảm duy nhất, R3.6, khóa chia
+  sẻ, R4.4/CO20 offboarding); `apps/api/tests/integration/test_studio_records.py` 20 ca (R5.1, (r), R5.5, R4.3/R5.7
+  CO1/CO9, R3.3, R3.4/CO8, R4.5/CO22, R6.1 và (k), R6.2-R6.5, R6.7/CO14, R6.8/CO15, R5.8, R5.3 khóa HTTP và gửi lại
+  sau sự cố, R7.1/CO16, R7.2 (t), R7.7, R7.6/R7.8, R3.1, R3.2, R3.7/CO25, R3.5 (x)); đơn vị: giá trị (40), quét nguồn
+  CO10 và (c) có mô-đun cài (3), chế độ chạy (7), hạn khóa so với hạn chót lượt (1), bộ chiếu (+2), `caller()` (+1),
+  worker (4). `test_rls_coverage.py`, `test_privileges.py` (bảng, hàm definer), `test_metadata_matches_catalog.py` (bỏ
+  khóa ngoại PostgreSQL tự tạo tới từng partition). `mutations/03.yaml` 31 mục; phá tay 9 (khóa đối tượng, trường chỉ
+  đọc, outbox giao dịch riêng, `If-Match`, `RateLimiterPort`, `workflow` bị đếm, tra khóa ghi, `permissions.delete`,
+  lược đồ tiền), cả 9 đỏ. Cổng: ruff, format, mypy 871 tệp (Windows và Linux trên bản xuất sạch), unit toàn repo phủ
+  76,33%, unit Studio cũng trên Python 3.12.16 sạch; tích hợp studio cả gói cùng API studio 485 qua, platform
+  (`rls_coverage`, `privileges`, `offboarding_coverage`) xanh; lint-imports 16 hợp đồng (thêm "Only a composition root
+  imports the records adapter"), verify_invariants, verify_architecture, check_hygiene, `release_manifest --check`,
+  `check_plans.py` vùng (23 Đạt, một Không đạt là cảnh báo va chạm có sẵn, M7); OpenAPI và kiểu TS sinh lại,
+  `pnpm run typecheck` xanh. `reviewing-feature-security`: sáu ranh giới, (3) không công cụ mới, (4) `ai_description`
+  chỉ là dữ liệu; `reviewing-deployment-security`: route mới sau cổng Studio, không URL ra ngoài, không bí mật,
+  `DW_WORKER_REPLICAS` bắt buộc ở profile triển khai; image worker thêm gói (M10).
+- 2026-11-05 (agent): nợ lúc đóng hàng: `scripts/mutate.py` cho `mutations/03.yaml` (31); `make test-integration` đầy
+  đủ; P50/P95/P99 so với `37dab0b` của bảy route mới (`GET /objects`, describe, tạo, đọc, `PATCH`, `DELETE`, upsert)
+  và đường ghi qua cửa lượt (`RecordService` cùng `FieldAccessService`, M9); trivy image worker (M10); `/code-review`.

@@ -19,7 +19,7 @@ from datetime import datetime
 from typing import Literal
 
 import sqlalchemy as sa
-from sqlalchemy.ext.asyncio import AsyncConnection
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncSession
 
 from dw_platform.adapters.persistence.tenant_session import TenantScope, bind_actor, bind_tenant
 
@@ -41,16 +41,21 @@ async def act_as_user(conn: AsyncConnection, tenant_id: uuid.UUID, user_id: uuid
 
 
 async def act_as_run(
-    conn: AsyncConnection,
+    conn: AsyncConnection | AsyncSession,
     tenant_id: uuid.UUID,
     principal_id: uuid.UUID,
     run_id: uuid.UUID,
     *,
     kind: Literal["agent", "workflow"] = "agent",
+    workspace_id: uuid.UUID | None = None,
 ) -> None:
     """Bind ``conn``'s open transaction as run ``run_id``'s ``kind`` acting as
-    ``principal_id`` in ``tenant_id``."""
-    await bind_tenant(conn, TenantScope(tenant_id=tenant_id, principal_id=principal_id))
+    ``principal_id`` in ``tenant_id`` (and ``workspace_id``, the run's, where
+    a new record goes)."""
+    await bind_tenant(
+        conn,
+        TenantScope(tenant_id=tenant_id, workspace_id=workspace_id, principal_id=principal_id),
+    )
     if kind == "agent":
         await bind_actor(conn, "agent", run_id=run_id)
     else:
