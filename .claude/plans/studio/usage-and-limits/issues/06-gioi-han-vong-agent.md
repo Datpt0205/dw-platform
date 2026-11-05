@@ -104,3 +104,4 @@ thì:` ở mục Quyết định của spec, dòng 4/11/2026 của ticket 06, (a
   có người đọc mới: nhận rủi ro (agent, theo ủy quyền 31/10/2026). Nếu sai thì: lỗi lộ ra khi dựng, ghi ở đây. MEDIUM: (M3)
   chính sách phạm vi `agent` không chặn agent chạy làm lượt con (ticket 03 M7).
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent): đo được ở discovery/15 (`5cb1074b`, `## Answer`), cho người dựng ticket này: (a) `recursion_limit` 20 của lượt cha không chặn agent liên kết (con chạy 60 lần gọi model tới khi kịch bản tự dừng; hôm nay chỉ lease tiền chung chặn con chạy vòng), còn gắn giới hạn lên agent con đã biên dịch bằng `.with_config` thì chặn được, nên bước 4 đi theo cách đó; (b) với lời gọi công cụ song song, `ToolCallLimitMiddleware` ở chế độ `continue` chạy một phần lô, `error` và `end` không chạy phần nào, nên bước 5 dùng `error` chứ không `continue`.
