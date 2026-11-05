@@ -358,6 +358,11 @@ class _Markup(HTMLParser):
 def _markup_allowed(tokens: list[str | _Source]) -> bool:
     parser = _Markup()
     parser.feed("".join(_HOLE if isinstance(part, _Source) else part for part in tokens))
+    # What feed() could not finish is an unfinished tag or comment at the end.
+    # close() is not asked: from Python 3.12.11 it drops an unfinished tag
+    # silently instead of handing it to handle_data, so `<b {{ x }}` passed.
+    if "<" in parser.rawdata:
+        return False
     parser.close()
     return parser.allowed
 
