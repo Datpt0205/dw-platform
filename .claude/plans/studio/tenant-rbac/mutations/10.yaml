@@ -1,0 +1,50 @@
+# Mutation check of tenant-rbac ticket 10: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control of the ticket and
+# per moved statement (K1 and K2 for `_STANDING` and `_HOLDERS`, K3 for
+# `_STANDING` only).
+mutations:
+  - name: K1 _STANDING reads every effective key without the workspace projection
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/digital_workers_repo.py
+    old: "               FROM platform.scopes_in(CAST(:t AS uuid), u.id, CAST(:w AS uuid)) AS s(key)\n"
+    new:
+      "               FROM (SELECT DISTINCT g.permission_key FROM platform.effective_grants(CAST(:t\
+      \ AS uuid), u.id) g) AS s(key)\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_scope_reads_scopes_from.py::test_standing_holds_what_the_select_list_form_and_scopes_in_hold
+      - packages/python/dw_platform/tests/integration/test_scope_reads_scopes_from.py::test_the_heavy_person_holds_each_key_only_where_its_depth_reaches
+  - name: K1 _HOLDERS reads every effective key without the workspace projection
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/scope_holders.py
+    old: "               FROM platform.scopes_in(m.tenant_id, m.user_id, m.workspace_id) AS s(key)\n"
+    new:
+      "               FROM (SELECT DISTINCT g.permission_key FROM platform.effective_grants(m.tenant_id,\
+      \ m.user_id) g) AS s(key)\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_scope_reads_scopes_from.py::test_one_member_holds_what_the_select_list_form_and_scopes_in_hold
+      - packages/python/dw_platform/tests/integration/test_scope_reads_scopes_from.py::test_a_whole_workspace_lists_the_same_people_with_the_same_scopes
+      - packages/python/dw_platform/tests/integration/test_scope_reads_scopes_from.py::test_the_heavy_person_holds_each_key_only_where_its_depth_reaches
+  - name: K2 _STANDING asks the projection for another tenant of the same person
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/digital_workers_repo.py
+    old: "               FROM platform.scopes_in(CAST(:t AS uuid), u.id, CAST(:w AS uuid)) AS s(key)\n"
+    new:
+      "               FROM platform.scopes_in((SELECT tm2.tenant_id FROM platform.tenant_members\
+      \ tm2 WHERE tm2.user_id = u.id AND tm2.tenant_id <> CAST(:t AS uuid) LIMIT 1), u.id,\
+      \ CAST(:w AS uuid)) AS s(key)\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_scope_reads_scopes_from.py::test_nothing_held_in_another_tenant_reaches_either_read
+  - name: K2 _HOLDERS asks the projection for another tenant of the same person
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/scope_holders.py
+    old: "               FROM platform.scopes_in(m.tenant_id, m.user_id, m.workspace_id) AS s(key)\n"
+    new:
+      "               FROM platform.scopes_in((SELECT tm2.tenant_id FROM platform.tenant_members\
+      \ tm2 WHERE tm2.user_id = m.user_id AND tm2.tenant_id <> m.tenant_id LIMIT 1), m.user_id,\
+      \ m.workspace_id) AS s(key)\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_scope_reads_scopes_from.py::test_nothing_held_in_another_tenant_reaches_either_read
+  - name: K3 _STANDING drops the active-member join
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/digital_workers_repo.py
+    old:
+      "    JOIN platform.tenant_members tm\n      ON tm.tenant_id = m.tenant_id AND tm.user_id =\
+      \ m.user_id AND tm.status = 'active'\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_scope_reads_scopes_from.py::test_a_suspended_member_still_has_no_standing

@@ -507,11 +507,18 @@ def _position(worker: DigitalWorker) -> CursorPosition:
     return CursorPosition(sort_value=worker.created_at, tiebreaker=worker.id)
 
 
-# `platform.scopes_in`, the one projection `effective_scopes` reads too.
+# `platform.scopes_in`, the one projection `effective_scopes` reads too, called
+# in FROM, where the SQL function is inlined into the plan, never in a select
+# list, where it runs opaque (tenant-rbac/07). At D12 that took this read from
+# 10.8 to 3.0 ms p50 round trip for a plain member and 16.9 to 8.3 ms for a
+# person with 30 roles (tenant-rbac/10, `db/bench/rbac/RESULTS.md`).
 _STANDING = sa.text(
     """
     SELECT u.kind,
-           ARRAY(SELECT platform.scopes_in(CAST(:t AS uuid), u.id, CAST(:w AS uuid))) AS scopes
+           ARRAY(
+               SELECT s.key
+               FROM platform.scopes_in(CAST(:t AS uuid), u.id, CAST(:w AS uuid)) AS s(key)
+           ) AS scopes
     FROM platform.memberships m
     JOIN platform.users u ON u.id = m.user_id
     JOIN platform.tenant_members tm

@@ -25,11 +25,19 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 
 # The members of one workspace and each one's scopes there. With `people_only`
-# no Digital Worker's principal: it is never someone to tell.
+# no Digital Worker's principal: it is never someone to tell. `platform.scopes_in`
+# is called in FROM, where the SQL function is inlined into the plan, never in a
+# select list, where it runs opaque once per member (tenant-rbac/07). At D12
+# that took one member's read from 11.1 to 3.1 ms p50 round trip for a plain
+# member and 16.6 to 8.1 ms for a person with 30 roles (tenant-rbac/10,
+# `db/bench/rbac/RESULTS.md`).
 _HOLDERS = text(
     """
     SELECT m.user_id,
-           ARRAY(SELECT platform.scopes_in(m.tenant_id, m.user_id, m.workspace_id)) AS scopes
+           ARRAY(
+               SELECT s.key
+               FROM platform.scopes_in(m.tenant_id, m.user_id, m.workspace_id) AS s(key)
+           ) AS scopes
     FROM platform.memberships m
     JOIN platform.users u ON u.id = m.user_id
     WHERE m.tenant_id = CAST(:t AS uuid) AND m.workspace_id = CAST(:w AS uuid)
