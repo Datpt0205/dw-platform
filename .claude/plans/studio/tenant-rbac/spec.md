@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08)
+Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08, 09, 10)
 
 Quản trị viên công ty cần tự dựng vai trò cho các workspace của mình (vai Marketing và vai Sales của lát Marketing, D4) với
 quyền trên đối tượng do công ty định nghĩa (`obj.lead.read`, D3), điều mà danh mục vai toàn cục chỉ migration ghi không
@@ -459,6 +459,17 @@ Không còn câu hỏi mở.
   không cảnh báo, vì không giao dịch nào khác từng thấy lần xuống đó; hôm nay trigger theo câu lệnh ghi một sự kiện cho
   nó. Ticket 08 kiểm lúc commit và đây là câu trả lời duy nhất nó đổi; mọi lần từ chối giữ nguyên (ADR-0104 (Accepted)
   mục 6, 9). Sửa: ticket 08. Nếu sai thì: ticket 08 giữ trigger theo câu lệnh và chỉ làm `check_owner_coverage` rẻ hơn.
+- 5/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 09, 10. Ticket 09 (từ MEDIUM (c) của gate ticket 08):
+  trigger tách nhiệm cho lần khôi phục vai trò đã xóa mềm, cùng hàm `platform.enforce_role_separation_of_duties`, và
+  ràng buộc `ck_sod_rules_no_generated_keys` để không luật nào nêu khóa `obj.*`/`fld.*`, nên mục 9
+  của ADR-0104 (Accepted) ("AFTER triggers on `role_assignments` and the role privilege tables") đúng mà không thêm trigger trên hai
+  bảng quyền của ticket 04; chờ ticket 08 vì cùng thay thân hàm đó. Rủi ro nhận (agent, theo ủy quyền 31/10/2026): hai
+  giao dịch đồng thời mỗi bên đưa một vế cho cùng người có thể cùng qua tách nhiệm (đọc từ thứ tự trigger, chưa đo),
+  có sẵn cho hai lần gán; nợ một ticket đo rồi khóa, phiên điều phối cắt. Ticket 10 (từ MEDIUM (i) của gate ticket 07):
+  đo `_STANDING` và `_HOLDERS` ở cỡ D12, chuyển `scopes_in` vào FROM chỉ câu đạt ngưỡng, không migration, chờ ticket 07,
+  không dựng cạnh ticket 08 (cùng `db/bench/rbac/RESULTS.md` và database đo). Ticket 09 `Yêu cầu: R5.1, RB14`, ticket 10
+  `Yêu cầu: không (...)`; `Mục tiêu` không đổi. Nếu sai thì: (09) trigger tách nhiệm trên hai bảng quyền thay cho ràng
+  buộc, và cắt ticket chủ cuộc đua trước 09; (10) gộp vào một ticket đo chung với ticket 08.
 
 ## Danh sách ticket
 
@@ -472,3 +483,5 @@ Không còn câu hỏi mở.
 | 06  | [Khóa `memberships.role_keys` và `permission_set_keys` sau FOG-49](issues/06-khoa-cot-role-keys-sau-fog49.md)                             |
 | 07  | [Đuôi `GET /api/v1/me` ở cỡ D12: `gc.freeze()` khi API khởi động, `scopes_in` trong FROM](issues/07-gc-freeze-va-scopes-in-trong-from.md) |
 | 08  | [Chi phí trigger quyền ở cỡ D12](issues/08-chi-phi-trigger-quyen-o-co-d12.md)                                                             |
+| 09  | [Tách nhiệm khi khôi phục vai trò đã xóa mềm, và luật tách nhiệm không nêu khóa sinh](issues/09-tach-nhiem-khi-khoi-phuc-vai-tro.md)      |
+| 10  | [`scopes_in` của `_STANDING` và `_HOLDERS` ở cỡ D12](issues/10-scopes-in-cua-standing-va-holders.md)                                      |

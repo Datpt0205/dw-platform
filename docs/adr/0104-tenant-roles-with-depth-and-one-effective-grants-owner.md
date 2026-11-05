@@ -394,3 +394,12 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   updated except as `dw_migrator`), so nobody points a new `draft` DW at an existing run-as account and assigns it roles
   alone.
 - If wrong: ticket 06 folds back into ticket 03, which waits on ticket 05 again; the database rules above stay.
+
+## Amendments (2026-11-05)
+
+- Decision 10, the warning below two holders: "once each time ... fall below two" reads committed state, so the check
+  runs at commit and a transaction that takes the holders below two and back before it commits (replacing an
+  administrator) writes no warning, while every refusal stays as it was; decided by the agent under Đạt's delegation of
+  2026-10-31 at the readiness gate of tenant-rbac ticket 08 (`.claude/plans/studio/tenant-rbac/issues/08-chi-phi-trigger-quyen-o-co-d12.md`),
+  recorded in that spec's "Quyết định" line of 5/11/2026 on R3.12 and RB40; the status stays Accepted. If wrong: the
+  statement-level triggers stay and only `platform.check_owner_coverage` gets cheaper (ticket 08's fallback).
