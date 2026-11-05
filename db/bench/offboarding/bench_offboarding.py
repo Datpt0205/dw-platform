@@ -677,7 +677,7 @@ PROBES = ("studio.fog32_probe", "memory.fog32_probe", "platform.feedback")
 
 async def probe(out: Path) -> dict[str, Any]:
     from tenant_wide_scopes import OFFBOARDING_SCOPES
-    from test_offboarding_coverage import _PLATFORM_PREDATING, offboarding_violations
+    from test_offboarding_coverage import offboarding_violations
 
     from dw_platform.adapters.persistence.offboarding import (
         _CATALOG_EXPORTABLE,
@@ -701,7 +701,6 @@ async def probe(out: Path) -> dict[str, Any]:
                 conn,
                 STUDIO_EXCLUSIONS,
                 EXPORT_EXCLUSIONS,
-                _PLATFORM_PREDATING,
                 load_retention_policy().term,
             )
         async with admin.begin() as conn:
@@ -768,7 +767,6 @@ async def probe(out: Path) -> dict[str, Any]:
                 conn,
                 STUDIO_EXCLUSIONS,
                 EXPORT_EXCLUSIONS,
-                _PLATFORM_PREDATING,
                 load_retention_policy().term,
             )
         # dw_app reads every probe row under the tenant: the data is there to export.

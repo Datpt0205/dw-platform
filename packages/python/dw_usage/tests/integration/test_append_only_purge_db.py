@@ -19,7 +19,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from tenant_wide_scopes import OFFBOARDING_SCOPES
-from test_offboarding_coverage import _PLATFORM_PREDATING, offboarding_violations
+from test_offboarding_coverage import offboarding_violations
 from test_usage_ledger_db import event, rows_of, seed_tenant
 
 from dw_platform.adapters.persistence.marketing_send_repo import marketing_purge_step
@@ -339,7 +339,6 @@ async def test_an_append_only_child_is_purged_before_its_ordinary_parent(
             conn,
             STUDIO_EXCLUSIONS,
             EXPORT_EXCLUSIONS,
-            _PLATFORM_PREDATING,
             load_retention_policy().term,
         )
     assert [line for line in found if "ul_probe" in line] == []

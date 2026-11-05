@@ -254,7 +254,9 @@ _BLOCKING = frozenset({"r", "a"})  # RESTRICT, NO ACTION
 _CASCADING = "c"
 
 # This row IS the job — purging it out from under the worker running this
-# pass is not a table this pass owns clearing.
+# pass is not a table this pass owns clearing. It is the platform's record of
+# the offboarding, like the `platform.tenants` row left `offboarded`, and the
+# coverage test holds this set to that one table (foundations-hardening R11.16).
 _NEVER_PURGE = frozenset({("platform", "tenant_offboarding_requests")})
 
 
@@ -283,13 +285,47 @@ class OffboardingExclusion:
             raise ValueError("an exclusion carries a reason")
 
 
-# Tables of `studio`, and tenant tables of `platform` added after studio-skeleton
-# ticket 01, that `purge_rows` does not delete from, keyed `schema.table`. This
-# class does not read either mapping; the coverage test does, and fails a tenant
-# table that is neither purged nor listed, a row the catalog does not confirm,
-# and a row for a table that is gone or now handled (R4.1, R4.3-R4.5).
+# Tenant tables of every schema that `purge_rows` does not delete from, keyed
+# `schema.table`. This class does not read either mapping; the coverage test
+# does, and fails a tenant table that is neither purged nor listed, a row the
+# catalog does not confirm, and a row for a table that is gone or now handled
+# (R4.1, R4.3-R4.5; foundations-hardening R11.16). A `cascade_from` names the
+# table it cascades from directly, which the lane deletes or which cascades in
+# turn from one it does, every link an ON DELETE CASCADE key.
 STUDIO_EXCLUSIONS: Mapping[str, OffboardingExclusion] = MappingProxyType(
     {
+        # foundations-hardening ticket 10: the tables that predated the rule.
+        "platform.approval_view_receipts": OffboardingExclusion(
+            reason="dw_app không DELETE; xóa theo FK CASCADE khi lane xóa yêu cầu duyệt",
+            cascade_from="platform.approval_requests",
+        ),
+        "platform.approval_decision_codes": OffboardingExclusion(
+            reason="dw_app không DELETE; xóa theo FK CASCADE từ biên nhận đã xem, hai bậc từ"
+            " yêu cầu duyệt",
+            cascade_from="platform.approval_view_receipts",
+        ),
+        "platform.audit_events": OffboardingExclusion(
+            reason="chỉ ghi thêm, dw_app không DELETE; giữ theo thời hạn của nhật ký kiểm toán,"
+            " lane partitions xóa tháng hết hạn",
+            kept="platform.audit_events",
+        ),
+        "platform.channel_deliveries": OffboardingExclusion(
+            reason="dw_app không DELETE; xóa theo FK CASCADE khi lane xóa workspace",
+            cascade_from="platform.workspaces",
+        ),
+        "platform.channel_preferences": OffboardingExclusion(
+            reason="policy theo người, không theo tenant; xóa theo FK CASCADE khi lane xóa"
+            " thành viên",
+            cascade_from="platform.memberships",
+        ),
+        "platform.notifications": OffboardingExclusion(
+            reason="dw_app không DELETE; xóa theo FK CASCADE khi lane xóa workspace",
+            cascade_from="platform.workspaces",
+        ),
+        "platform.support_grants": OffboardingExclusion(
+            reason="dw_app không DELETE; xóa theo FK CASCADE khi lane xóa workspace",
+            cascade_from="platform.workspaces",
+        ),
         "platform.secret_envelopes": OffboardingExclusion(
             reason="REVOKE ALL với dw_app; xóa theo FK CASCADE khi lane xóa platform.connections",
             cascade_from="platform.connections",
@@ -316,6 +352,14 @@ EXPORT_EXCLUSIONS: Mapping[str, str] = MappingProxyType(
         "platform.secret_envelopes": (
             "bí mật không rời Kho bí mật qua đường ra nào, gói xuất cũng vậy (R1.2, R1.6);"
             " dw_app không SELECT"
+        ),
+        "platform.channel_preferences": (
+            "chỉ có người, công ty và workspace một người chọn cho lệnh chat, đã có ở"
+            " platform.memberships của gói; policy theo người nên lane không đọc được"
+        ),
+        "platform.tenant_offboarding_requests": (
+            "hồ sơ của nền tảng về chính lần offboarding này, không là dữ liệu của công ty;"
+            " lane không xuất và không xóa nó (_NEVER_PURGE)"
         ),
     }
 )
@@ -416,6 +460,9 @@ class OffboardingPurgeSteps:
         # The tenant's service users, which `dw_app` may not delete
         # (org-and-principals R6.8).
         steps.register(service_users_purge_step())
+        # The tenant's separation-of-duty waivers, which `dw_app` may not delete
+        # (foundations-hardening R11.16, R11.21).
+        steps.register(sod_waivers_purge_step())
         # The record reach epoch row, which `dw_app` reads only (record-access R5.6).
         steps.register(access_epoch_purge_step())
         return steps
@@ -492,6 +539,27 @@ def service_users_purge_step() -> OffboardingPurgeStep:
         name="platform.purge_tenant_service_users",
         tables=frozenset({"platform.users"}),
         run=_purge_service_users,
+    )
+
+
+_PURGE_SOD_WAIVERS = text("SELECT platform.purge_tenant_sod_waivers(CAST(:t AS uuid))")
+
+
+async def _purge_sod_waivers(session: AsyncSession, tenant_id: UUID) -> None:
+    await session.execute(_PURGE_SOD_WAIVERS, {"t": str(tenant_id)})
+
+
+def sod_waivers_purge_step() -> OffboardingPurgeStep:
+    """`platform.sod_waivers` loses the tenant's rows through the SECURITY
+    DEFINER function migration 9cc87820a05f made for it, which refuses a tenant
+    that is not the transaction's own or not `offboarding` (R11.21). The table
+    holds no key another table references, and its own keys go to
+    `platform.tenants`, which the lane keeps, and to `platform.sod_rules`, which
+    belongs to no tenant: where it falls in the order does not matter."""
+    return OffboardingPurgeStep(
+        name="platform.purge_tenant_sod_waivers",
+        tables=frozenset({"platform.sod_waivers"}),
+        run=_purge_sod_waivers,
     )
 
 
