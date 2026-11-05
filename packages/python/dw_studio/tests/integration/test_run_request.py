@@ -66,6 +66,7 @@ from dw_studio.core.application.run_request import (
 from dw_studio.core.application.service import ArtifactService
 from dw_studio.core.domain.artifacts import DocumentInvalidError, definition_body, definition_hash
 from dw_studio.core.domain.run_manifest import EngineSection
+from dw_studio.records.adapters.actor_boundaries import SqlActorBoundaries
 from dw_studio.testing.bindings import unasked_pins
 from dw_studio.testing.fixture_kinds import (
     FIXTURE,
@@ -74,6 +75,7 @@ from dw_studio.testing.fixture_kinds import (
     FIXTURE_RUN,
     FIXTURE_SUBMIT,
     FIXTURE_WRITE,
+    fixture_boundary_derivers,
     planted_fixture_kinds,
 )
 from dw_studio.testing.run_manifests import (
@@ -200,6 +202,9 @@ def door_of(
         SystemClock(),
         Uuid7Generator(),
         bindings=unasked_pins(),
+        boundaries=SqlActorBoundaries(),
+        boundary_derivers=fixture_boundary_derivers(),
+        pinnable={},
     )
 
 

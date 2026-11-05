@@ -42,6 +42,7 @@ from dw_studio.core.application.run_request import (
 )
 from dw_studio.testing.bindings import unasked_pins
 from dw_studio.testing.run_manifests import shipped_models
+from dw_studio.workflows.testing.fakes import RecordingBoundaries
 
 pytestmark = pytest.mark.unit
 
@@ -239,6 +240,9 @@ def test_the_door_keeps_its_own_frozen_run_key_table() -> None:
         clock=SystemClock(),
         ids=Uuid7Generator(),
         bindings=unasked_pins(),
+        boundaries=RecordingBoundaries(),
+        boundary_derivers={},
+        pinnable={},
     )
     keys[("fixture", "manual")] = "fixture.artifacts.run"
     assert ("fixture", "manual") not in door.run_keys

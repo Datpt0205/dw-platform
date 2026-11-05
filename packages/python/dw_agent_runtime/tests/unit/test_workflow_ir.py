@@ -132,10 +132,13 @@ def nested(depth: int) -> dict[str, Any]:
 # ---------------------------------------------------------- R2.1: the spec --
 
 
-@pytest.mark.parametrize("missing", ["block", "ends_run", "exits_loop", "dependencies"])
+@pytest.mark.parametrize(
+    "missing", ["block", "ends_run", "exits_loop", "dependencies", "effect_door"]
+)
 def test_a_type_that_forgets_one_of_the_four_cannot_be_built(missing: str) -> None:
     """R2.1: no default, so a type that forgot one is an error where it is
-    built, never a silent `False`."""
+    built, never a silent `False`; `effect_door` either (workflow-engine/03:
+    the wrapper hands a body only that door)."""
     fields: dict[str, Any] = {
         "type": "probe@1",
         "label_vi": "Thử",
@@ -146,6 +149,7 @@ def test_a_type_that_forgets_one_of_the_four_cannot_be_built(missing: str) -> No
         "ends_run": False,
         "exits_loop": False,
         "dependencies": no_dependencies,
+        "effect_door": None,
     }
     del fields[missing]
     with pytest.raises(TypeError, match=missing):

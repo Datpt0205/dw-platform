@@ -60,11 +60,11 @@ def test_every_declared_metric_is_emitted() -> None:
     assert unemitted == [], f"declared in ALL_METRICS and emitted by nothing in src/: {unemitted}"
 
 
-def test_the_rates_and_the_node_failure_counter_are_gone() -> None:
-    """Removed until something emits them; workflow-engine/03 brings back
-    `dw_node_failure_total` with its emitter."""
+def test_the_rates_are_gone_and_the_node_failure_counter_is_back() -> None:
+    """Removed until something emits them; workflow-engine/03 brought back
+    `dw_node_failure_total` with its emitter, the node wrapper."""
+    assert "dw_node_failure_total" in ALL_METRICS
     assert {
-        "dw_node_failure_total",
         "dw_retrieval_hit_rate",
         "dw_human_intervention_rate",
         "dw_task_success_rate",

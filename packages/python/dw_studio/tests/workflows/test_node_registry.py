@@ -114,6 +114,9 @@ READERS: dict[str, str] = {
     "dependencies": "dw_studio.workflows.application.dependencies:WorkflowDependencies.__call__",
     "side_effect_level": "dw_agent_runtime.wflite.registry:_catalogue_entry",
     "is_trigger": "dw_agent_runtime.wflite.validate:_Check._trigger",
+    "effect_door": "dw_agent_runtime.wflite.node_wrapper:StudioNode._attempt",
+    "body": "dw_agent_runtime.wflite.node_wrapper:StudioNode.__init__",
+    "record_uses": "dw_studio.workflows.application.boundary:derive_workflow_boundary",
 }
 
 

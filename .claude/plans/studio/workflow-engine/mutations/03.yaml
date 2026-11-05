@@ -1,0 +1,245 @@
+# Mutation check of workflow-engine ticket 03: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the
+# ticket's criteria and per rule of the wrapper, the door, the migration and
+# the scans, each test calling the code where the effect happens: the node
+# wrapper on LangGraph (in-memory saver), `RunRequestService` and
+# `LangGraphWorkflowRunner.run_studio` against PostgreSQL, the columns and
+# triggers as dw_app SQL (failure-modes #5). A sample was broken by hand on
+# 5/11/2026, each red (named in the ticket's Comments). The migration's
+# mutations apply in place, so their tests recreate the database from the
+# mutated revision; the scans' mutate in place (a scan cannot see a package
+# copy).
+mutations:
+  # ---- the wrapper's outcomes (R4.23, R4.24, R4.30, R6.28) -----------------------
+  - name: R4.24 an outcome nobody knows is retried
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "        return Failure(\"outcome_unknown\", message, unknown=True)\n    if isinstance(exc, NotDispatchedError):"
+    new: "        return Failure(\"outcome_unknown\", message, retryable=True)\n    if isinstance(exc, NotDispatchedError):"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_outcome_unknown_is_never_retried_routed_or_followed
+      - packages/python/dw_studio/tests/workflows/test_workflow_run_parts.py::test_every_reference_document_gives_its_golden_trace
+  - name: R4.24 an outcome nobody knows goes to on_error
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "            if failure.unknown:\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_outcome_unknown_is_never_retried_routed_or_followed
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_runner.py::test_outcome_unknown_fails_the_run_before_workflow_engine_08
+  - name: R4.30 an untyped failure of the tool door is an ordinary one
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "            return Failure(\"rejected\", message)\n        return Failure(\"outcome_unknown\", message, unknown=True)\n"
+    new: "            return Failure(\"rejected\", message)\n        return Failure(\"step_failed\", message, retryable=True)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_an_untyped_failure_of_the_tool_door_is_outcome_unknown
+  - name: R4.30 a cut call is never asked about its dispatch
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "            if await self.ports.claims.has_unresolved_dispatch(\n"
+    new: "            if False and await self.ports.claims.has_unresolved_dispatch(\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_a_timeout_after_dispatch_is_outcome_unknown
+  - name: R4.23 every rejection is retried
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "retryable=exc.provider_code in retryable_rejections)"
+    new: "retryable=True)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_a_rejection_it_does_not_declare_is_not_retried_and_on_error_applies
+  - name: R4.23 a live claim is not tried again
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "            # A live claim on the key, or one taken over before it sent: this\n            # attempt sent nothing (runtime-hardening R6.1).\n            return Failure(\"not_dispatched\", message, retryable=True)\n"
+    new: "            return Failure(\"not_dispatched\", message)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_a_live_claim_then_a_send_is_one_call_to_the_provider
+  - name: R4.5 the attempt number joins the key
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "            failure, result = await self._attempt(ctx, key, inputs)\n"
+    new: "            failure, result = await self._attempt(ctx, f\"{key}{attempt}\", inputs)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_three_not_dispatched_attempts_carry_one_key
+      - packages/python/dw_studio/tests/workflows/test_workflow_run_parts.py::test_an_ordinary_failure_of_the_record_door_replays_the_stored_result
+  # ---- on_error and the error lane (R4.3, R4.12, R4.13) --------------------------
+  - name: R4.12 route never takes the error lane
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "        if policy == \"route\" and self.has_error_lane:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_route_runs_the_error_lane_and_the_run_goes_on_once
+  - name: R4.12 a route with no error lane joins like an empty one
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "        if policy == \"route\" and self.has_error_lane:\n"
+    new: "        if policy == \"route\":\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_route_without_an_error_lane_fails_like_fail
+  - name: R4.3 continue fails the run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "        if policy == \"continue\":\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_continue_goes_on_with_the_error_in_the_steps_channel
+  - name: R4.13 the error lane ends at the end of the run
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/compile.py
+    old: "        error_entry = self.chain(errors, join) if errors is not None else None\n"
+    new: "        error_entry = self.chain(errors, END) if errors is not None else None\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_route_runs_the_error_lane_and_the_run_goes_on_once
+  # ---- one effect, through its door (R4.4, R4.7) ---------------------------------
+  - name: R4.4 a second effect in an attempt goes through
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/doors.py
+    old: "        if self.calls:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_a_second_effect_in_one_attempt_is_refused
+  - name: R4.4 a door the type does not declare goes through
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/doors.py
+    old: "        if door != self._declared:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_a_door_the_type_does_not_declare_is_refused
+  - name: R4.6 the output cap is gone
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "        if output_bytes(routed.output) > MAX_OUTPUT_BYTES:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_the_output_cap_is_64_kib
+  # ---- the run's guards (R4.8, R4.11) --------------------------------------------
+  - name: R4.8 the wrapper asks no run control
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "        await self.ports.run_control.require_open(run, door=RunControlDoor.NODE)\n"
+    new: "        pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_a_freeze_between_nodes_stops_the_next_one
+  - name: R4.11 the wrapper reads no deadline
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "        if self.ports.clock.now() >= ctx.deadline_at:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_past_the_deadline_the_next_node_cancels_the_run_and_sends_nothing
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r4_11_past_its_deadline_a_run_is_cancelled_and_audited_by_its_lane
+  - name: R4.11 the deadline's audit is not written
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/studio_runs.py
+    old: "            await SqlAuditRepository(session).append(\n"
+    new: "            None and await SqlAuditRepository(session).append(\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r4_11_past_its_deadline_a_run_is_cancelled_and_audited_by_its_lane
+  # ---- pinned results (R4.27-R4.29) -----------------------------------------------
+  - name: R4.27 a live run reads pinned results
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "        if run.run_mode == \"simulate\" and ctx.pinned_results:\n"
+    new: "        if ctx.pinned_results:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_a_live_run_never_reads_pinned_results
+  - name: R4.28 a pinned output is not checked against the step's schema
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "                or problems(self.output_schema, dict(output))\n"
+    new: "                or False\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_a_pinned_result_that_does_not_check_fails_the_run
+  - name: R4.29 a pinned result stands in for an approval
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "        if self.spec.effect_door is None or not isinstance(pinned, Mapping) or len(pinned) != 1:\n"
+    new: "        if not isinstance(pinned, Mapping) or len(pinned) != 1:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_a_pinned_result_for_an_approval_fails_the_run_at_that_step
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r4_29_a_pinned_approval_written_past_the_door_fails_at_that_step
+  # ---- the door (RunRequestService; R3.13, R3.15, R3.16, R3.23) -----------------
+  - name: R3.16 the door takes pinned results on a live run
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        if request.pinned_results is not None and rule.run_mode != \"simulate\":\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r3_16_the_door_refuses_pinned_results_on_a_live_run
+  - name: R3.23 the door does not check pinned results
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        if request.pinned_results is not None:\n            self._check_pinned(root.kind, version.document, request.pinned_results)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r3_23_a_pinned_result_names_a_step_with_a_door
+  - name: R3.13 no provisional boundary is recorded
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        if provisional and deriver is not None:\n            # R3.13"
+    new: "        if False:\n            # R3.13"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r3_13_a_drafts_simulated_run_reads_under_its_provisional_boundary
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r3_15_a_candidates_gate_trial_reads_what_its_submitter_sees
+  - name: R3.15 a candidate's run reads under no provisional boundary
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "_PROVISIONAL_STAGES: Final = frozenset({Stage.DRAFT, Stage.EVALUATING, Stage.AWAITING_APPROVAL})"
+    new: "_PROVISIONAL_STAGES: Final = frozenset({Stage.DRAFT})"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r3_15_a_candidates_gate_trial_reads_what_its_submitter_sees
+  - name: R3.13 a kind without a deriver runs with no boundary
+    file: packages/python/dw_studio/src/dw_studio/core/application/run_request.py
+    old: "        if provisional and deriver is None:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r3_13_a_kind_without_a_deriver_is_refused_before_any_row
+  # ---- the boundary of a published version (R1.7) --------------------------------
+  - name: R1.7 the publish hook records no boundary
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/publish.py
+    old: "        await boundaries.record(\n"
+    new: "        None and await boundaries.record(\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r1_7_the_publish_hook_records_the_versions_boundary_on_its_transaction
+      - packages/python/dw_studio/tests/unit/test_workflow_kind.py::test_the_hook_records_the_versions_boundary_on_the_publish_transaction
+  - name: R1.7 the derivation skips the error lanes
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/boundary.py
+    old: "        if spec is None or spec.effect_door not in _RECORD_DOORS:\n"
+    new: "        if spec is None or spec.effect_door not in _RECORD_DOORS or placed.port == \"error_lane\":\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_workflow_run_parts.py::test_the_boundary_is_one_row_per_object_with_the_union_of_its_flags
+  # ---- the run (R4.2, R4.25, R6.14) ------------------------------------------------
+  - name: R4.25 the run takes the library's durability
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            state = await graph.ainvoke(payload, config, context=context, durability=durability)\n"
+    new: "            state = await graph.ainvoke(payload, config, context=context)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_runner.py::test_the_run_takes_its_durability_from_the_manifests_engine
+  - name: R4.2 the Studio key leaves out the pinned hash
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            str(taken.artifact_version_id),\n            taken.pinned_hash,\n"
+    new: "            str(taken.artifact_version_id),\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_runner.py::test_an_edited_draft_compiles_again_from_its_new_content
+  - name: R4.2 the cache has no ceiling
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "        while len(self._compiled) > GRAPH_CACHE_SIZE:\n"
+    new: "        while False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_runner.py::test_three_hundred_graphs_keep_at_most_256_code_and_studio_alike
+  - name: R6.14 the take does not hash the draft again
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/studio_runs.py
+    old: "                if exc.details.get(\"reason\") != \"pinned_version_changed\":\n                    raise\n"
+    new: "                raise\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r6_14_a_draft_edited_after_the_door_blocks_its_run_and_compiles_nothing
+  # ---- the migration (R3.14, R3.16, R3.23) -----------------------------------------
+  - name: R3.16 the CHECK of pinned results is gone
+    file: db/migrations/versions/66777ec67d16_pinned_results_and_provisional_boundary_end.py
+    old: "            CHECK (pinned_results IS NULL OR run_mode = 'simulate')"
+    new: "            CHECK (true)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r3_16_a_live_row_never_carries_pinned_results
+  - name: R3.23 pinned results change after insert
+    file: db/migrations/versions/66777ec67d16_pinned_results_and_provisional_boundary_end.py
+    old: "        IF NEW.pinned_results IS DISTINCT FROM OLD.pinned_results THEN\n"
+    new: "        IF false THEN\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r3_23_pinned_results_never_change_once_inserted
+  - name: R3.14 a run's end leaves its provisional boundary
+    file: db/migrations/versions/66777ec67d16_pinned_results_and_provisional_boundary_end.py
+    old: "        DELETE FROM studio.actor_boundaries b\n        WHERE b.tenant_id = NEW.tenant_id AND b.run_id = NEW.id;\n"
+    new: "        PERFORM 1;\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_r3_14_a_runs_end_deletes_its_provisional_boundary_and_nothing_else
+  # ---- the scans (R4.10, R7.1) -------------------------------------------------------
+  - name: R4.10 the node scan sees no SQL
+    file: packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py
+    old: "                and any(word in node.value for word in _SQL)\n"
+    new: "                and False\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_node_wrapper.py::test_a_node_module_with_sql_or_a_provider_sdk_is_seen
+  - name: R7.1 the golden comparison ignores the order
+    file: packages/python/dw_studio/src/dw_studio/workflows/testing/golden.py
+    old: "        if want != got:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_workflow_run_parts.py::test_two_steps_swapped_in_a_trace_are_seen

@@ -107,7 +107,7 @@ def test_the_snapshot_is_built_from_upstreams_yaml_not_from_semconv(tmp_path: Pa
             "attribute 'gen_ai.input.messages' on span 'chat gpt'",
         ),
         (lambda t: t.span("chat gpt", {"user.id": "u1"}), "attribute 'user.id' on span 'chat gpt'"),
-        (lambda t: t.add_metric("dw_node_failure_total", 1, {}), "metric 'dw_node_failure_total'"),
+        (lambda t: t.add_metric("dw_task_success_rate", 1, {}), "metric 'dw_task_success_rate'"),
         (
             lambda t: t.add_metric("dw_run_total", 1, {"tenant": "t1"}),
             "label 'tenant' on metric 'dw_run_total'",

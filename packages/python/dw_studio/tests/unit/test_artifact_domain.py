@@ -33,6 +33,7 @@ from dw_studio.testing.fixture_kinds import (
 )
 from dw_studio.testing.workflows import NoTools
 from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
+from dw_studio.workflows.testing.fakes import RecordingBoundaries
 
 pytestmark = pytest.mark.unit
 
@@ -118,6 +119,7 @@ def test_the_running_app_registers_no_test_kind() -> None:
             nodes=build_node_registry(),
             tools=NoTools(),
             triggers=NoTriggerSubscriptions(),
+            boundaries=RecordingBoundaries(),
         )
     )
     assert running.kinds == {"object", "workflow"}

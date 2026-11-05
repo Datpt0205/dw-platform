@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import copy
 import uuid
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -18,6 +19,7 @@ import pytest
 from dw_agent_runtime.testing.workflow_types import fixture_node_registry, fixture_node_types
 from dw_agent_runtime.wflite.validate import PACK_RULES, PathRules, validate
 from dw_kernel.errors import ConflictError
+from dw_studio.core.application.boundaries import FieldBoundary, ObjectBoundary
 from dw_studio.core.domain.artifacts import Reference, TargetKind, Usage
 from dw_studio.kinds import (
     WORKFLOWS_EDIT_SCOPE,
@@ -34,6 +36,7 @@ from dw_studio.testing.workflows import (
 )
 from dw_studio.workflows.application.dependencies import WorkflowDependencies
 from dw_studio.workflows.application.rules import STUDIO_RULES, WorkflowValidator
+from dw_studio.workflows.testing.fakes import RecordingBoundaries
 
 pytestmark = pytest.mark.unit
 
@@ -408,13 +411,30 @@ def test_the_workflow_entry_names_its_keys_its_schema_and_its_check() -> None:
 
 
 class Tx:
-    """A transaction as the publish hook sees it: only passed through."""
+    """A transaction as the publish hook sees it: its session, passed through
+    to the boundary port, and the version it publishes (a sealed one, of a
+    document that touches no record unless a test gives it one)."""
+
+    def __init__(self, document: Any = None) -> None:
+        self.session = object()
+        self.document = document if document is not None else studio_document(studio_step("a"))
+
+    async def root_version(self, version_id: uuid.UUID) -> Any:
+        version = SimpleNamespace(
+            id=version_id, document=self.document, definition_hash="sha256:" + "d" * 64
+        )
+        return SimpleNamespace(kind="workflow", version=version)
 
 
 async def test_the_hook_activates_the_version_once_on_the_transaction_it_was_handed() -> None:
     artifact, v1, v2 = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
     fake = FakeTriggerActivation(versions={v1: artifact, v2: artifact})
-    hook = workflow_kind(nodes=fixture_node_registry(), tools=NoTools(), triggers=fake).publish_hook
+    hook = workflow_kind(
+        nodes=fixture_node_registry(),
+        tools=NoTools(),
+        triggers=fake,
+        boundaries=RecordingBoundaries(),
+    ).publish_hook
 
     tx = Tx()
     await hook(tx, v1)  # type: ignore[arg-type]
@@ -438,8 +458,41 @@ async def test_the_hook_activates_the_version_once_on_the_transaction_it_was_han
     assert fake.active == {artifact: v2} and fake.retired == [v1]
 
 
+async def test_the_hook_records_the_versions_boundary_on_the_publish_transaction() -> None:
+    """R1.7: after the triggers, on the session the hook was handed, the
+    boundary `derive_workflow_boundary` finds at any depth: an error lane's
+    `create` and a root step's `read` of one object, one row with both flags."""
+    version = uuid.uuid4()
+    fake = FakeTriggerActivation(versions={version: uuid.uuid4()})
+    boundaries = RecordingBoundaries()
+    hook = workflow_entry(fake, boundaries).publish_hook
+    tx = Tx(
+        studio_document(
+            {
+                **studio_step("doc", "fixture.records@1", object="mkt_lead", command="read"),
+                "error_lane": [
+                    studio_step(
+                        "tao",
+                        "fixture.records@1",
+                        object="mkt_lead",
+                        command="create",
+                        writes=["ghi_chu"],
+                    )
+                ],
+            }
+        )
+    )
+    await hook(tx, version)  # type: ignore[arg-type]
+    assert fake.calls == [(tx, version)]
+    ((call, session, kind, version_id, definition, objects, fields),) = boundaries.calls
+    assert (call, session, kind, version_id) == ("record", tx.session, "workflow", version)
+    assert definition == "sha256:" + "d" * 64
+    assert objects == (ObjectBoundary("mkt_lead", True, True, False, False, False),)
+    assert fields == (FieldBoundary("mkt_lead", "ghi_chu", "edit"),)
+
+
 async def test_a_port_that_fails_fails_the_hook() -> None:
     fake = FakeTriggerActivation(versions={}, fail=True)
-    hook = workflow_entry(fake).publish_hook
+    hook = workflow_entry(fake, RecordingBoundaries()).publish_hook
     with pytest.raises(ConflictError):
         await hook(Tx(), uuid.uuid4())  # type: ignore[arg-type]

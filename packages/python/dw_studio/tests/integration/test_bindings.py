@@ -100,12 +100,14 @@ from dw_studio.core.application.service import ArtifactService
 from dw_studio.core.domain.artifacts import DocumentInvalidError
 from dw_studio.core.domain.bindings import BindingKind
 from dw_studio.core.domain.run_manifest import RunManifest
+from dw_studio.records.adapters.actor_boundaries import SqlActorBoundaries
 from dw_studio.testing.fixture_kinds import (
     FIXTURE_KINDS,
     FIXTURE_READ,
     FIXTURE_RUN,
     FIXTURE_SUBMIT,
     FIXTURE_WRITE,
+    fixture_boundary_derivers,
     planted_fixture_kinds,
 )
 from dw_studio.testing.lifecycle import move_for_test
@@ -374,6 +376,9 @@ async def doors(sessions: async_sessionmaker[AsyncSession], world: World) -> Doo
             clock,
             ids,
             bindings=BindingPins(types, usability),
+            boundaries=SqlActorBoundaries(),
+            boundary_derivers=fixture_boundary_derivers(),
+            pinnable={},
         ),
         run_bindings=SqlRunBindings(sessions),
         types=types,

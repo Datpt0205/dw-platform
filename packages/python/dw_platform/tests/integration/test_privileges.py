@@ -2393,6 +2393,57 @@ async def test_the_run_columns_change_no_grant_and_their_trigger_is_no_ones(
     assert not any(callers.values()), callers
 
 
+# workflow-engine ticket 03 (migration 66777ec67d16): `pinned_results` changes
+# no grant on `platform.worker_runs` (the column is the table's, which `dw_app`
+# already writes), and the two trigger functions are called by their triggers
+# alone; the one that deletes a run's provisional boundary is the migrator's
+# SECURITY DEFINER, so no role is handed a delete of a published one.
+
+
+async def test_the_pinned_results_column_changes_no_grant_and_its_triggers_are_no_ones(
+    db_urls: DatabaseUrls,
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    functions = (
+        "platform.refuse_pinned_results_change()",
+        "platform.end_provisional_boundary()",
+    )
+    try:
+        async with migrator.connect() as conn:
+            held = {
+                (r.rolname, r.verb)
+                for r in await conn.execute(_HELD_VERBS, {"t": "platform.worker_runs"})
+            }
+            callers = {
+                (role, function): await conn.scalar(
+                    sa.text("SELECT has_function_privilege(:r, :f, 'EXECUTE')"),
+                    {"r": role, "f": function},
+                )
+                for role in ("public", "dw_app", "dw_agent_ro", "dw_provisioner")
+                for function in functions
+            }
+            definer = {
+                str(row.proname): bool(row.prosecdef)
+                for row in await conn.execute(
+                    sa.text(
+                        "SELECT proname, prosecdef FROM pg_proc WHERE pronamespace ="
+                        " 'platform'::regnamespace AND proname IN"
+                        " ('refuse_pinned_results_change', 'end_provisional_boundary')"
+                    )
+                )
+            }
+    finally:
+        await migrator.dispose()
+    assert held == {
+        ("dw_app", "SELECT"),
+        ("dw_app", "INSERT"),
+        ("dw_app", "UPDATE"),
+        ("dw_app", "DELETE"),
+    }
+    assert not any(callers.values()), callers
+    assert definer == {"refuse_pinned_results_change": False, "end_provisional_boundary": True}
+
+
 # tenant-rbac ticket 03 (migration d2b57239ef50): `dw_app` proposes, settles and
 # (at offboarding) purges role change requests, and updates only the three
 # settling columns; nobody calls the trigger functions; `dw_app` alone calls the
