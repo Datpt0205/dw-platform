@@ -1,0 +1,188 @@
+# Mutation check of agent-builder ticket 02: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control of the ticket's
+# "Kiểm soát" rows (AB1, AB2, AB10, AB12, AB15, AB16) and per "sai nếu" of its
+# criteria, each test calling the door where the effect happens: the assembler
+# itself, the kind's validator, the settings service over Postgres and the
+# routes over HTTP (failure-modes #5). The migration's mutations re-run the
+# migrations of the test database, which each session recreates. A sample was
+# run by hand while writing the tests (5/11/2026), each red for its reason.
+mutations:
+  # ---- AB1, AB2: the assembler ---------------------------------------------
+  - name: AB2 R2.2 the assembler stops escaping a delimiter
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: '    return _CONTAINMENT_DELIMITER.sub(lambda found: "&lt;" + found.group(0)[1:], text)'
+    new: "    return text"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_agent_frame.py
+      - packages/python/dw_studio/tests/unit/test_agent_frame_evals.py::test_the_dataset_passes_with_full_security_coverage
+  - name: AB2 R2.2 R2.4 the delimiter is matched in one case only
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: 'rf"<\s*/?\s*(?:{TENANT_INSTRUCTIONS_TAG}|{UNTRUSTED_TAG}|{TOOL_OUTPUT_TAG})", re.IGNORECASE'
+    new: 'rf"<\s*/?\s*(?:{TENANT_INSTRUCTIONS_TAG}|{UNTRUSTED_TAG}|{TOOL_OUTPUT_TAG})", 0'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_agent_frame.py
+      - packages/python/dw_studio/tests/unit/test_agent_kind.py
+  - name: AB1 R2.1 the instructions pass through str.format
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: '    block = f"<{tag}>\n{escape_delimiters(instructions)}\n</{tag}>"'
+    new: '    block = f"<{tag}>\n{escape_delimiters(instructions).format_map({})}\n</{tag}>"'
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_agent_frame.py
+  - name: AB1 R2.3 a variable outside the closed set is let through
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: "        (set(variables) | frame.variables) - SYSTEM_VARIABLES,\n"
+    new: "        set(),\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_agent_frame.py::test_a_caller_naming_a_variable_outside_the_set_builds_nothing
+  - name: AB1 R2.1 a frame lets a person's value through raw
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: "        set(frame.raw_variables) - CODE_BUILT_VARIABLES,\n"
+    new: "        set(),\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_agent_frame.py::test_a_frame_letting_a_persons_value_through_raw_builds_nothing
+  - name: AB1 R2.1 an interpolated value is not cut at 16 KiB
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: "        {name: cut_utf8(variables[name], MAX_SYSTEM_VALUE_BYTES) for name in frame.variables},"
+    new: "        {name: variables[name] for name in frame.variables},"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_agent_frame.py::test_a_value_past_16_kib_is_cut_at_a_character
+  - name: AB1 R2.4 the template-syntax rule matches nothing
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: '_TEMPLATE_SYNTAX = re.compile(r"\{\{|\{[A-Za-z_][A-Za-z0-9_.\[\]]*\}")'
+    new: '_TEMPLATE_SYNTAX = re.compile(r"(?!x)x")'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_agent_kind.py::test_template_shaped_text_is_named_and_json_is_not
+  # ---- AB16: the frame is the platform's -------------------------------------
+  - name: AB16 R1.12 the assembler renders a company's override
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/prompts.py
+    old: "        tenant_id=None,\n    )\n    parts = (rendered.system.strip(), rendered.user.strip())\n    tag = TENANT_INSTRUCTIONS_TAG\n"
+    new: "        tenant_id=next(iter(prompts._prompts._tenants), None),\n    )\n    parts = (rendered.system.strip(), rendered.user.strip())\n    tag = TENANT_INSTRUCTIONS_TAG\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_agent_frame.py
+  # ---- AB10, R1.3, R1.6, R1.8: the kind ---------------------------------------
+  - name: AB10 R1.3 the schema ignores a key outside it
+    file: packages/python/dw_studio/src/dw_studio/agents/domain/document.py
+    old: '    model_config = ConfigDict(extra="forbid", frozen=True)'
+    new: '    model_config = ConfigDict(extra="ignore", frozen=True)'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_agent_kind.py
+      - apps/api/tests/integration/test_studio_agent_settings.py
+  - name: R1.6 route_class leaves the schema
+    file: packages/python/dw_studio/src/dw_studio/agents/domain/document.py
+    old: "    route_class: RouteClass | None = None\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/unit/test_agent_kind.py
+  - name: R2.4 the validator skips the instruction rules
+    file: packages/python/dw_studio/src/dw_studio/agents/domain/document.py
+    old: "        problems += instruction_problems(instructions)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/unit/test_agent_kind.py
+      - apps/api/tests/integration/test_studio_agent_settings.py
+  - name: R1.8 the entry reads with the chat user's key
+    file: packages/python/dw_studio/src/dw_studio/kinds.py
+    old: "        read_key=AGENTS_AUTHOR_SCOPE,\n"
+    new: "        read_key=\"studio.agents.read\",\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_agent_kind.py::test_the_agent_entry_names_its_keys_its_schema_its_check_and_its_hook
+  - name: R1.8 the entry carries no publish hook
+    file: packages/python/dw_studio/src/dw_studio/kinds.py
+    old: "        publish_hook=AgentPublishHook(),\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_kind_registry.py
+  # ---- AB10: the settings table ---------------------------------------------
+  - name: AB10 R1.4 enabled loses NOT NULL
+    file: db/migrations/versions/fece6611d786_studio_agent_kind_and_settings.py
+    old: "        enabled boolean NOT NULL,\n"
+    new: "        enabled boolean DEFAULT true,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_settings_db.py::test_r1_4_a_row_without_enabled_is_refused_by_postgres
+  - name: AB12 R6.1 the settings policy reads every company's rows
+    file: db/migrations/versions/fece6611d786_studio_agent_kind_and_settings.py
+    old: '    f" USING {_TENANT} WITH CHECK {_TENANT}",'
+    new: '    " USING (true) WITH CHECK (true)",'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_settings_db.py::test_rls_hides_every_row_from_another_company_and_from_no_company
+  # ---- AB10, AB12: the writes -------------------------------------------------
+  - name: AB10 R1.5 a create skips the audience validator
+    file: packages/python/dw_studio/src/dw_studio/agents/application/settings.py
+    old: "            checked = await self.audience.validate(context, audience, at=AUDIENCE_POINTER)\n"
+    new: "            checked = AudienceDocument.model_validate(audience)\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_settings_db.py::test_r1_5_an_empty_audience_writes_nothing
+      - apps/api/tests/integration/test_studio_agent_settings.py::test_r1_5_another_companys_workspace_is_the_workspace_of_nothing
+  - name: AB10 R1.5 a patch skips the audience validator
+    file: packages/python/dw_studio/src/dw_studio/agents/application/settings.py
+    old: "                checked = await self.audience.validate(\n                    context, patch[\"audience\"], at=AUDIENCE_POINTER\n                )\n                proposed[\"audience\"] = checked.as_json()\n"
+    new: "                proposed[\"audience\"] = patch[\"audience\"]\n"
+    tests:
+      - apps/api/tests/integration/test_studio_agent_settings.py::test_r1_5_an_empty_audience_is_422_at_create_and_at_patch
+  - name: R1.5 any member, a service account included, is an owner
+    file: packages/python/dw_studio/src/dw_studio/agents/application/settings.py
+    old: "        if not await tx.active_person(user_id):\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_settings_db.py::test_r1_5_an_owner_who_is_not_an_active_person_is_one_refusal
+  - name: R1.1 a create writes no audit
+    file: packages/python/dw_studio/src/dw_studio/agents/application/settings.py
+    old: "            row = await tx.insert_settings(artifact_id, values)\n            await tx.audit(\n"
+    new: "            row = await tx.insert_settings(artifact_id, values)\n            await (lambda _event: tx.claim)(\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_settings_db.py::test_r1_1_settings_are_one_row_from_the_body_with_one_audit
+  - name: R1.1 a second create answers 500, not 409
+    file: packages/python/dw_studio/src/dw_studio/agents/adapters/settings_store.py
+    old: "            if name == _ONE_PER_AGENT:\n"
+    new: "            if name == \"no_such_constraint\":\n"
+    tests:
+      - apps/api/tests/integration/test_studio_agent_settings.py::test_r1_11_two_concurrent_creates_answer_201_and_409
+  - name: R1.2 a stale If-Match writes
+    file: packages/python/dw_studio/src/dw_studio/agents/application/settings.py
+    old: "            if not expected.matches(row.row_version):\n"
+    new: "            if False:\n"
+    tests:
+      - apps/api/tests/integration/test_studio_agent_settings.py::test_r1_2_a_stale_if_match_is_412_and_writes_nothing
+  - name: R1.11 a merge patch takes any key
+    file: packages/python/dw_studio/src/dw_studio/agents/application/settings.py
+    old: "            if problems:\n                raise DocumentInvalidError(\"the patch is not valid\", problems)\n"
+    new: ""
+    tests:
+      - apps/api/tests/integration/test_studio_agent_settings.py
+  - name: R1.11 a patch of nothing bumps the version and audits
+    file: packages/python/dw_studio/src/dw_studio/agents/application/settings.py
+    old: "            if not changes:\n                return row\n"
+    new: ""
+    tests:
+      - apps/api/tests/integration/test_studio_agent_settings.py::test_a_patch_audits_each_change_and_a_patch_of_nothing_is_not_a_write
+  # ---- AB12, AB15: who may -----------------------------------------------------
+  - name: AB15 R1.11 the settings routes check no key
+    file: packages/python/dw_studio/src/dw_studio/agents/application/settings.py
+    old: "        if row.owning_workspace_id in await tx.reach(AGENTS_MANAGE_SETTINGS_SCOPE):\n"
+    new: "        if True:\n"
+    tests:
+      - apps/api/tests/integration/test_studio_agent_settings.py::test_r1_11_the_author_key_alone_is_403_everywhere_and_writes_nothing
+      - packages/python/dw_studio/tests/integration/test_agent_settings_db.py::test_r1_11_the_settings_key_alone_is_enough_and_the_author_key_is_not
+  - name: AB15 R1.11 the author key is enough to change settings
+    file: packages/python/dw_studio/src/dw_studio/agents/application/settings.py
+    old: "        if row.owning_workspace_id in await tx.reach(AGENTS_MANAGE_SETTINGS_SCOPE):\n"
+    new: "        if row.owning_workspace_id in await tx.reach(AGENTS_AUTHOR_SCOPE):\n"
+    tests:
+      - apps/api/tests/integration/test_studio_agent_settings.py::test_r1_11_the_author_key_alone_is_403_everywhere_and_writes_nothing
+  - name: AB15 R1.11 a workflow's id takes agent settings
+    file: packages/python/dw_studio/src/dw_studio/agents/application/settings.py
+    old: "        if row is None or row.kind != AGENT_KIND:\n"
+    new: "        if row is None:\n"
+    tests:
+      - apps/api/tests/integration/test_studio_agent_settings.py::test_r1_11_a_workflow_or_a_deleted_agent_is_404
+  # Another company's id is refused twice: RLS of `studio.artifacts` hides the
+  # row (the envelope's own tests, and the settings policy's mutation above),
+  # and the reach of the caller's company never holds its workspace. This last
+  # line is reached by a member of the company without a key, not by a
+  # stranger, whose 404 the HTTP test compares with a random id's.
+  - name: AB15 R1.11 no key at the agent's workspace answers 403, telling it exists
+    file: packages/python/dw_studio/src/dw_studio/agents/application/settings.py
+    old: "        raise _not_found()\n\n    async def _owner"
+    new: "        raise PermissionDeniedError(\"probe\")\n\n    async def _owner"
+    tests:
+      - apps/api/tests/integration/test_studio_agent_settings.py

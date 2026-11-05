@@ -1,6 +1,6 @@
 # 02 — Loại `agent`, cài đặt agent, khung và bộ ráp prompt
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md, .claude/plans/studio/workflow-engine/issues/01-tai-lieu-workflow-va-kiem-xuat-ban.md, .claude/plans/studio/org-and-principals/issues/04-nguoi-duoc-dung-toi-thieu.md, .claude/plans/studio/app-standards/issues/03-quy-uoc-api-danh-sach-va-sua.md, .claude/plans/studio/studio-skeleton/issues/01-dang-ky-schema-studio-va-phan-vung.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/tools-and-skills/issues/02-toolset-va-cong-cu-ghim.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7, R1.8, R1.11, R1.12, R2.1, R2.2, R2.3, R2.4, R6.1, AB1, AB2, AB10, AB12, AB15, AB16
@@ -26,25 +26,25 @@ Cho người dựng tạo và sửa một tài liệu `dw.agent/v1` qua route v�
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1: tạo thành phần `kind: agent` qua `POST /api/v1/studio/artifacts`, rồi `POST .../settings` hợp lệ → đúng một dòng `studio.agent_settings` với ba giá trị của thân và một audit `studio.agent.settings_changed` trong cùng giao dịch; `POST .../settings` lần hai → 409, không dòng thứ hai; cùng `Idempotency-Key` gửi lại → câu trả lời đã lưu, không dòng mới; sai nếu không có audit hay có hai dòng.
-- [ ] R1.2: `PATCH .../settings` với `If-Match` cũ trả 412 `precondition_failed` với `details.reason_code` `stale_version` và không ghi; sai nếu ghi đè bản mới hay trả 409.
-- [ ] R1.7: `PATCH .../settings` thiếu `If-Match` trả 428 `precondition_required` và không ghi; sai nếu ghi được.
-- [ ] R1.3: `PUT .../draft` của một agent có khóa ngoài lược đồ → 200 với `warnings[]` có `pointer` của khóa đó; niêm phong cùng tài liệu → 422 với `errors[]` `{pointer, code, detail}`; tài liệu có `sub_agents` (mục W2) → cùng lỗi; sai nếu niêm phong được.
-- [ ] R1.4 (AB10): INSERT `studio.agent_settings` thiếu `enabled` bị PostgreSQL từ chối; `POST .../settings` thiếu `enabled` → 422; gỡ `NOT NULL` khỏi `enabled` → test đỏ.
-- [ ] R1.5 (AB10): `POST .../settings` với `Người được dùng` rỗng → 422 `audience_empty` từ bộ kiểm của org-and-principals, không dòng nào; `PATCH` đổi `Người được dùng` thành rỗng → 422, dòng không đổi; điều kiện `team` ở W1 → 422 `validation_failed`; bộ kiểm giả ném lỗi → không dòng nào được ghi; `owner_user_id` không là thành viên → 422 `validation_failed`, không 500; sai nếu ghi được.
-- [ ] R1.5 (AB12): người của công ty B `POST .../settings` cho agent của chính B với `Người được dùng` nêu một workspace của công ty A → 422 `validation_failed` giống hệt lỗi cho một workspace không tồn tại (org-and-principals:R8.2), không dòng nào, không audit; sai nếu ghi được hay lỗi khác lỗi của workspace không tồn tại.
-- [ ] R6.1 (AB12): người của công ty B `POST`, `GET` và `PATCH .../settings` (với `If-Match` bất kỳ) với id agent của công ty A → 404 giống hệt phản hồi cho một id ngẫu nhiên không tồn tại, không phải 412; cài đặt của A không đổi (`row_version` giữ nguyên), không sự kiện audit nào ở công ty A; `PUT .../draft` của tenant-config với id agent của A → 404; chạy tra cứu agent bằng vai bỏ qua RLS → test đỏ.
-- [ ] R1.11 (AB15): người giữ `studio.agents.manage_settings` mà không giữ `studio.agents.author` `POST` và `PATCH .../settings` → ghi được; `PATCH` với `{"artifact_id": ...}` hay `{"enabled": null}` → 422, không ghi; `POST .../settings` với id của một thành phần `workflow` → 404; hai `POST .../settings` cùng lúc → một 201, một 409; người giữ `studio.agents.author` mà thiếu `studio.agents.manage_settings` `PATCH .../settings` → 403, cài đặt không đổi, không audit; người không giữ khóa đọc của agent → 404; người giữ `studio.agents.manage_settings` chỉ ở workspace X với agent mà workspace Y sở hữu → không ghi; bỏ kiểm khóa ở route → test đỏ.
-- [ ] R1.8: mục `ArtifactKindRegistry` của `agent` khai `studio.agents.author` làm khóa đọc và khóa ghi, `studio.versions.submit` làm khóa gửi, và mang `publish_hook` (test composition root của tenant-config/02 xanh, gỡ móc khỏi mục → test đó đỏ), và test đọc `platform.permissions` thấy một dòng cho mỗi khóa; người không giữ `studio.agents.author` `GET` thành phần agent hay `PUT` nháp của nó qua route thành phần của tenant-config → 404, nháp không đổi (tenant-config:R2.11); sai nếu mục thiếu một khóa, khai `studio.agents.read` làm khóa đọc, hay khai một khóa không có trong danh mục quyền.
-- [ ] R1.6: tài liệu mang `route_class: vn_only` niêm phong được; vắng `route_class` niêm phong được; `route_class: eu` → cảnh báo khi lưu, 422 khi niêm phong với `errors[]`; bỏ `route_class` khỏi lược đồ → tài liệu hợp lệ bị `extra="forbid"` từ chối, test đỏ.
-- [ ] R2.1 (AB1): `assemble_system_prompt` nhận chỉ dẫn `{x.__class__.__mro__}` (chưa qua validator) và JSON `{"a": 1}` → cả hai tới model nguyên văn trong khối `<tenant_instructions>`; chỉ dẫn 16 000 ký tự tiếng Việt (hơn 16 KiB UTF-8) tới nguyên, không cắt; `user_display_name` 20 000 byte → cắt còn tối đa 16 384 byte, UTF-8 hợp lệ; validator báo `{x.__class__.__mro__}` là `instructions.template_syntax` và không báo `{"a": 1}`; cho văn bản qua `str.format` → test đỏ.
-- [ ] R2.4 (AB2): validator báo `instructions.delimiter` cho `<tool_output` và `</TENANT_INSTRUCTIONS >`, thành `warnings[]` khi lưu nháp và 422 khi niêm phong; so phân biệt hoa thường → test đỏ.
-- [ ] R2.2 (AB2): chỉ dẫn chứa `</tenant_instructions>`, `</TENANT_INSTRUCTIONS >` hay `< /input` → bộ ráp thoát từng chuỗi và khối không đóng, còn `a < b` giữ nguyên; validator báo `instructions.delimiter` cho cả ba, niêm phong → 422; gỡ thoát ký tự, hay so phân biệt hoa thường → test đỏ.
-- [ ] R2.3 (AB1): khung giả đưa biến `secret_token` ngoài tập → `PromptAssemblyError` nêu `secret_token`, không prompt nào; sai nếu dựng được prompt.
-- [ ] R1.12 (AB16): công ty A có một dòng `platform.config_versions` đã duyệt cho `studio.agent_frame` bỏ khối `<tenant_instructions>`, và một dòng cho một khung giả của bước `ai.llm` → prompt dựng cho một lượt của A từ cả hai khung vẫn là khung nền tảng, khối còn nguyên; `current_date` tới không bọc, `user_display_name` tới trong `<input>`; cho bộ ráp đọc qua `TenantOverlay` với `tenant_id` của lượt → test đỏ.
-- [ ] R2.1 (AB1): eval smoke chạy các grader tất định của `studio_agent_frame_v1` trên prompt đã ráp và xanh; một ca
+- [x] R1.1: tạo thành phần `kind: agent` qua `POST /api/v1/studio/artifacts`, rồi `POST .../settings` hợp lệ → đúng một dòng `studio.agent_settings` với ba giá trị của thân và một audit `studio.agent.settings_changed` trong cùng giao dịch; `POST .../settings` lần hai → 409, không dòng thứ hai; cùng `Idempotency-Key` gửi lại → câu trả lời đã lưu, không dòng mới; sai nếu không có audit hay có hai dòng.
+- [x] R1.2: `PATCH .../settings` với `If-Match` cũ trả 412 `precondition_failed` với `details.reason_code` `stale_version` và không ghi; sai nếu ghi đè bản mới hay trả 409.
+- [x] R1.7: `PATCH .../settings` thiếu `If-Match` trả 428 `precondition_required` và không ghi; sai nếu ghi được.
+- [x] R1.3: `PUT .../draft` của một agent có khóa ngoài lược đồ → 200 với `warnings[]` có `pointer` của khóa đó; niêm phong cùng tài liệu → 422 với `errors[]` `{pointer, code, detail}`; tài liệu có `sub_agents` (mục W2) → cùng lỗi; sai nếu niêm phong được.
+- [x] R1.4 (AB10): INSERT `studio.agent_settings` thiếu `enabled` bị PostgreSQL từ chối; `POST .../settings` thiếu `enabled` → 422; gỡ `NOT NULL` khỏi `enabled` → test đỏ.
+- [x] R1.5 (AB10): `POST .../settings` với `Người được dùng` rỗng → 422 `audience_empty` từ bộ kiểm của org-and-principals, không dòng nào; `PATCH` đổi `Người được dùng` thành rỗng → 422, dòng không đổi; điều kiện `team` ở W1 → 422 `validation_failed`; bộ kiểm giả ném lỗi → không dòng nào được ghi; `owner_user_id` không là thành viên → 422 `validation_failed`, không 500; sai nếu ghi được.
+- [x] R1.5 (AB12): người của công ty B `POST .../settings` cho agent của chính B với `Người được dùng` nêu một workspace của công ty A → 422 `validation_failed` giống hệt lỗi cho một workspace không tồn tại (org-and-principals:R8.2), không dòng nào, không audit; sai nếu ghi được hay lỗi khác lỗi của workspace không tồn tại.
+- [x] R6.1 (AB12): người của công ty B `POST`, `GET` và `PATCH .../settings` (với `If-Match` bất kỳ) với id agent của công ty A → 404 giống hệt phản hồi cho một id ngẫu nhiên không tồn tại, không phải 412; cài đặt của A không đổi (`row_version` giữ nguyên), không sự kiện audit nào ở công ty A; `PUT .../draft` của tenant-config với id agent của A → 404; chạy tra cứu agent bằng vai bỏ qua RLS → test đỏ.
+- [x] R1.11 (AB15): người giữ `studio.agents.manage_settings` mà không giữ `studio.agents.author` `POST` và `PATCH .../settings` → ghi được; `PATCH` với `{"artifact_id": ...}` hay `{"enabled": null}` → 422, không ghi; `POST .../settings` với id của một thành phần `workflow` → 404; hai `POST .../settings` cùng lúc → một 201, một 409; người giữ `studio.agents.author` mà thiếu `studio.agents.manage_settings` `PATCH .../settings` → 403, cài đặt không đổi, không audit; người không giữ khóa đọc của agent → 404; người giữ `studio.agents.manage_settings` chỉ ở workspace X với agent mà workspace Y sở hữu → không ghi; bỏ kiểm khóa ở route → test đỏ.
+- [x] R1.8: mục `ArtifactKindRegistry` của `agent` khai `studio.agents.author` làm khóa đọc và khóa ghi, `studio.versions.submit` làm khóa gửi, và mang `publish_hook` (test composition root của tenant-config/02 xanh, gỡ móc khỏi mục → test đó đỏ), và test đọc `platform.permissions` thấy một dòng cho mỗi khóa; người không giữ `studio.agents.author` `GET` thành phần agent hay `PUT` nháp của nó qua route thành phần của tenant-config → 404, nháp không đổi (tenant-config:R2.11); sai nếu mục thiếu một khóa, khai `studio.agents.read` làm khóa đọc, hay khai một khóa không có trong danh mục quyền.
+- [x] R1.6: tài liệu mang `route_class: vn_only` niêm phong được; vắng `route_class` niêm phong được; `route_class: eu` → cảnh báo khi lưu, 422 khi niêm phong với `errors[]`; bỏ `route_class` khỏi lược đồ → tài liệu hợp lệ bị `extra="forbid"` từ chối, test đỏ.
+- [x] R2.1 (AB1): `assemble_system_prompt` nhận chỉ dẫn `{x.__class__.__mro__}` (chưa qua validator) và JSON `{"a": 1}` → cả hai tới model nguyên văn trong khối `<tenant_instructions>`; chỉ dẫn 16 000 ký tự tiếng Việt (hơn 16 KiB UTF-8) tới nguyên, không cắt; `user_display_name` 20 000 byte → cắt còn tối đa 16 384 byte, UTF-8 hợp lệ; validator báo `{x.__class__.__mro__}` là `instructions.template_syntax` và không báo `{"a": 1}`; cho văn bản qua `str.format` → test đỏ.
+- [x] R2.4 (AB2): validator báo `instructions.delimiter` cho `<tool_output` và `</TENANT_INSTRUCTIONS >`, thành `warnings[]` khi lưu nháp và 422 khi niêm phong; so phân biệt hoa thường → test đỏ.
+- [x] R2.2 (AB2): chỉ dẫn chứa `</tenant_instructions>`, `</TENANT_INSTRUCTIONS >` hay `< /input` → bộ ráp thoát từng chuỗi và khối không đóng, còn `a < b` giữ nguyên; validator báo `instructions.delimiter` cho cả ba, niêm phong → 422; gỡ thoát ký tự, hay so phân biệt hoa thường → test đỏ.
+- [x] R2.3 (AB1): khung giả đưa biến `secret_token` ngoài tập → `PromptAssemblyError` nêu `secret_token`, không prompt nào; sai nếu dựng được prompt.
+- [x] R1.12 (AB16): công ty A có một dòng `platform.config_versions` đã duyệt cho `studio.agent_frame` bỏ khối `<tenant_instructions>`, và một dòng cho một khung giả của bước `ai.llm` → prompt dựng cho một lượt của A từ cả hai khung vẫn là khung nền tảng, khối còn nguyên; `current_date` tới không bọc, `user_display_name` tới trong `<input>`; cho bộ ráp đọc qua `TenantOverlay` với `tenant_id` của lượt → test đỏ.
+- [x] R2.1 (AB1): eval smoke chạy các grader tất định của `studio_agent_frame_v1` trên prompt đã ráp và xanh; một ca
       tiêm trong chỉ dẫn mà bộ ráp để lọt ra ngoài khối (gỡ thoát) → grader đỏ.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_studio/tests packages/python/dw_agent_runtime/tests -k "agent_kind or agent_frame or agent_settings"` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_studio/tests packages/python/dw_agent_runtime/tests -k "agent_kind or agent_frame or agent_settings"` xanh.
 
 ## Nguồn
 
@@ -71,3 +71,37 @@ Cho người dựng tạo và sửa một tài liệu `dw.agent/v1` qua route v�
   niêm phong không còn `dependency_unresolved` ở mọi agent; ticket này chờ tools-and-skills/02 (`ToolsetSpec`,
   `validate_toolset`, `extract_toolset`). Nếu sai thì: tools-and-skills/02 đăng ký loại `toolset` và bước 1 trở lại tham
   chiếu.
+- 2026-11-05 (agent): xây xong ở lane 1. Khác với văn bản ticket, mỗi điểm theo ủy quyền 31/10/2026:
+  (1) `studio.agent_settings` dùng PRIMARY KEY `(tenant_id, artifact_id)` làm UNIQUE "một dòng mỗi agent", không cột
+  `id`; FK tới `studio.artifacts` dùng chính khóa đó làm chỉ mục. Nếu sai thì: thêm `id uuid` làm khóa chính và một
+  UNIQUE riêng. (2) Không grant nào cho `dw_agent_ro`: studio-skeleton R2 giữ schema `studio` chỉ cho chủ và `dw_app`,
+  và `test_privileges.py` đỏ với mọi grant khác. Nếu sai thì: studio-skeleton R2 thêm ngoại lệ cho bảng này trước.
+  (3) `dw_app` có INSERT và UPDATE ba cột cài đặt, không DELETE; offboarding xóa dòng theo cascade của
+  `studio.artifacts`, một dòng `STUDIO_EXCLUSIONS` nêu lý do. Nếu sai thì: cấp DELETE và lane xóa bảng trước
+  `studio.artifacts`. (4) Bộ dữ liệu eval là `evals/datasets/studio_agent_frame@1.0.0.json` (dạng `EvalDataset`, tên
+  `<id>@<phiên bản>` mà `test_fixture_prompt_pins.py` đọc), không `.jsonl`: `scripts/run_evals.py --smoke` chỉ đọc `*.json`, còn tiền lệ `.jsonl` chạy bằng script riêng với model
+  thật; ca cần model thật chờ runtime của ticket 03 (chưa agent nào chạy được) và Chờ Đạt 21. `dw_studio` thêm phụ
+  thuộc `dw-evals` cho grader. Nếu sai thì: tách thêm một `.jsonl` cho ca model và một script như `eval_wf_ai.py`.
+  (5) Lược đồ nhận `bindings[]` (hình chung của tenant-config R7; mục `connector_action` của Bộ công cụ nêu một
+  binding), kiểm bởi `parse_declarations` của vỏ. Nếu sai thì: agent không khai binding và `connector_action` sang W2.
+  (6) `model.profile` chỉ kiểm hình (id hồ sơ); hồ sơ ngoài gói do `ModelResolver` từ chối lúc chạy
+  (model-connections R2.2). Nếu sai thì: validator nhận danh sách hồ sơ nền tảng ở composition root và báo lúc niêm
+  phong. (7) `display` chỉ có `name` (biến `agent_name` của khung); lời chào và gợi ý vào cùng ticket 04 đọc chúng.
+  (8) CR (U+000D) là ký tự điều khiển C0, nên `instructions.control_char`, đúng chữ ADR-0117 (Accepted) quyết 4. Nếu sai thì: nhận
+  CR như xuống dòng. (9) R1.12: `platform.config_versions` chỉ nhận kind `binding_set` (`ck_config_versions_kind`),
+  nên không dòng nào cho một prompt tồn tại được; test đặt bản ghi đè vào lớp tenant của `PromptRegistry`, nơi duy nhất
+  một bản ghi đè prompt được đọc. `assemble_system_prompt` không nhận `tenant_id` nào, dựng khung qua
+  `PromptRegistry.platform_artifact` và `render(..., tenant_id=None)`; MEDIUM (a) của gate nay chưa thể xảy ra. Thêm:
+  một khung tự viết dấu khối bị từ chối (`ConfigError`), và luật biến là một luật trên biến của bên gọi hợp biến của
+  khung. (10) Kiểm `owner_user_id` ở ứng dụng (người, `active`, không phải tài khoản dịch vụ, tenant nêu thẳng trong
+  câu lệnh) cộng FK ghép; lỗi FK do chạy đua cũng thành 422 `owner_unknown`. Guard ở database đến với W2.
+  MEDIUM: (i) `purpose` chưa có bên đọc ở W1 (failure-modes #1), giữ vì ticket và spec liệt kê nó; (ii) `enabled` chỉ
+  được đọc từ ticket 03, 04 (R3.8, R5.3); (iii) loại `agent` có Cổng chất lượng, nên một phiên bản gửi đi dừng ở
+  `evaluating` tới agent-lifecycle/06; (iv) id agent của công ty khác bị chặn hai lần (RLS của `studio.artifacts` và
+  tầm của công ty người gọi), nên đột biến của AB12 là policy của bảng cài đặt, còn RLS của vỏ do test của
+  tenant-config giữ.
+- 2026-11-05 (agent): cổng của ticket: 37 test bộ ráp và lint, 37 test loại `agent`, 3 test eval, 13 test Postgres, 32
+  test HTTP; `test_rls_coverage.py`, `test_privileges.py`, `test_offboarding_coverage.py`, `test_permission_catalogue.py`,
+  `test_metadata_matches_catalog.py`, `test_kind_registry.py` xanh; eval smoke 8/8 với độ phủ an ninh đủ. Khung
+  `studio.agent_frame` là prompt nền tảng đầu tiên có `raw_variables`: `test_prompt_containment.py` ghi ngoại lệ đó cùng
+  lý do. 27 đột biến của `mutations/02.yaml` chạy tay, mỗi cái đỏ; `scripts/mutate.py` chạy lúc đóng hàng đợi.
