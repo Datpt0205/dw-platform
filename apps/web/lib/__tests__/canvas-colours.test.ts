@@ -19,7 +19,8 @@ import { globMatches, sources } from "./source-tree";
 /**
  * The canvas takes every colour from the theme (workflow-builder-ui R1.5,
  * R1.9, BU14; `.claude/rules/ui-quality.md` §1, §12). Under
- * `app/studio/**\/canvas/**`, and in `lib/workflow-layout.ts` and
+ * `app/studio/**\/canvas/**`, in the builder's components beside it
+ * (`app/studio/workflows/*\/builder/**`), and in `lib/workflow-layout.ts` and
  * `lib/workflow-graph.ts` once they exist, no file names a colour of its own:
  * not a hex value, not a colour function, and not a CSS colour name given to a
  * colour declaration, a custom property (`--xy-*` included) or a `style`,
@@ -30,6 +31,8 @@ import { globMatches, sources } from "./source-tree";
 
 const WEB = resolve(__dirname, "../..");
 const CANVAS_GLOB = "app/studio/**/canvas/**";
+/** The builder's own components beside the canvas (BU14: "thành phần builder"). */
+const BUILDER_GLOB = "app/studio/workflows/*/builder/**";
 const PURE_MODULES = ["lib/workflow-layout.ts", "lib/workflow-graph.ts"];
 
 /** CSS named colours (CSS Color 4), less the three that name no colour. */
@@ -113,7 +116,9 @@ export function coveredFiles(root: string): string[] {
     : [];
   return [
     ...app.filter(
-      (p) => globMatches(CANVAS_GLOB, p) && /\.(ts|tsx|css)$/.test(p),
+      (p) =>
+        (globMatches(CANVAS_GLOB, p) || globMatches(BUILDER_GLOB, p)) &&
+        /\.(ts|tsx|css)$/.test(p),
     ),
     ...PURE_MODULES.filter((p) => existsSync(join(root, p))),
   ];
@@ -148,6 +153,9 @@ describe("the canvas names no colour of its own (BU14)", () => {
   it("holds for the real canvas", () => {
     expect(coveredFiles(WEB)).toContain(`${AT}/workflow-canvas.tsx`);
     expect(coveredFiles(WEB)).toContain(`${AT}/workflow-canvas.css`);
+    expect(coveredFiles(WEB)).toContain(
+      "app/studio/workflows/[id]/builder/workflow-builder.tsx",
+    );
     expect(colourProblems(WEB)).toEqual([]);
   });
 

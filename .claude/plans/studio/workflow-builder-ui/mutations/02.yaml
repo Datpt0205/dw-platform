@@ -1,0 +1,39 @@
+# Mutation check of workflow-builder-ui ticket 02. scripts/mutate.py runs pytest
+# only, so the one entry below is the fixture test (step 2's pytest); every
+# other control the ticket adds is guarded by vitest and is listed here as it
+# was planted by hand (backed up by copy, mutated in place, the guarding file
+# run with `vitest run <file>`, restored by copy). The ones marked "red
+# 5/11/2026" were run (lane2-wbu02-mutate-by-hand.log in the session
+# scratchpad); the rest are owed by hand at the queue's close.
+#
+#   R1.4 BU8  moveStep without isInside (into its own lane)        -> workflow-graph.test.ts "refuses to move a switch into one of its own lanes"  red 5/11/2026
+#   R1.4 BU8  fromStepNode writing a "position" key                -> workflow-graph.test.ts "%s reads back key for key", "writes an edited tree with no position"
+#   R1.4 BU8  nodesDraggable / nodesConnectable true               -> workflow-canvas(-config).test.tsx (ticket 01's, kept)
+#   R1.4 BU8  a drop off a slot inserting at the nearest slot      -> builder-canvas.test.tsx "a card dropped on empty canvas or outside it changes nothing"
+#   R1.5      the + slot 20 px                                     -> workflow-layout.test.ts "F1 runs top to bottom", builder-canvas.test.tsx "draws a + of at least 24 px"  red 5/11/2026
+#   R1.6 BU13 lanes sorted by width                                -> workflow-layout.test.ts (F1-F9, random trees)            red 5/11/2026
+#   R1.6 BU13 workflow-layout.ts importing a package               -> workflow-layout.test.ts "only types of its sibling pure modules"
+#   R1.8 BU14 a literal colour in the card                         -> canvas-colours.test.ts "holds for the real canvas"
+#   R2.1      the Form showing lane keys                           -> builder-canvas.test.tsx "opens a switch with a Form ... no field for a lane key"  red 5/11/2026
+#   R2.1      the palette listing trigger.* types                  -> builder-canvas.test.tsx "opens the palette from a +"                             red 5/11/2026
+#   R2.3      ApiClient dropping If-Match                          -> builder-canvas.test.tsx "saves with the ETag read"                               red 5/11/2026
+#   R2.4 BU4  autosave not stopping at a 412                       -> builder-canvas.test.tsx "stops at a 412"                                         red 5/11/2026
+#   R2.5 BU7  the arrow keys not handled on the canvas             -> builder-canvas.test.tsx "one Tab stop; ↓ ↑ move focus"
+#   R2.5 BU7  Thêm trước missing from the menu                     -> builder-model.test.ts "has the five actions", builder-canvas.test.tsx "Shift+F10 opens the menu"
+#   R2.6 BU11 aria-posinset dropped from a Tree node               -> builder-outline.test.tsx "carries aria-level, aria-posinset and aria-setsize"   red 5/11/2026
+#   R2.7 BU10 deleteKeyCode left to the default                    -> workflow-canvas-config.test.tsx (ticket 01's, kept)
+#   R2.8 BU10 the isComposing check gone from the canvas keys      -> builder-canvas.test.tsx "ignores every key mid-composition (Telex)"            red 5/11/2026
+#   R2.9 BU12 an edge's ariaLabel left to the English default      -> workflow-canvas-config.test.tsx (ticket 01's, kept)
+#   R2.9      a step of an unknown type deletable                  -> workflow-graph.test.ts "is neither deleted nor moved", builder-canvas.test.tsx "menu only Sao chép tham chiếu"  red 5/11/2026
+#   R2.9      a new switch without its default lane                -> workflow-graph.test.ts "a switch carries its schema's default values"
+#   R2.9      a colliding id not drawn again                       -> workflow-graph.test.ts "draws again when the id collides"
+#   R2.10 BU12 the deletion not announced                          -> builder-canvas.test.tsx "deletes with Delete, undoes with Ctrl+Z"              red 5/11/2026
+#   R2.11 BU7 the notice without Hoàn tác                          -> builder-canvas.test.tsx "names every step a block takes, and Hoàn tác gives the document back"  red 5/11/2026
+#   §5        a refused save drawn as saved                        -> builder-outline.test.tsx "a save the server refuses shows its sentence"
+mutations:
+  - name: step 2 a fixture with a key the document model refuses
+    file: apps/web/lib/__fixtures__/workflows/f1-lead-intake.json
+    old: '  "schema": "dw.workflow/v1",'
+    new: "  \"schema\": \"dw.workflow/v1\",\n  \"positions\": {},"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_builder_fixtures.py::test_fixture_is_a_workflow_document

@@ -50,7 +50,7 @@ export default defineConfig({
       ] as const
     ).map(([name, width, height]) => ({
       name,
-      testMatch: /(platform-pages|studio)\.spec\.ts/,
+      testMatch: /(platform-pages|studio|workflow-builder)\.spec\.ts/,
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width, height },

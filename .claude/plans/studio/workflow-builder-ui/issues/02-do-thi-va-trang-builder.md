@@ -1,6 +1,6 @@
 # 02 — Thao tác cây, bố cục thuần và trang builder tự lưu bản nháp
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01, .claude/plans/studio/workflow-engine/issues/01-tai-lieu-workflow-va-kiem-xuat-ban.md, .claude/plans/studio/workflow-nodes/issues/02-so-dang-ky-buoc-va-mau-chuoi.md
 Area: studio
 Yêu cầu: R1.4, R1.5, R1.6, R1.8, R2.1, R2.2, R2.3, R2.4, R2.5, R2.6, R2.7, R2.8, R2.9, R2.10, R2.11, BU4, BU7, BU8, BU10, BU11, BU12, BU13, BU14
@@ -164,3 +164,66 @@ Của R1.5, ticket này làm hàng Chuỗi; khung, đầu làn và nhãn của t
 - 2026-11-04 (agent): MEDIUM để lại cho người dựng: (a) `PUT .../draft` chuẩn hóa tài liệu bằng `canonical_document`, từ chối số thực và chuỗi không NFC (ADR-0112 (Accepted) Amendments 2026-11-03), nên Form gửi số theo kiểu mà `config_schema` khai và hiện 422 của lần lưu đó dưới "Lưu thất bại" với `pointer` của máy chủ; (b) mỗi lần lưu ghi một audit `studio.artifact.draft_saved` (`packages/python/dw_studio/src/dw_studio/core/application/service.py:439-446`), nên debounce ít nhất 2 s và không lưu khi tài liệu không đổi; (c) sau 412, "Tải bản mới nhất" thay nội dung trên trang mà không hỏi, vì nội dung đang gõ còn nhìn thấy tới khi bấm; (d) route builder chỉ có ý nghĩa với kind `workflow`: một `[id]` của kind khác hiện `Result` 404 như id không tồn tại; (e) tên tệp Playwright là `apps/web/e2e/workflow-builder.spec.ts`, mà dòng Xong lọc theo `workflow-builder`; (f) "nhãn của Nhánh ra" và "nhãn Loại bước" là nhãn tiếng Việt mà `node-types` trả (workflow-nodes:R1.2), không dịch ở trang.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): từ lượt xác nhận của gate ticket 04, hai chỗ của bước 1 đổi: (13) Bước mới chỉ mang làn mà `config_schema` đòi và làn `default`, không mọi làn, vì một làn `max_reached: []` có mặt đổi cách chạy của vòng lặp (ADR-0112 (Accepted) quyết 2); (15) bàn phím đi theo cấu trúc (↓ vào làn đầu, ra khỏi khối từ Bước cuối của làn, ↑ về thẻ chứa), không theo thứ tự trước, vì thứ tự trước đưa ↑ từ Bước đầu của làn 2 vào Bước sâu nhất của làn 1 và không có phím nào ra khỏi khung. Nếu sai thì: mọi làn tạo sẵn và người dựng bỏ làn thừa; thứ tự trước với một phím riêng (Esc) ra khỏi khung.
+- 2026-11-05 (agent): resolved, làn dựng 2, hai commit (mã, rồi test và ticket). Dựng: `lib/workflow-graph.ts` (cây Bước,
+  chèn, dời từ chối cây con, xóa trả mọi Bước bị xóa, thêm và bỏ làn, `on_error`, id mới, hoàn tác và làm lại, bàn phím
+  theo cấu trúc, so sâu tài liệu), `lib/workflow-layout.ts` (mô hình biên trái phải từ một trục, O(n), `slotAt` cho thả),
+  `lib/workflow-shapes.ts` mở rộng (thẻ, đầu làn, ô, điểm gộp, đường gấp khúc), Sơ đồ đọc hình đó (thẻ antd `Card` 256 ×
+  120, ô "+" 28 px, ô "Thêm Bước" nét đứt, `ariaLabelConfig` tiếng Việt, kéo bằng con trỏ cùng `screenToFlowPosition`,
+  cull từ 100 thẻ), trang `/studio/workflows/[id]/builder` (`workflow-builder.tsx`, Popover và bảng bên từ `lg`, Drawer
+  cấu hình, `Tree` dưới `md` với menu là Drawer đáy, tự lưu `If-Match`, 412, Ctrl+K, `aria-live`, thông báo Hoàn tác),
+  bốn phương thức của `ApiClient` (`getStudioArtifact`, `getStudioNodeTypes`, `getStudioDraft`, `saveStudioDraft` với
+  `ifMatch`), test pytest `test_builder_fixtures.py`, `e2e/workflow-builder.spec.ts`. Khác với ticket:
+    - Quyết định (agent, theo ủy quyền 31/10/2026): nhóm của Loại bước đọc từ không gian tên của `type` (`ai.llm@2` →
+      `ai`; `flow`, `time` → `logic`) ở một hàm `stepGroup`, vì `NodeTypeView` chưa mang mã nhóm. Nếu sai thì:
+      workflow-nodes thêm `group` vào mục danh mục và `stepGroup` đọc nó.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): bảng chọn không vẽ lý do khóa nào, vì route chưa trả lý do khóa (nó
+      đi cùng loại đầu tiên khai giới hạn hay khóa, workflow-nodes R1.2); một trường không ai đọc là failure-modes #1.
+      Nếu sai thì: route thêm `locked_reason` và mục bị khóa thành nút tắt có Tooltip nêu lý do.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): "Thêm nhánh" và "Bỏ nhánh…" cũng phủ Nhánh ra cố định không bắt
+      buộc (`max_reached` của `logic.loop`), không chỉ mục `cases`, `branches`, vì không thế thì ticket này không có
+      đường nào thêm làn đó. Nếu sai thì: `max_reached` chỉ thêm từ đầu làn của ticket 04.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): làn "Khác" của loại có cổng `default` luôn được vẽ, kể cả khi tài
+      liệu chưa có khóa đó, và chỉ được ghi khi có Bước vào; không bỏ được. Nếu sai thì: làn chỉ vẽ khi có trong tài
+      liệu, và bộ kiểm báo `wf.router_not_total`.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): thẻ 256 × 120 (`CANVAS_VOCABULARY.card` của `@dw/ui`, từ 88) theo bài
+      học ở ADR-0101 (Accepted) Amendments 2026-11-04: 88 px không đủ cho tên, dòng loại và hàng huy hiệu. Nếu sai thì:
+      huy hiệu vào Tooltip và thẻ về 88.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): sửa trong Drawer (cấu hình, "Tên Bước", Khi lỗi) cùng ngăn hoàn tác
+      với thao tác cây, gộp theo từng Bước để không mỗi phím một mục; "Tên Bước" là `description` do người dựng gõ,
+      để trống thì khóa vắng. Nếu sai thì: ngăn hoàn tác chỉ giữ thao tác cây và Drawer có hoàn tác riêng.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): trong `Tree`, Enter trên node có làn mở hay gập node (quy ước của
+      rc-tree, chạy trước bộ bắt phím của trang), Space hay bấm mở cấu hình; trên Sơ đồ Enter mở cấu hình như R2.5. Nếu
+      sai thì: chặn Enter của rc-tree bằng một bộ bắt ở pha capture.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): dưới `md`, menu "…" là `Drawer` đáy với antd `Menu`, theo bài học
+      menu mở ngoài màn ở 320 px (ADR-0101 (Accepted) Amendments 2026-11-04); `Tree` nằm trong một khung cuộn ngang của riêng nó.
+      Nếu sai thì: `Dropdown` với `placement` tự chỉnh.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): nhãn chỉ đọc từ route (MEDIUM (a) của workflow-nodes/02); bản sao ở
+      `lib/digital-workers/labels.ts` không đổi trong ticket này, màn DW chuyển sang route trong thay đổi của nó.
+    - Thêm ngoài ticket: `lib/__tests__/workflow-catalogue.ts` đổi danh mục giả của ticket 01 sang hình `NodeTypeView`
+      cho test (`catalogue.json` giữ nguyên, test của ticket 01 không đổi); `canvas-colours.test.ts` quét cả
+      `app/studio/workflows/*/builder/**` (BU14 "thành phần builder"); dự án Playwright 320, 991, 992 nhận spec mới.
+    - Test: vitest 41 tệp, 360 ca xanh (`workflow-graph.test.ts` 31, `workflow-layout.test.ts` 17, `builder-canvas` 19,
+      `builder-outline` 7, `builder-medium` 2, `builder-model` 3, cộng test Sơ đồ của ticket 01 đổi sang hình mới); p95 bố
+      cục F7 1,00 ms (p50 0,28, p99 1,86; trần 50 ms); `pnpm run typecheck`, `pnpm run lint` sạch; Prettier sạch;
+      `pnpm run build` biên dịch, kiểm kiểu và sinh 23 trang kể cả route builder rồi dừng ở bước standalone vì EPERM
+      symlink của Windows (môi trường, như ticket 01); JS gzip của route builder 687,5 kB (trang và layout gốc, `/studio`
+      675,5 kB) cộng 67,0 kB chunk `next/dynamic` của Sơ đồ; pytest `test_builder_fixtures.py` 10 ca xanh, cả trên bản
+      export sạch với Python 3.12.15 của CI.
+    - `reviewing-feature-security` (đọc): ranh giới 2: trang không tự quyết quyền nào, chỉ gọi route và vẽ câu trả lời;
+      có test cho 403 của danh mục (trạng thái không có quyền, không ghi gì) và 403 của lần lưu ("Lưu thất bại" với câu
+      của máy chủ, nội dung giữ); quyền ở route là của tenant-config/02 và workflow-nodes/02, có test ở đó. Ranh giới 1:
+      không truy vấn, cache hay đường lưu mới, trang không gửi tenant. Ranh giới 4: tên Bước và cấu hình là chữ React, không
+      `dangerouslySetInnerHTML`, JSON đọc bằng `JSON.parse`; clipboard chỉ chép `steps.<id>`. Ranh giới 6: hẹn giờ, bộ
+      nghe con trỏ và thông báo đều gỡ khi thôi; 412 dừng tự lưu (đóng an toàn). Ranh giới 3, 5: không tác động agent,
+      không ghi audit mới (lần lưu của máy chủ ghi audit; trang không gửi khi tài liệu không đổi).
+      `mutations/02.yaml`: một mục pytest (fixture lệch mô hình), các kiểm soát vitest liệt kê ở đầu tệp; mẫu chạy tay ở
+      `lane2-wbu02-mutate-by-hand.log`.
+- 2026-11-05 (agent): MEDIUM để lại: (a) nhãn trường của Form là khóa của `config_schema` ("on", "match") tới khi
+  workflow-nodes thêm `title` cho thuộc tính; (b) chưa hỏi trước khi rời trang khi còn thay đổi chưa lưu (ui-quality §9);
+  (c) bỏ qua Bước trong khung thu gọn khi đi bằng phím là của ticket 04 (chưa có trạng thái thu gọn); (d) 422 hiện
+  `pointer` thô của máy chủ dưới "Lưu thất bại", ticket 03 gắn lỗi về Bước; (e) `lib/digital-workers/labels.ts` vẫn là
+  bản sao thứ hai của nhãn loại bước. Còn cho lượt cuối hàng đợi: `scripts/mutate.py` cho `mutations/02.yaml` và các đột
+  biến vitest chưa đánh dấu đỏ trong tệp; chạy `e2e/workflow-builder.spec.ts` (bàn phím trên Sơ đồ, `Tree` ở 320 px, không
+  cuộn ngang) trên stack thật; kéo bằng con trỏ thật bằng tay; P50/P95/P99 của trang builder (tải F1 và F7, chèn, xóa,
+  mở Drawer) và của `GET`/`PUT .../draft`, `GET /studio/node-types`; JS tải đầu của route đo bằng Playwright theo
+  ADR-0101 (Accepted); ảnh Playwright sáng, tối, desktop và dưới 992 px; `/code-review`.
