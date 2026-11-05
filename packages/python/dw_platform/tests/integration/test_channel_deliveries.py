@@ -25,6 +25,7 @@ from pg_harness import DatabaseUrls
 from sqlalchemy.exc import DBAPIError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+from tenant_wide_scopes import OFFBOARDING_SCOPES
 
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.channel_deliveries import (
@@ -508,7 +509,9 @@ async def test_offboarding_exports_the_tenants_deliveries_and_leaves_none(
     await _notify(app, here, a, key=mine[0])
     await _notify(app, sibling, a, key=mine[1])
     await _notify(app, other, b, key=theirs)
-    offboarding = SqlTenantOffboarding(async_sessionmaker(app, expire_on_commit=False))
+    offboarding = SqlTenantOffboarding(
+        async_sessionmaker(app, expire_on_commit=False), scopes=OFFBOARDING_SCOPES
+    )
 
     rows = [
         row

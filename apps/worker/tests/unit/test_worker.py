@@ -240,3 +240,15 @@ def test_every_purged_fragment_has_its_purger() -> None:
         if fragment.enforced and fragment.purger in {"row_delete", "object_delete", "column_clear"}
     }
     assert purged - set(build_retention_purgers(async_sessionmaker()).all()) == set()
+
+
+def test_the_worker_registers_offboarding_alone_for_the_tenant_wide_scope() -> None:
+    """record-access ticket 03 (ADR-0105 decision 5): W1's registry, built at
+    this composition root, holds the offboarding lane, which says it reads the
+    tables private to one person."""
+    from dw_worker.main import build_tenant_wide_scopes
+
+    [lane] = build_tenant_wide_scopes().lanes()
+    assert lane.lane == "offboarding"
+    assert lane.reads_private_tables is True
+    assert lane.reason.strip()

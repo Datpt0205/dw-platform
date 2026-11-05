@@ -24,6 +24,7 @@ from sqlalchemy import event
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import NullPool
+from tenant_wide_scopes import OFFBOARDING_SCOPES
 
 from dw_kernel.errors import ConflictError, DomainError, NotFoundError, PermissionDeniedError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
@@ -748,7 +749,8 @@ async def test_offboarding_exports_and_purges_a_tenant_holding_a_dw(
     theirs = await service(app_engine).create(in_b, theirs_command)
 
     offboarding = SqlTenantOffboarding(
-        session_factory=async_sessionmaker(app_engine, expire_on_commit=False)
+        session_factory=async_sessionmaker(app_engine, expire_on_commit=False),
+        scopes=OFFBOARDING_SCOPES,
     )
     exported = {
         f"{batch.schema}.{batch.table}": len(batch.rows)

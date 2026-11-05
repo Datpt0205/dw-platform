@@ -662,6 +662,11 @@ _STUDIO_DEFINERS: dict[str, str] = {
     "mark_principal_stale": "trigger: marks a principal's row stale for every writer of an input",
     "bump_access_epoch": "trigger: bumps the tenant's epoch for every writer of an input",
     "purge_access_epoch": "offboarding's step for the epoch row dw_app may not delete",
+    # record-access ticket 03 (migration 2c2095fbb4c7).
+    "check_record_owner": (
+        "trigger: reads the row's company members, which a definer caller may not, to refuse"
+        " an owner who is not an active member (ck_records_owner_in_tenant)"
+    ),
 }
 
 
@@ -859,6 +864,15 @@ async def test_the_artifact_envelope_grants_dw_app_its_writes_and_no_more(
                     assert slots, table
                     columns = (columns - {_SLOTS}) | slots
                 assert updatable == columns, table
+                # record-access/03: a record never moves (R1.3), its key is generated.
+                if table == "records":
+                    assert not updatable & {
+                        "owner_id",
+                        "owner_kind",
+                        "workspace_id",
+                        "object_id",
+                        "access_key",
+                    }
     finally:
         await migrator.dispose()
 
@@ -2530,12 +2544,17 @@ _LEDGER_DOORS = (
     "studio.acl_keys(text)",
     "studio.acl_create_own_keys()",
     "studio.purge_access_epoch(uuid)",
+    # record-access/03 (revision 2c2095fbb4c7): the record policies read the
+    # actor kind, and `dw_app`'s INSERT computes the generated `access_key`
+    # (D8: without EXECUTE it is "permission denied for function access_key").
+    "studio.acl_actor_kind()",
+    "studio.access_key(uuid, uuid)",
 )
 _LEDGER_INTERNALS = (
-    "studio.access_key(uuid, uuid)",
     "studio.compute_principal_scope()",
     "studio.mark_principal_stale()",
     "studio.bump_access_epoch()",
+    "studio.check_record_owner()",
 )
 
 
@@ -2545,6 +2564,8 @@ _LEDGER_INTERNALS = (
         ("studio.principal_scopes", {("dw_app", "SELECT")}),
         ("studio.access_epochs", {("dw_app", "SELECT")}),
         ("studio.access_input_tables", {("dw_app", "SELECT")}),
+        # R4.5 (RA11): records too are no provisioner's and no agent role's.
+        ("studio.records", {("dw_app", "SELECT"), ("dw_app", "INSERT"), ("dw_app", "DELETE")}),
         ("studio.v_principal_grants", set()),
         ("studio.v_principal_workspaces", set()),
     ],

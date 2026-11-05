@@ -15,9 +15,11 @@ already uses — plus `app.workspace_scope = 'tenant'`. A context may narrow its
 tables by workspace as well (`tenant AND (workspace OR app.workspace_scope =
 'tenant')`); under `app.tenant_id` alone such a table reads zero rows, so the
 export would miss them silently, the purge would delete none, and the purge of
-`platform.workspaces` would then CASCADE them away unexported. This class is the
-only place that sets the scope, per transaction; `test_rls_coverage.py` keeps
-every policy that reads it inside a tenant clause.
+`platform.workspaces` would then CASCADE them away unexported. The scope also
+opens every Studio record of the tenant (ADR-0105 decision 5). It is set through
+`tenant_wide_scope`, the one setter, for the lane `offboarding` of the registry
+the worker's composition root builds and injects here (record-access ticket 03);
+`test_rls_coverage.py` keeps every policy that reads it inside a tenant clause.
 
 `claim_requested` is the one exception to running under one tenant: nothing
 tells the worker which tenant has a request waiting until it asks, and asking is
@@ -46,10 +48,16 @@ from sqlalchemy import Text, bindparam, text
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dw_platform.adapters.persistence.tenant_session import (
+    TenantWideScopeRegistry,
+    tenant_wide_scope,
+)
+
 __all__ = [
     "APPEND_ONLY_STEP",
     "EXPORT_BATCH_ROWS",
     "EXPORT_EXCLUSIONS",
+    "OFFBOARDING_LANE",
     "STUDIO_EXCLUSIONS",
     "ExportedTable",
     "OffboardingExclusion",
@@ -62,12 +70,8 @@ __all__ = [
 ]
 
 _SET_TENANT = text("SELECT set_config('app.tenant_id', :tenant_id, true)")
-# Every workspace of the one tenant, for this transaction only (`true`): a pooled
-# connection must not carry the scope into whoever borrows it next.
-_SET_TENANT_ALL_WORKSPACES = text(
-    "SELECT set_config('app.tenant_id', :tenant_id, true),"
-    "       set_config('app.workspace_scope', 'tenant', true)"
-)
+# The lane's name in the tenant-wide scope's registry (ADR-0105 decision 5).
+OFFBOARDING_LANE = "offboarding"
 _SET_DRAIN = text("SELECT set_config('app.worker_drain', 'on', true)")
 
 # How long an in-progress request goes untouched before `claim_requested`
@@ -495,6 +499,8 @@ def order_purge_steps(
 class SqlTenantOffboarding:
     session_factory: async_sessionmaker[AsyncSession]
     steps: OffboardingPurgeSteps = field(default_factory=OffboardingPurgeSteps.platform)
+    # Every row of the leaving tenant, through the worker's frozen registry.
+    scopes: TenantWideScopeRegistry = field(kw_only=True)
 
     async def _exportable_tables(self, session: AsyncSession) -> list[tuple[str, str]]:
         rows = (await session.execute(_CATALOG_EXPORTABLE)).all()
@@ -534,7 +540,7 @@ class SqlTenantOffboarding:
         is worse than a pass that never starts.
         """
         async with self.session_factory() as session, session.begin():
-            await session.execute(_SET_TENANT_ALL_WORKSPACES, {"tenant_id": str(tenant_id)})
+            await tenant_wide_scope(session, tenant_id, OFFBOARDING_LANE, self.scopes)
             await self._refuse_blocked(session, tenant_id)
             for schema, table in await self._exportable_tables(session):
                 key = await self._primary_key(session, schema, table)
@@ -664,7 +670,7 @@ class SqlTenantOffboarding:
 
     async def purge_rows(self, tenant_id: UUID) -> None:
         async with self.session_factory() as session, session.begin():
-            await session.execute(_SET_TENANT_ALL_WORKSPACES, {"tenant_id": str(tenant_id)})
+            await tenant_wide_scope(session, tenant_id, OFFBOARDING_LANE, self.scopes)
             await self._refuse_blocked(session, tenant_id)
             steps = await self._ordered_steps(session)
             await self._record_purge_audit(session, tenant_id)

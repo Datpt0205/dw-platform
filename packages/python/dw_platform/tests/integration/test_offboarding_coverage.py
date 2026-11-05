@@ -30,6 +30,7 @@ import sqlalchemy as sa
 from pg_harness import DatabaseUrls, admin_url
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, create_async_engine
 from sqlalchemy.pool import NullPool
+from tenant_wide_scopes import OFFBOARDING_SCOPES
 
 from dw_platform.adapters.persistence.offboarding import (
     _CATALOG_EXPORTABLE,
@@ -127,7 +128,10 @@ async def offboarding_violations(
 ) -> list[str]:
     """R4.1-R4.6, one line per defect."""
     async with AsyncSession(bind=conn) as session:
-        order = await SqlTenantOffboarding(session_factory=None).purge_order(session)  # type: ignore[arg-type]
+        order = await SqlTenantOffboarding(
+            session_factory=None,  # type: ignore[arg-type]
+            scopes=OFFBOARDING_SCOPES,
+        ).purge_order(session)
     position = {step: at for at, step in enumerate(order)}
     tables = set((await conn.execute(_TENANT_TABLES)).scalars().all())
     never = {f"{schema}.{table}" for schema, table in _NEVER_PURGE}

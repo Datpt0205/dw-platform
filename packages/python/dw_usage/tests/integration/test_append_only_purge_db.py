@@ -18,6 +18,7 @@ from datetime import UTC, datetime
 import pytest
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from tenant_wide_scopes import OFFBOARDING_SCOPES
 from test_offboarding_coverage import _PLATFORM_PREDATING, offboarding_violations
 from test_usage_ledger_db import event, rows_of, seed_tenant
 
@@ -284,7 +285,7 @@ async def test_offboarding_exports_each_row_once_then_purges_both_tables(
         for _ in range(3):
             await ledger.settle(event(tenant, occurred_at=datetime.now(UTC)))
         await _plant_daily(app_sessions, tenant)
-    lane = SqlTenantOffboarding(session_factory=app_sessions)
+    lane = SqlTenantOffboarding(session_factory=app_sessions, scopes=OFFBOARDING_SCOPES)
 
     exported = await _collect(lane, leaving)
     assert exported["platform.usage_events"] == 3
@@ -309,7 +310,9 @@ async def test_without_the_step_the_ledger_outlives_the_company(
     for step in (marketing_purge_step(), access_version_purge_step(), service_users_purge_step()):
         without.register(step)
 
-    await SqlTenantOffboarding(session_factory=app_sessions, steps=without).purge_rows(leaving)
+    await SqlTenantOffboarding(
+        session_factory=app_sessions, steps=without, scopes=OFFBOARDING_SCOPES
+    ).purge_rows(leaving)
 
     assert len(await rows_of(app_sessions, leaving, "platform.usage_events")) == 1
 
@@ -322,7 +325,7 @@ async def test_an_append_only_child_is_purged_before_its_ordinary_parent(
     empties both; the coverage check of studio-skeleton R4.2 finds nothing."""
     leaving, _ = await seed_tenant(app_sessions, status="offboarding")
     await _plant_thread(app_sessions, leaving)
-    lane = SqlTenantOffboarding(session_factory=app_sessions)
+    lane = SqlTenantOffboarding(session_factory=app_sessions, scopes=OFFBOARDING_SCOPES)
     async with app_sessions() as session, session.begin():
         order = await lane.purge_order(session)
     assert order.index(APPEND_ONLY_STEP) < order.index(_THREADS)
@@ -363,7 +366,9 @@ async def test_a_hand_written_table_list_leaves_the_child_and_deletes_nothing(
             name=APPEND_ONLY_STEP, tables=frozenset({"platform.usage_events"}), run=run
         )
     )
-    lane = SqlTenantOffboarding(session_factory=app_sessions, steps=hand_written)
+    lane = SqlTenantOffboarding(
+        session_factory=app_sessions, steps=hand_written, scopes=OFFBOARDING_SCOPES
+    )
     async with app_sessions() as session, session.begin():
         order = await lane.purge_order(session)
     assert _MESSAGES not in order

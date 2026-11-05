@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import NullPool
+from tenant_wide_scopes import OFFBOARDING_SCOPES
 
 from dw_platform.adapters.persistence.offboarding import (
     _FOREIGN_KEYS,
@@ -198,7 +199,7 @@ async def test_catalog_discovery_sees_a_table_added_after_this_class_was_written
     """`tenant_daily_spend_guard` (Ops hardening Phase 3) is not named anywhere
     in offboarding.py — proof the discovery is real, not a list that happens
     to be current today."""
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
     async with sessions() as session, session.begin():
         exportable = await offboarding._exportable_tables(session)
         purgeable = await offboarding._purgeable_tables(session)
@@ -223,7 +224,7 @@ async def test_export_rows_returns_only_this_tenants_data(
     mine, theirs = _new_tenant(), _new_tenant()
     await _seed_tenant(sessions, mine)
     await _seed_tenant(sessions, theirs)
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
 
     exported = await _collect(offboarding.export_rows(mine.tenant_id))
 
@@ -240,7 +241,7 @@ async def test_purge_rows_respects_fk_order_and_leaves_the_other_tenant_alone(
     mine, theirs = _new_tenant(), _new_tenant()
     await _seed_tenant(sessions, mine)
     await _seed_tenant(sessions, theirs)
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
 
     await offboarding.purge_rows(mine.tenant_id)  # must not raise a FK violation
 
@@ -299,7 +300,7 @@ async def test_offboarding_exports_and_purges_the_company_members(
         await _seed_tenant(sessions, t)
     member = await _seed_member(sessions, mine)
     await _seed_member(sessions, theirs)
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
 
     exported = {
         (t.schema, t.table): t.rows for t in await _collect(offboarding.export_rows(mine.tenant_id))
@@ -346,7 +347,9 @@ async def test_purge_removes_the_tenants_idempotency_and_effect_keys(
         await _seed_tenant(sessions, tenant)
         await _seed_keys(sessions, tenant)
 
-    await SqlTenantOffboarding(session_factory=sessions).purge_rows(mine.tenant_id)
+    await SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES).purge_rows(
+        mine.tenant_id
+    )
 
     for table in ("idempotency_keys", "effect_keys"):
         assert await _count(sessions, mine.tenant_id, "platform", table) == 0, table
@@ -392,7 +395,9 @@ async def test_purge_deletes_the_tenants_run_checkpoints(
         await _seed_tenant(sessions, t)
         await _seed_checkpoint(sessions, t)
 
-    await SqlTenantOffboarding(session_factory=sessions).purge_rows(mine.tenant_id)
+    await SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES).purge_rows(
+        mine.tenant_id
+    )
 
     for table in ("run_checkpoints", "run_checkpoint_writes"):
         assert await _count(sessions, mine.tenant_id, "platform", table) == 0, (
@@ -412,7 +417,7 @@ async def test_purge_records_an_audit_event_before_deleting_anything(
     mine = _new_tenant()
     await _seed_tenant(sessions, mine)  # seeds one audit_events row of its own
     request_id = await _file_request(db_urls, mine.tenant_id)
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
 
     await offboarding.purge_rows(mine.tenant_id)
 
@@ -465,7 +470,7 @@ async def test_purge_never_touches_the_offboarding_request_itself(
     await _seed_tenant(sessions, mine)
     request_id = await _file_request(db_urls, mine.tenant_id)
 
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
     await offboarding.purge_rows(mine.tenant_id)
 
     async with sessions() as session, session.begin():
@@ -510,7 +515,7 @@ async def test_claim_requested_moves_status_and_returns_the_tenant(
     mine = _new_tenant()
     await _seed_tenant(sessions, mine)
     await _file_request(db_urls, mine.tenant_id)
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
 
     claimed = await offboarding.claim_requested()
 
@@ -532,7 +537,7 @@ async def test_claim_requested_never_claims_the_same_request_twice(
     mine = _new_tenant()
     await _seed_tenant(sessions, mine)
     await _file_request(db_urls, mine.tenant_id)
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
 
     first = await offboarding.claim_requested()
     second = await offboarding.claim_requested()
@@ -566,7 +571,7 @@ async def test_a_request_stuck_in_progress_past_the_stale_window_is_reclaimed(
     mine = _new_tenant()
     await _seed_tenant(sessions, mine)
     await _file_request(db_urls, mine.tenant_id)
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
     await offboarding.claim_requested()  # -> 'exporting', updated_at = now()
     await _age_the_request(db_urls, mine.tenant_id, minutes_ago=31)
 
@@ -583,7 +588,7 @@ async def test_a_request_still_in_progress_within_the_window_is_left_alone(
     mine = _new_tenant()
     await _seed_tenant(sessions, mine)
     await _file_request(db_urls, mine.tenant_id)
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
     await offboarding.claim_requested()
     await _age_the_request(db_urls, mine.tenant_id, minutes_ago=5)
 
@@ -598,7 +603,7 @@ async def test_mark_status_reports_progress_on_the_tenants_own_row(
     mine = _new_tenant()
     await _seed_tenant(sessions, mine)
     await _file_request(db_urls, mine.tenant_id)
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
     await offboarding.claim_requested()
 
     await offboarding.mark_status(mine.tenant_id, "completed", export_key="x/exports/y.zip")
@@ -703,7 +708,9 @@ async def _probe_labels(db_urls: DatabaseUrls, tenant_id: uuid.UUID) -> set[str]
 async def test_export_reads_every_workspace_of_the_tenant(
     sessions: async_sessionmaker[AsyncSession], ws_probe: _Probe
 ) -> None:
-    exported = await _collect(SqlTenantOffboarding(sessions).export_rows(ws_probe.a))
+    exported = await _collect(
+        SqlTenantOffboarding(sessions, scopes=OFFBOARDING_SCOPES).export_rows(ws_probe.a)
+    )
 
     (probe,) = [t for t in exported if (t.schema, t.table) == (_PROBE_SCHEMA, "rows")]
     assert {row["label"] for row in probe.rows} == {"a1", "a2"}
@@ -712,7 +719,7 @@ async def test_export_reads_every_workspace_of_the_tenant(
 async def test_purge_deletes_in_every_workspace_and_leaves_the_other_tenant(
     db_urls: DatabaseUrls, sessions: async_sessionmaker[AsyncSession], ws_probe: _Probe
 ) -> None:
-    await SqlTenantOffboarding(sessions).purge_rows(ws_probe.a)
+    await SqlTenantOffboarding(sessions, scopes=OFFBOARDING_SCOPES).purge_rows(ws_probe.a)
 
     assert await _probe_labels(db_urls, ws_probe.a) == set()
     assert await _probe_labels(db_urls, ws_probe.b) == {"b1"}
@@ -745,7 +752,9 @@ async def test_the_workspace_scope_ends_with_the_transaction(
     try:
         async with factory() as session:
             before = (await session.execute(sa.text("SELECT pg_backend_pid()"))).scalar_one()
-        await _collect(SqlTenantOffboarding(factory).export_rows(ws_probe.a))
+        await _collect(
+            SqlTenantOffboarding(factory, scopes=OFFBOARDING_SCOPES).export_rows(ws_probe.a)
+        )
         async with factory() as session:
             after = (await session.execute(sa.text("SELECT pg_backend_pid()"))).scalar_one()
             scope = (
@@ -786,7 +795,7 @@ async def test_offboarding_exports_and_purges_the_role_tables_and_the_version_ro
                 ),
                 {"r": role, "u": member},
             )
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
     tables = (
         "tenant_roles",
         "tenant_role_permissions",
@@ -959,7 +968,7 @@ async def test_offboarding_purges_studio_artifacts_that_use_each_other(
             )
         await _seed_studio(sessions, mine, "offboarding")
         await _seed_studio(sessions, theirs, "active")
-        offboarding = SqlTenantOffboarding(session_factory=sessions)
+        offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
         async with sessions() as session, session.begin():
             order = await offboarding.purge_order(session)
         position = {name: order.index(f"studio.{name}") for name in _STUDIO_TABLES}
@@ -985,7 +994,9 @@ async def test_offboarding_purges_studio_artifacts_that_use_each_other(
                 sa.text("UPDATE platform.tenants SET status = 'offboarding' WHERE id = :t"),
                 {"t": theirs},
             )
-        await SqlTenantOffboarding(session_factory=sessions).purge_rows(theirs)
+        await SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES).purge_rows(
+            theirs
+        )
         async with migrator.begin() as conn:
             await conn.execute(
                 sa.text("DELETE FROM studio.artifact_kinds WHERE kind = :k"), {"k": _PROBE_KIND}
@@ -1203,7 +1214,9 @@ async def test_offboarding_deletes_the_tenants_service_users_after_what_holds_th
     engine = sessions.kw["bind"]
     event.listen(engine.sync_engine, "before_cursor_execute", seen)
     try:
-        await SqlTenantOffboarding(session_factory=sessions).purge_rows(mine["tenant"])
+        await SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES).purge_rows(
+            mine["tenant"]
+        )
     finally:
         event.remove(engine.sync_engine, "before_cursor_execute", seen)
 
@@ -1298,7 +1311,7 @@ async def test_offboarding_exports_and_deletes_the_companys_switches(
     for t in (mine, theirs):
         await _seed_tenant(sessions, t)
         await _seed_switches(sessions, t)
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
 
     exported = [
         t

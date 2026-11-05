@@ -25,6 +25,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import NullPool
+from tenant_wide_scopes import OFFBOARDING_SCOPES
 
 from dw_platform.adapters.persistence.offboarding import (
     EXPORT_BATCH_ROWS,
@@ -171,7 +172,9 @@ async def test_a_partitioned_table_is_exported_once(
         f" (gen_random_uuid(), '{tenant}', '2025-01-15')",
     ]
     async with _scratch(migrator, statements, [name]):
-        exported = await _exported(SqlTenantOffboarding(session_factory=sessions), tenant)
+        exported = await _exported(
+            SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES), tenant
+        )
     assert len(exported[f"platform.{name}"]) == 2
     assert f"platform.{name}_2026_10" not in exported
     assert f"platform.{name}_default" not in exported
@@ -200,7 +203,9 @@ async def test_an_export_reads_a_table_in_keyset_batches(
     try:
         async with _scratch(migrator, statements, [name]):
             sizes: list[int] = []
-            async for batch in SqlTenantOffboarding(session_factory=sessions).export_rows(tenant):
+            async for batch in SqlTenantOffboarding(
+                session_factory=sessions, scopes=OFFBOARDING_SCOPES
+            ).export_rows(tenant):
                 if batch.table == name:
                     sizes.append(len(batch.rows))
     finally:
@@ -223,7 +228,9 @@ async def test_the_purge_audit_names_the_lane(
             ),
             {"t": tenant, "o": operator},
         )
-    await SqlTenantOffboarding(session_factory=sessions).purge_rows(tenant)
+    await SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES).purge_rows(
+        tenant
+    )
     async with migrator.connect() as conn:
         row = (
             await conn.execute(
@@ -261,7 +268,9 @@ async def test_restrict_and_no_action_edges_order_the_purge(
         f"INSERT INTO platform.{other} VALUES (gen_random_uuid(), '{tenant}', '{tenant}')",
     ]
     async with _scratch(migrator, statements, [child, other, parent]):
-        await SqlTenantOffboarding(session_factory=sessions).purge_rows(tenant)
+        await SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES).purge_rows(
+            tenant
+        )
         for table in (parent, child, other):
             assert await _count(migrator, f"platform.{table}", tenant) == 0
 
@@ -288,7 +297,9 @@ async def test_an_edge_reached_through_cascade_orders_the_cascading_step(
         f" '{tenant}', '{tenant}', '{tenant}')",
     ]
     async with _scratch(migrator, statements, [only, source, target]):
-        await SqlTenantOffboarding(session_factory=sessions).purge_rows(tenant)
+        await SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES).purge_rows(
+            tenant
+        )
         for table in (source, target, only):
             assert await _count(migrator, f"platform.{table}", tenant) == 0
 
@@ -313,7 +324,9 @@ async def test_a_cycle_refuses_before_any_delete(
     async with _scratch(migrator, statements, [left, right]):
         workspaces_before = await _count(migrator, "platform.workspaces", tenant)
         with pytest.raises(OffboardingRefusedError) as refused:
-            await SqlTenantOffboarding(session_factory=sessions).purge_rows(tenant)
+            await SqlTenantOffboarding(
+                session_factory=sessions, scopes=OFFBOARDING_SCOPES
+            ).purge_rows(tenant)
         assert f"fk_{left}_r" in str(refused.value)
         assert await _count(migrator, "platform.workspaces", tenant) == workspaces_before == 1
 
@@ -344,7 +357,9 @@ async def test_steps_delete_only_the_offboarded_tenant(
         f" (gen_random_uuid(), '{theirs}')",
     ]
     async with _scratch(migrator, statements, [name]):
-        offboarding = SqlTenantOffboarding(session_factory=sessions, steps=registry)
+        offboarding = SqlTenantOffboarding(
+            session_factory=sessions, steps=registry, scopes=OFFBOARDING_SCOPES
+        )
         async with sessions() as session:
             tables = [f"{s}.{t}" for s, t in await offboarding._purgeable_tables(session)]
         before = {t: await _count(migrator, t, theirs) for t in tables}
@@ -367,7 +382,9 @@ async def test_a_table_without_a_primary_key_refuses_the_export(
     ]
     async with _scratch(migrator, statements, [name]):
         with pytest.raises(OffboardingRefusedError, match=name):
-            await _exported(SqlTenantOffboarding(session_factory=sessions), tenant)
+            await _exported(
+                SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES), tenant
+            )
 
 
 async def test_a_kept_table_blocking_a_step_refuses_the_purge(
@@ -388,7 +405,9 @@ async def test_a_kept_table_blocking_a_step_refuses_the_purge(
     ]
     async with _scratch(migrator, statements, [name, parent]):
         with pytest.raises(OffboardingRefusedError, match=name):
-            await SqlTenantOffboarding(session_factory=sessions).purge_rows(tenant)
+            await SqlTenantOffboarding(
+                session_factory=sessions, scopes=OFFBOARDING_SCOPES
+            ).purge_rows(tenant)
         assert await _count(migrator, f"platform.{parent}", tenant) == 1
         assert await _count(migrator, "platform.workspaces", tenant) == 1
 
@@ -513,7 +532,11 @@ async def test_a_step_that_deletes_an_undeclared_table_is_named(
                 "a_test.purge_right", frozenset({f"platform.{declared}", f"platform.{hidden}"}), run
             )
         )
-        named = await step_violations(admin, SqlTenantOffboarding(sessions, wrong), tenant)
-        clean = await step_violations(admin, SqlTenantOffboarding(sessions, right), tenant)
+        named = await step_violations(
+            admin, SqlTenantOffboarding(sessions, wrong, scopes=OFFBOARDING_SCOPES), tenant
+        )
+        clean = await step_violations(
+            admin, SqlTenantOffboarding(sessions, right, scopes=OFFBOARDING_SCOPES), tenant
+        )
     assert named == [f"a_test.purge_wrong deletes platform.{hidden}, which it does not declare"]
     assert clean == []

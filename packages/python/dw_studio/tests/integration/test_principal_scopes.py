@@ -31,6 +31,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import NullPool
+from tenant_wide_scopes import OFFBOARDING_SCOPES
 
 from dw_platform.adapters.persistence.offboarding import SqlTenantOffboarding
 from dw_platform.testing.rbac import (
@@ -102,6 +103,7 @@ _READ_REACH = sa.text(
 _SETTINGS = sa.text(
     "SELECT set_config('app.tenant_id', :t, true), set_config('app.user_id', :u, true)"
 )
+
 _DOOR = sa.text("SELECT studio.ensure_principal_scope()")
 _OWN_ROW = sa.text("SELECT workspace_ids, valid_until, state FROM studio.principal_scopes")
 
@@ -809,7 +811,10 @@ async def test_r5_6_offboarding_leaves_no_ledger_row_and_no_epoch(
     await execute(
         migrator, "UPDATE platform.tenants SET status = 'offboarding' WHERE id = :t", t=company.t
     )
-    lane = SqlTenantOffboarding(session_factory=async_sessionmaker(app_engine, class_=AsyncSession))
+    lane = SqlTenantOffboarding(
+        session_factory=async_sessionmaker(app_engine, class_=AsyncSession),
+        scopes=OFFBOARDING_SCOPES,
+    )
     async for _ in lane.export_rows(company.t):
         pass
     await lane.purge_rows(company.t)
@@ -865,7 +870,10 @@ async def test_r5_7_a_row_naming_another_company_s_member_is_refused(
 
 # -- step 7: the declared inputs carry exactly their triggers ------------------------
 
-_DECLARED = sa.text("SELECT table_name, trigger_function, events FROM studio.access_input_tables")
+_DECLARED = sa.text(
+    "SELECT table_name, trigger_name, trigger_function, events, condition"
+    " FROM studio.access_input_tables"
+)
 _RELEVANT_TRIGGERS = sa.text(
     """
     SELECT cn.nspname || '.' || c.relname AS table_name, t.tgname,
@@ -886,7 +894,9 @@ _TABLES = sa.text(
 
 async def access_input_violations(conn: AsyncConnection) -> list[str]:
     """R5.2 (RA13): one line per defect."""
-    declared = {r.table_name: r for r in (await conn.execute(_DECLARED)).all()}
+    declared: dict[str, list[Any]] = {}
+    for r in (await conn.execute(_DECLARED)).all():
+        declared.setdefault(r.table_name, []).append(r)
     triggers = (await conn.execute(_RELEVANT_TRIGGERS)).all()
     tables = set((await conn.execute(_TABLES)).scalars().all())
     found: list[str] = []
@@ -903,18 +913,19 @@ async def access_input_violations(conn: AsyncConnection) -> list[str]:
         f"{table} carries {', '.join(sorted(t.function for t in ours[table]))} and is not declared"
         for table in sorted(ours.keys() - declared.keys())
     ]
-    for table, row in sorted(declared.items()):
+    for table, rows in sorted(declared.items()):
         if table not in tables:
             found.append(f"declared {table} does not exist")
             continue
         held = sorted(t.definition for t in ours.get(table, []))
-        want = (
-            []
-            if row.trigger_function == "none"
-            else [
-                f"CREATE TRIGGER trg_studio_access_input AFTER {row.events} ON {table}"
-                f" FOR EACH ROW EXECUTE FUNCTION studio.{row.trigger_function}()"
-            ]
+        # One trigger per declared row, its condition as `pg_get_triggerdef`
+        # prints it (record-access/03 added `trg_studio_default_access`).
+        want = sorted(
+            f"CREATE TRIGGER {row.trigger_name} AFTER {row.events} ON {table} FOR EACH ROW"
+            + (f" WHEN ({row.condition})" if row.condition else "")
+            + f" EXECUTE FUNCTION studio.{row.trigger_function}()"
+            for row in rows
+            if row.trigger_function != "none"
         )
         if held != want:
             found.append(f"{table} should carry {want} and carries {held}")
@@ -924,7 +935,7 @@ async def access_input_violations(conn: AsyncConnection) -> list[str]:
 async def test_step_7_every_declared_input_carries_its_trigger(migrator: AsyncEngine) -> None:
     async with migrator.connect() as conn:
         assert await access_input_violations(conn) == []
-        declared = set((await conn.execute(_DECLARED)).scalars().all())
+        declared = {r.table_name for r in (await conn.execute(_DECLARED)).all()}
     assert {
         "platform.role_assignments",
         "platform.memberships",
@@ -966,3 +977,26 @@ async def test_step_7_each_planted_defect_is_named(migrator: AsyncEngine) -> Non
         for line in found
     )
     assert len(found) == 3, found
+
+
+async def test_step_7_the_default_access_trigger_is_declared_and_held(
+    migrator: AsyncEngine,
+) -> None:
+    """record-access/03 (gate (n)): `trg_studio_default_access` is a declared row
+    of its own beside `studio.object_defs`'s INSERT OR DELETE one; dropping it,
+    or losing its condition, is named."""
+    for statement in (
+        "DROP TRIGGER trg_studio_default_access ON studio.object_defs",
+        "DROP TRIGGER trg_studio_default_access ON studio.object_defs;"
+        " CREATE TRIGGER trg_studio_default_access AFTER UPDATE OF default_access"
+        " ON studio.object_defs FOR EACH ROW EXECUTE FUNCTION studio.bump_access_epoch()",
+    ):
+        async with migrator.connect() as conn:
+            tx = await conn.begin()
+            try:
+                for part in statement.split(";"):
+                    await conn.execute(sa.text(part))
+                found = await access_input_violations(conn)
+            finally:
+                await tx.rollback()
+        assert len(found) == 1 and found[0].startswith("studio.object_defs should carry"), found

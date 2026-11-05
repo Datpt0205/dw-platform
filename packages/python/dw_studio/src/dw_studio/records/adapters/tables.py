@@ -193,6 +193,8 @@ principal_scopes = sa.Table(
     ),
 )
 
+# One row per trigger since record-access/03 (revision 2c2095fbb4c7), which
+# declared `trg_studio_default_access` beside `studio.object_defs`'s first.
 access_input_tables = sa.Table(
     "access_input_tables",
     metadata,
@@ -200,7 +202,9 @@ access_input_tables = sa.Table(
     sa.Column("trigger_function", sa.Text, nullable=False),
     sa.Column("events", sa.Text, nullable=True),
     sa.Column("reason", sa.Text, nullable=False),
-    sa.PrimaryKeyConstraint("table_name"),
+    sa.Column("trigger_name", sa.Text, nullable=False),
+    sa.Column("condition", sa.Text, nullable=True),
+    sa.PrimaryKeyConstraint("table_name", "trigger_name"),
 )
 
 SLOT_COLUMNS: tuple[str, ...] = tuple(slot for slots in SLOTS.values() for slot in slots)
@@ -229,6 +233,14 @@ records = sa.Table(
     sa.Column("updated_by", UUID(as_uuid=True), nullable=False),
     sa.Column("deleted_at", _TS, nullable=True),
     sa.Column("deleted_by", UUID(as_uuid=True), nullable=True),
+    # record-access/03 (revision 2c2095fbb4c7): the (object, owning workspace)
+    # key the record policies match, from `studio.access_key()`, its one owner.
+    sa.Column(
+        "access_key",
+        UUID(as_uuid=True),
+        sa.Computed("studio.access_key(object_id, workspace_id)", persisted=True),
+        nullable=True,
+    ),
     sa.PrimaryKeyConstraint("tenant_id", "id"),
     _composite("object_id", object_defs, ondelete="RESTRICT"),
     sa.ForeignKeyConstraint(
@@ -260,6 +272,21 @@ records = sa.Table(
     ),
     sa.Index(None, "tenant_id", "object_id", "name", "id"),
     sa.Index(None, "tenant_id", "workspace_id"),
+    sa.Index(
+        "ix_records_tenant_id_access_key_created_at_id",
+        "tenant_id",
+        "access_key",
+        sa.text("created_at DESC"),
+        sa.text("id DESC"),
+    ),
+    sa.Index(
+        "ix_records_tenant_id_owner_id_object_id_created_at_id",
+        "tenant_id",
+        "owner_id",
+        "object_id",
+        sa.text("created_at DESC"),
+        sa.text("id DESC"),
+    ),
     *(
         sa.Index(
             None,

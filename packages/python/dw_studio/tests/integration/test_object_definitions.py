@@ -38,6 +38,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import NullPool
+from tenant_wide_scopes import OFFBOARDING_SCOPES
 
 from dw_kernel.errors import ConflictError
 from dw_kernel.http_conditions import ExpectedVersion
@@ -336,8 +337,18 @@ async def test_r9_5_records_are_four_hash_partitions_each_forced_and_closed(
 
 async def _object_rows(conn: Any, tenant: PlantedTenant) -> dict[str, uuid.UUID]:
     """An `object` artifact, its version, definition, one field and one record
-    of `tenant`, written as the superuser past every policy."""
+    of `tenant`, written as the superuser past every policy. The record's owner
+    is an active member of `tenant`, and the transaction is bound to it, as
+    `ck_records_owner_in_tenant` requires (record-access ticket 03)."""
     ids = {key: uuid.uuid4() for key in ("artifact", "version", "field", "record")}
+    await conn.execute(sa.text("SET SESSION AUTHORIZATION dw_migrator"))
+    try:
+        ids["owner"] = await plant_person(conn, tenant.tenant_id)
+    finally:
+        await conn.execute(sa.text("RESET SESSION AUTHORIZATION"))
+    await conn.execute(
+        sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant.tenant_id)}
+    )
     statements = (
         "INSERT INTO studio.artifacts (id, tenant_id, kind, api_name, owning_workspace_id,"
         " row_version) VALUES (:artifact, :t, 'object', :name, :w, 1)",
@@ -356,7 +367,7 @@ async def _object_rows(conn: Any, tenant: PlantedTenant) -> dict[str, uuid.UUID]
         " VALUES (:t, :field, 'mot', '{\"vi\": \"Một\"}', 0, true, :u, :u)",
         "INSERT INTO studio.records (id, tenant_id, object_id, workspace_id, owner_kind,"
         " owner_id, name, created_by, updated_by)"
-        " VALUES (:record, :t, :artifact, :w, 'user', :u, 'Nguyễn Văn Đạt', :u, :u)",
+        " VALUES (:record, :t, :artifact, :w, 'user', :owner, 'Nguyễn Văn Đạt', :u, :u)",
     )
     for statement in statements:
         await conn.execute(
@@ -369,6 +380,8 @@ async def _object_rows(conn: Any, tenant: PlantedTenant) -> dict[str, uuid.UUID]
                 "name": name(),
             },
         )
+    # Unbound again: the caller's next statement chooses its own tenant.
+    await conn.execute(sa.text("SELECT set_config('app.tenant_id', '', true)"))
     return ids
 
 
@@ -573,6 +586,10 @@ async def test_r4_6_no_key_points_into_another_company(admin: AsyncEngine, case:
                 {"s": spare, "t": a.tenant_id, "n": name(), "w": a.main},
             )
             await conn.execute(sa.text("SET LOCAL ROLE dw_migrator"))
+            # The owner check reads the bound tenant before the keys are asked.
+            await conn.execute(
+                sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(a.tenant_id)}
+            )
             table = case.split(".", 1)[0]
             before = await conn.scalar(sa.text(f"SELECT count(*) FROM studio.{table}"))
             with pytest.raises(DBAPIError) as caught:
@@ -590,7 +607,7 @@ async def test_r4_6_no_key_points_into_another_company(admin: AsyncEngine, case:
                             "b_field": theirs["field"],
                             "b_field_text": str(theirs["field"]),
                             "b_workspace": b.main,
-                            "u": uuid.uuid4(),
+                            "u": mine["owner"],
                         },
                     )
             after = await conn.scalar(sa.text(f"SELECT count(*) FROM studio.{table}"))
@@ -1170,7 +1187,7 @@ async def test_r4_4_offboarding_exports_each_definition_row_once_then_purges_the
         "UPDATE platform.tenants SET status = 'offboarding' WHERE id = :t",
         t=who.tenant_id,
     )
-    lane = SqlTenantOffboarding(session_factory=sessions)
+    lane = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
 
     exported: dict[str, list[Any]] = {}
     async for batch in lane.export_rows(who.tenant_id):

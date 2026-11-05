@@ -32,6 +32,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import NullPool
+from tenant_wide_scopes import OFFBOARDING_SCOPES
 
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.testing.run_control import OpenRunControl
@@ -1518,7 +1519,7 @@ async def test_r3_6_offboarding_purges_the_config_versions_its_manifests_pin(
             sa.text("UPDATE platform.tenants SET status = 'offboarding' WHERE id = :t"),
             {"t": leaving.tenant_id},
         )
-    lane = SqlTenantOffboarding(session_factory=sessions)
+    lane = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
     async with migrator.connect() as conn, AsyncSession(bind=conn) as session:
         order = await lane.purge_order(session)
     await lane.purge_rows(leaving.tenant_id)

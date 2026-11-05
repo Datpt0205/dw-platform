@@ -99,12 +99,17 @@ from dw_platform.adapters.persistence.notifications import (
     SqlNotificationRetention,
 )
 from dw_platform.adapters.persistence.offboarding import (
+    OFFBOARDING_LANE,
     OffboardingPurgeSteps,
     SqlTenantOffboarding,
 )
 from dw_platform.adapters.persistence.outbox_drain import SqlOutboxDrain
 from dw_platform.adapters.persistence.partition_maintenance import SqlPartitionMaintenance
 from dw_platform.adapters.persistence.scope_holders import SqlScopeHolders
+from dw_platform.adapters.persistence.tenant_session import (
+    TenantWideLane,
+    TenantWideScopeRegistry,
+)
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.adapters.persistence.work_queue_repo import SqlWorkQueueRepository
 from dw_platform.adapters.persistence.zalo_link_repo import (
@@ -358,6 +363,24 @@ def build_purge_steps() -> OffboardingPurgeSteps:
     a context that deletes its tables its own way adds its step; every other
     table goes by the lane's default step."""
     return OffboardingPurgeSteps.platform()
+
+
+def build_tenant_wide_scopes() -> TenantWideScopeRegistry:
+    """The lanes that read every row of the one tenant they are bound to,
+    Studio records included (ADR-0105 decision 5), built here and nowhere else:
+    a lane joins with one reviewed entry and its reason. W1 has offboarding."""
+    return TenantWideScopeRegistry(
+        TenantWideLane(
+            lane=OFFBOARDING_LANE,
+            reason=(
+                "exports and purges every row of the one leaving tenant; the purge"
+                " audits the operator who requested it with details.lane = offboarding"
+            ),
+            # The export carries the person-private tables too, conversations
+            # and the reach ledger among them: they are the company's data.
+            reads_private_tables=True,
+        ),
+    )
 
 
 def build_retention_purgers(
@@ -627,7 +650,11 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
                 TenantOffboardingLane(
                     # The one place the purge registry is built (R11.4): a context
                     # that deletes its tables its own way registers its step here.
-                    store=SqlTenantOffboarding(session_factory=sessions, steps=build_purge_steps()),
+                    store=SqlTenantOffboarding(
+                        session_factory=sessions,
+                        steps=build_purge_steps(),
+                        scopes=build_tenant_wide_scopes(),
+                    ),
                     artifacts=build_object_storage(settings),
                     exports=build_export_bucket(settings),
                     attachments=build_feedback_bucket(settings),

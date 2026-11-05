@@ -35,7 +35,17 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 from studio_catalog import studio_table_violations
 
+from dw_platform.adapters.persistence.tenant_session import (
+    TenantScope,
+    TenantWideLane,
+    TenantWideScopeRegistry,
+    bind_actor,
+    bind_tenant,
+    tenant_wide_scope,
+)
 from dw_platform.testing.members import TENANT_MEMBER_SQL, tenant_member_params
+from dw_platform.testing.rbac import assign, plant_membership, plant_person, plant_tenant, role_id
+from dw_platform.testing.record_objects import plant_object
 
 pytestmark = pytest.mark.integration
 
@@ -114,6 +124,17 @@ _TRUSTED_SETTINGS = (
     "current_setting('app.tenant_id'",
     "current_setting('app.principal_id'",
     "current_setting('app.worker_drain'",
+)
+
+# Record reach (record-access ticket 03; ADR-0105 decision 1) reads the actor
+# kind, the principal and the `studio.acl_*` readers. None of them isolates a
+# tenant on its own, so none is a trusted setting above: like the workspace
+# scope below, a policy may read them only beside a pure tenant clause
+# (`scope_outside_a_tenant_clause`).
+_REACH_READS = (
+    "current_setting('app.actor_kind'",
+    "current_setting('app.user_id'",
+    "studio.acl_",
 )
 
 # `app.principal_id` is trusted, but it narrows to ONE PERSON across every tenant
@@ -282,10 +303,14 @@ def _narrows(predicate: str | None) -> bool:
 
 def blind_policies(rows: Sequence[sa.Row[Any]]) -> tuple[list[str], list[str]]:
     """The policies that read, and that write, narrowed by no trusted setting."""
+    # A policy with WITH CHECK alone (`FOR INSERT`, the record template's
+    # `_insert`) reads nothing; its write side is judged below.
     reads = [
         f"{r.schemaname}.{r.tablename}.{r.policyname}"
         for r in rows
-        if not _narrows(r.qual) and (r.tablename, r.policyname) not in _UNSCOPED_ON_PURPOSE
+        if not _narrows(r.qual)
+        and not (r.qual is None and r.with_check is not None)
+        and (r.tablename, r.policyname) not in _UNSCOPED_ON_PURPOSE
     ]
     writes = [
         f"{r.schemaname}.{r.tablename}.{r.policyname}"
@@ -516,17 +541,20 @@ def _top_level(expr: str) -> tuple[str | None, list[str]]:
 
 
 def scope_outside_a_tenant_clause(policies: Sequence[sa.Row[Any]]) -> list[str]:
-    """Policies that read the scope anywhere but beside a pure tenant clause."""
+    """Policies that read the scope, or record reach (`_REACH_READS`), anywhere
+    but beside a pure tenant clause."""
     bad = []
     for r in policies:
         for expr in (r.qual, r.with_check):
-            if expr is None or _SCOPE_SETTING not in expr:
+            if expr is None or not any(s in expr for s in (_SCOPE_SETTING, *_REACH_READS)):
                 continue
             operator, parts = _top_level(expr)
             tenant_clause = [
                 p
                 for p in parts
-                if _TENANT_SETTING in p and _SCOPE_SETTING not in p and _top_level(p)[0] != "OR"
+                if _TENANT_SETTING in p
+                and not any(s in p for s in (_SCOPE_SETTING, *_REACH_READS))
+                and _top_level(p)[0] != "OR"
             ]
             if operator != "AND" or not tenant_clause:
                 bad.append(f"{r.schemaname}.{r.tablename}.{r.policyname}")
@@ -537,12 +565,22 @@ def scope_outside_a_tenant_clause(policies: Sequence[sa.Row[Any]]) -> list[str]:
 def workspace_tables_blind_to_scope(policies: Sequence[sa.Row[Any]]) -> list[str]:
     """Tables narrowed by workspace with no policy reading the scope: the
     offboarding lane would export none of their rows, delete none, and the purge
-    of the tenant's workspaces would then CASCADE them away unexported."""
+    of the tenant's workspaces would then CASCADE them away unexported. In
+    schema `studio`, a table narrowed by the principal or by record reach (a
+    `studio.acl_*` reader) is narrowed too (record-access ticket 03, (q));
+    `platform` keeps the workspace rule alone."""
 
     def reads(r: sa.Row[Any], setting: str) -> bool:
         return any(e is not None and setting in e for e in (r.qual, r.with_check))
 
-    narrowed = {f"{r.schemaname}.{r.tablename}" for r in policies if reads(r, _WORKSPACE_SETTING)}
+    def narrowing(r: sa.Row[Any]) -> bool:
+        if reads(r, _WORKSPACE_SETTING):
+            return True
+        return r.schemaname == "studio" and (
+            reads(r, "current_setting('app.user_id'") or reads(r, "studio.acl_")
+        )
+
+    narrowed = {f"{r.schemaname}.{r.tablename}" for r in policies if narrowing(r)}
     scoped = {f"{r.schemaname}.{r.tablename}" for r in policies if reads(r, _SCOPE_SETTING)}
     return sorted(narrowed - scoped)
 
@@ -1243,4 +1281,369 @@ async def test_the_private_table_rule_names_each_wrong_shape(session: AsyncSessi
         " not its tenant policy alone",
         "public.private_permissive: no single RESTRICTIVE `tenant AND (owner_id OR scope)`",
         "public.private_unlisted narrows by app.user_id and is not listed",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Record tables (record-access ticket 03; ADR-0105 decision 1; CLAUDE.md,
+# Tenancy and authorization): every table with an `access_key` column, and each
+# partition of one, read from the catalog, carries exactly the RESTRICTIVE
+# `tenant_isolation_<t>` and the PERMISSIVE `record_access_<t>_select`,
+# `_insert`, `_update`, `_delete`, each `tenant AND (scope OR (actor_ok AND
+# reach))`, `<t>` the parent's name on a partition. Every function those
+# policies depend on (`pg_depend`) is STABLE, SECURITY INVOKER, with a fixed
+# `search_path`: a check that reads policy text cannot see narrowing inside a
+# function (failure-modes #0). The text itself is compared with the template
+# module in `dw_studio`'s `test_record_policies.py`; this file imports no context.
+# ---------------------------------------------------------------------------
+
+_RECORD_TABLES = sa.text(
+    """
+    SELECT n.nspname AS schema, c.relname AS name,
+           coalesce((SELECT p.relname FROM pg_inherits i JOIN pg_class p ON p.oid = i.inhparent
+                     WHERE i.inhrelid = c.oid), c.relname) AS short
+    FROM pg_class c
+    JOIN pg_namespace n ON n.oid = c.relnamespace
+    WHERE c.relkind IN ('r', 'p') AND NOT starts_with(n.nspname, 'pg_')
+      AND EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = c.oid
+                  AND a.attname = 'access_key' AND NOT a.attisdropped)
+    ORDER BY 1, 2
+    """
+)
+
+_RECORD_POLICY_FUNCTIONS = sa.text(
+    """
+    SELECT DISTINCT p.oid::regprocedure::text AS function, p.provolatile::text AS volatility,
+           p.prosecdef AS definer,
+           EXISTS (SELECT 1 FROM unnest(coalesce(p.proconfig, '{}')) s
+                   WHERE s LIKE 'search_path=%') AS fixed_path
+    FROM pg_policy pol
+    JOIN pg_depend d ON d.classid = 'pg_policy'::regclass AND d.objid = pol.oid
+     AND d.refclassid = 'pg_proc'::regclass
+    JOIN pg_proc p ON p.oid = d.refobjid
+    WHERE EXISTS (SELECT 1 FROM pg_attribute a WHERE a.attrelid = pol.polrelid
+                  AND a.attname = 'access_key' AND NOT a.attisdropped)
+    ORDER BY 1
+    """
+)
+
+# Which clauses each record command's policy carries: (cmd, USING, WITH CHECK).
+_RECORD_COMMANDS = {
+    "select": ("SELECT", True, False),
+    "insert": ("INSERT", False, True),
+    "update": ("UPDATE", True, True),
+    "delete": ("DELETE", True, False),
+}
+
+
+def _record_reach(expr: str | None) -> bool:
+    """`tenant AND (scope OR (actor_ok AND ...))`, as Postgres prints it."""
+    if expr is None:
+        return False
+    operator, parts = _top_level(expr)
+    if operator != "AND" or len(parts) != 2:
+        return False
+    tenant = [p for p in parts if _tenant_alone(p)]
+    rest = [p for p in parts if not _tenant_alone(p)]
+    if len(tenant) != 1 or len(rest) != 1:
+        return False
+    either, arms = _top_level(rest[0])
+    if either != "OR" or len(arms) != 2:
+        return False
+    scope = [
+        a
+        for a in arms
+        if _SCOPE_SETTING in a and "'tenant'" in a and not any(s in a for s in _REACH_READS)
+    ]
+    actor = [
+        a
+        for a in arms
+        if _top_level(a)[0] == "AND"
+        and "studio.acl_actor_kind()" in _top_level(a)[1][0]
+        and _SCOPE_SETTING not in a
+    ]
+    return len(scope) == 1 and len(actor) == 1
+
+
+def record_template_violations(
+    tables: Sequence[sa.Row[Any]], policies: Sequence[sa.Row[Any]]
+) -> list[str]:
+    by_table: dict[tuple[str, str], list[sa.Row[Any]]] = {}
+    for r in policies:
+        by_table.setdefault((r.schemaname, r.tablename), []).append(r)
+    found: list[str] = []
+    for t in tables:
+        rows = {r.policyname: r for r in by_table.get((t.schema, t.name), [])}
+        where = f"{t.schema}.{t.name}"
+        tenant_name = f"tenant_isolation_{t.short}"
+        want = {tenant_name, *(f"record_access_{t.short}_{c}" for c in _RECORD_COMMANDS)}
+        if set(rows) != want:
+            found.append(f"{where}: policies {sorted(rows)} are not the record set")
+        tenant = rows.get(tenant_name)
+        if tenant is not None and not (
+            tenant.permissive == "RESTRICTIVE"
+            and tenant.cmd == "ALL"
+            and _tenant_alone(tenant.qual or "")
+            and _tenant_alone(tenant.with_check or "")
+        ):
+            found.append(f"{where}: {tenant_name} is not a RESTRICTIVE tenant policy alone")
+        for command, (cmd, using, check) in _RECORD_COMMANDS.items():
+            policy = rows.get(f"record_access_{t.short}_{command}")
+            if policy is None:
+                continue
+            shaped = (
+                policy.permissive == "PERMISSIVE"
+                and policy.cmd == cmd
+                and (_record_reach(policy.qual) if using else policy.qual is None)
+                and (_record_reach(policy.with_check) if check else policy.with_check is None)
+            )
+            if not shaped:
+                found.append(f"{where}: {policy.policyname} is not `tenant AND (scope OR reach)`")
+    return found
+
+
+def record_function_violations(functions: Sequence[sa.Row[Any]]) -> list[str]:
+    found: list[str] = []
+    for f in functions:
+        if f.volatility != "s":
+            found.append(f"{f.function} is not STABLE")
+        if f.definer:
+            found.append(f"{f.function} is SECURITY DEFINER")
+        if not f.fixed_path:
+            found.append(f"{f.function} has no fixed search_path")
+    return found
+
+
+async def test_every_record_table_holds_exactly_the_record_policy_set(
+    session: AsyncSession,
+) -> None:
+    tables = (await session.execute(_RECORD_TABLES)).all()
+    assert {(t.schema, t.name) for t in tables} >= {
+        ("studio", "records"),
+        *(("studio", f"records_p{n}") for n in range(4)),
+    }
+    schemas = sorted({t.schema for t in tables})
+    rows = (await session.execute(_POLICY_KINDS, {"schemas": schemas})).all()
+    assert record_template_violations(tables, rows) == []
+
+
+async def test_every_function_a_record_policy_reads_is_stable_invoker_and_pinned(
+    session: AsyncSession,
+) -> None:
+    functions = (await session.execute(_RECORD_POLICY_FUNCTIONS)).all()
+    assert {f.function for f in functions} >= {
+        "studio.acl_actor_kind()",
+        "studio.acl_user()",
+        "studio.acl_objects(text,text)",
+        "studio.acl_keys(text)",
+        "studio.acl_create_own_keys()",
+    }
+    assert record_function_violations(functions) == []
+
+
+_R_TENANT = "tenant_id = (SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid)"
+_R_SCOPE = "(SELECT current_setting('app.workspace_scope', true)) = 'tenant'"
+_R_ACTOR = "(SELECT studio.acl_actor_kind()) = 'user'"
+
+
+def _r_reach(function: str = "studio.acl_objects('read', 'tenant')") -> str:
+    return (
+        f"({_R_TENANT}) AND ({_R_SCOPE} OR ({_R_ACTOR}"
+        f" AND object_id = ANY ((SELECT {function})::uuid[])))"
+    )
+
+
+def _r_policies(table: str, *, restrictive: bool = True, reach: str | None = None) -> list[str]:
+    kind = " AS RESTRICTIVE" if restrictive else ""
+    return [
+        f"CREATE POLICY tenant_isolation_{table} ON public.{table}{kind}"
+        f" USING ({_R_TENANT}) WITH CHECK ({_R_TENANT})",
+        f"CREATE POLICY record_access_{table}_select ON public.{table} FOR SELECT"
+        f" USING ({reach or _r_reach()})",
+        f"CREATE POLICY record_access_{table}_insert ON public.{table} FOR INSERT"
+        f" WITH CHECK ({_r_reach()})",
+        f"CREATE POLICY record_access_{table}_update ON public.{table} FOR UPDATE"
+        f" USING ({_r_reach()}) WITH CHECK ({_r_reach()})",
+        f"CREATE POLICY record_access_{table}_delete ON public.{table} FOR DELETE"
+        f" USING ({_r_reach()})",
+    ]
+
+
+async def test_the_record_rules_name_each_wrong_shape(session: AsyncSession) -> None:
+    """Probe tables, made and rolled back as the scope rules' probes are: the
+    right set; an extra tenant-only PERMISSIVE policy; `tenant_isolation_<t>`
+    made PERMISSIVE; reach read through a VOLATILE, a SECURITY DEFINER and an
+    unpinned `studio.acl_*` function."""
+    columns = "(tenant_id uuid, object_id uuid, owner_id uuid, access_key uuid)"
+    probes: dict[str, list[str]] = {
+        "rec_right": _r_policies("rec_right"),
+        "rec_extra": [
+            *_r_policies("rec_extra"),
+            f"CREATE POLICY wide_open ON public.rec_extra USING ({_R_TENANT})",
+        ],
+        "rec_permissive": _r_policies("rec_permissive", restrictive=False),
+        "rec_volatile": _r_policies("rec_volatile", reach=_r_reach("studio.acl_probe_volatile()")),
+        "rec_definer": _r_policies("rec_definer", reach=_r_reach("studio.acl_probe_definer()")),
+        "rec_unpinned": _r_policies("rec_unpinned", reach=_r_reach("studio.acl_probe_unpinned()")),
+    }
+    functions = (
+        "CREATE FUNCTION studio.acl_probe_volatile() RETURNS uuid[] LANGUAGE sql VOLATILE"
+        " SET search_path = pg_catalog AS $$ SELECT '{}'::uuid[] $$",
+        "CREATE FUNCTION studio.acl_probe_definer() RETURNS uuid[] LANGUAGE sql STABLE"
+        " SECURITY DEFINER SET search_path = pg_catalog AS $$ SELECT '{}'::uuid[] $$",
+        "CREATE FUNCTION studio.acl_probe_unpinned() RETURNS uuid[] LANGUAGE sql STABLE"
+        " AS $$ SELECT '{}'::uuid[] $$",
+    )
+    try:
+        for statement in functions:
+            await session.execute(sa.text(statement))
+        for table, policies in probes.items():
+            await session.execute(sa.text(f"CREATE TABLE public.{table} {columns}"))
+            for statement in policies:
+                await session.execute(sa.text(statement))
+        tables = [
+            t for t in (await session.execute(_RECORD_TABLES)).all() if t.name.startswith("rec_")
+        ]
+        rows = (await session.execute(_POLICY_KINDS, {"schemas": ["public"]})).all()
+        found = record_template_violations(tables, rows)
+        reads = record_function_violations(
+            [
+                f
+                for f in (await session.execute(_RECORD_POLICY_FUNCTIONS)).all()
+                if "acl_probe" in f.function
+            ]
+        )
+    finally:
+        await session.rollback()
+    assert sorted(found) == [
+        "public.rec_extra: policies ['record_access_rec_extra_delete',"
+        " 'record_access_rec_extra_insert', 'record_access_rec_extra_select',"
+        " 'record_access_rec_extra_update', 'tenant_isolation_rec_extra', 'wide_open']"
+        " are not the record set",
+        "public.rec_permissive: tenant_isolation_rec_permissive is not a RESTRICTIVE tenant"
+        " policy alone",
+    ]
+    assert sorted(reads) == [
+        "studio.acl_probe_definer() is SECURITY DEFINER",
+        "studio.acl_probe_unpinned() has no fixed search_path",
+        "studio.acl_probe_volatile() is not STABLE",
+    ]
+
+
+# DO-13.2 and the read-back of each policy, under `dw_app`: a record policy made
+# broken would pass every rule above and admit nothing.
+
+
+async def _record_company(session: AsyncSession) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    """A company whose one member holds `tenant_owner`, an object and two of its
+    records, as the migrator; returns (tenant, owner, object)."""
+    tenant = await plant_tenant(session)
+    owner = await plant_person(session, tenant.tenant_id)
+    membership = await plant_membership(session, tenant.tenant_id, tenant.main, owner)
+    owner_role = await role_id(session, tenant.tenant_id, "tenant_owner")
+    await assign(session, tenant.tenant_id, tenant.main, membership, owner_role)
+    obj = (await plant_object(session, tenant, "lead", {})).object_id
+    await session.execute(
+        sa.text("SELECT set_config('app.tenant_id', :t, true)"), {"t": str(tenant.tenant_id)}
+    )
+    for n in range(2):
+        await session.execute(
+            sa.text(
+                "INSERT INTO studio.records (id, tenant_id, object_id, workspace_id, owner_kind,"
+                " owner_id, name, created_by, updated_by) VALUES (gen_random_uuid(), :t, :o, :w,"
+                " 'user', :u, :n, :u, :u)"
+            ),
+            {"t": tenant.tenant_id, "o": obj, "w": tenant.main, "u": owner, "n": f"Mẫu {n}"},
+        )
+    return tenant.tenant_id, owner, obj
+
+
+async def test_each_record_policy_admits_a_row_and_the_tenant_scope_stays_in_its_tenant(
+    db_urls: DatabaseUrls, session: AsyncSession
+) -> None:
+    a_tenant, a_owner, a_object = await _record_company(session)
+    b_tenant, _, _ = await _record_company(session)
+    await session.commit()
+    workspace = await session.scalar(
+        sa.text("SELECT id FROM platform.workspaces WHERE tenant_id = :t"), {"t": a_tenant}
+    )
+    registry = TenantWideScopeRegistry(TenantWideLane("offboarding", "probe", True))
+    engine = create_async_engine(db_urls.app, poolclass=NullPool)
+    try:
+        async with engine.connect() as conn:
+            await bind_tenant(conn, TenantScope(tenant_id=a_tenant, principal_id=a_owner))
+            await bind_actor(conn, "user")
+            await conn.execute(sa.text("SELECT studio.ensure_principal_scope()"))
+            read = await conn.scalar(sa.text("SELECT count(*) FROM studio.records"))
+            made = (
+                await conn.execute(
+                    sa.text(
+                        "INSERT INTO studio.records (id, tenant_id, object_id, workspace_id,"
+                        " owner_kind, owner_id, name, created_by, updated_by) VALUES"
+                        " (gen_random_uuid(), :t, :o, :w, 'user', :u, 'Mới', :u, :u)"
+                    ),
+                    {"t": a_tenant, "o": a_object, "w": workspace, "u": a_owner},
+                )
+            ).rowcount
+            updated = (
+                await conn.execute(sa.text("UPDATE studio.records SET name = 'Sửa'"))
+            ).rowcount
+            deleted = (
+                await conn.execute(sa.text("DELETE FROM studio.records WHERE name = 'Sửa'"))
+            ).rowcount
+            await conn.rollback()
+        async with engine.connect() as conn:
+            await tenant_wide_scope(conn, a_tenant, "offboarding", registry)
+            seen = (
+                await conn.execute(
+                    sa.text("SELECT tenant_id, count(*) FROM studio.records GROUP BY 1")
+                )
+            ).all()
+            await conn.rollback()
+    finally:
+        await engine.dispose()
+    assert (read, made, updated, deleted) == (2, 1, 3, 3)
+    assert [tuple(r) for r in seen] == [(a_tenant, 2)]
+    assert b_tenant != a_tenant
+
+
+async def test_reach_reads_sit_beside_a_tenant_clause_and_narrow_studio_tables(
+    session: AsyncSession,
+) -> None:
+    """record-access ticket 03, (q): a policy reading a `studio.acl_*` reader
+    or the principal outside `tenant AND (...)` is named; a `studio` table
+    narrowed by either with no policy reading the scope is named; a `platform`
+    table narrowed by the principal keeps the workspace rule alone."""
+    tenant = "tenant_id = (SELECT NULLIF(current_setting('app.tenant_id', true), '')::uuid)"
+    user = "owner_id = (SELECT NULLIF(current_setting('app.user_id', true), '')::uuid)"
+    scope = "(SELECT current_setting('app.workspace_scope', true)) = 'tenant'"
+    reach = "object_id = ANY ((SELECT studio.acl_objects('read', 'tenant'))::uuid[])"
+    shapes = {
+        "studio.reach_ok": f"({tenant}) AND ({scope} OR {reach})",
+        "studio.reach_or": f"({tenant}) OR {reach}",
+        "studio.reach_alone": reach,
+        "studio.reach_blind": f"({tenant}) AND {user}",
+        "platform.reach_user": f"({tenant}) AND {user}",
+    }
+    try:
+        for table, using in shapes.items():
+            await session.execute(
+                sa.text(f"CREATE TABLE {table} (tenant_id uuid, object_id uuid, owner_id uuid)")
+            )
+            await session.execute(sa.text(f"CREATE POLICY probe ON {table} USING ({using})"))
+        rows = [
+            r
+            for r in (await session.execute(_POLICIES, {"schemas": ["studio", "platform"]})).all()
+            if r.tablename.startswith("reach_")
+        ]
+    finally:
+        await session.rollback()
+    assert sorted(scope_outside_a_tenant_clause(rows)) == [
+        "studio.reach_alone.probe",
+        "studio.reach_or.probe",
+    ]
+    assert workspace_tables_blind_to_scope(rows) == [
+        "studio.reach_alone",
+        "studio.reach_blind",
+        "studio.reach_or",
     ]

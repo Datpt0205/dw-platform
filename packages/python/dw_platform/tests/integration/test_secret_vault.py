@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import NullPool
+from tenant_wide_scopes import OFFBOARDING_SCOPES
 
 from dw_kernel.errors import ConflictError, NotFoundError
 from dw_kernel.ports import SystemClock, Uuid4Generator
@@ -464,7 +465,7 @@ async def test_offboarding_never_exports_an_envelope_and_deletes_them_through_co
     for company in (mine, theirs):
         await _put(sessions, company, company.connection, "api_key", CANARY)
         await _put(sessions, company, company.other_connection, "password", CANARY)
-    offboarding = SqlTenantOffboarding(session_factory=sessions)
+    offboarding = SqlTenantOffboarding(session_factory=sessions, scopes=OFFBOARDING_SCOPES)
     async with sessions() as session, session.begin():
         exportable = await offboarding._exportable_tables(session)
         purgeable = await offboarding._purgeable_tables(session)
