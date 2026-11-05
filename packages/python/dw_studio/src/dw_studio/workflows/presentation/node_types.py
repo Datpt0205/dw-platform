@@ -73,6 +73,12 @@ class NodeTypeView(_View):
     output: Annotated[FixedOutputView | ConfigOutputView, Field(discriminator="kind")]
     error: StepErrorView
     ports: Annotated[FixedPortsView | KeyedPortsView, Field(discriminator="kind")]
+    # Whether a step of the type runs one lane, every lane or its body again,
+    # ends the run, or leaves its loop: what the builder draws it as
+    # (workflow-builder-ui R1.5; ADR-0112 (Accepted) Amendments 2026-11-03).
+    block: Literal["none", "choice", "parallel", "loop"]
+    ends_run: bool
+    exits_loop: bool
     side_effect_level: str
 
 

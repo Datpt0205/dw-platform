@@ -4218,11 +4218,20 @@ export interface components {
         };
         /** NodeTypeView */
         NodeTypeView: {
+            /**
+             * Block
+             * @enum {string}
+             */
+            block: "none" | "choice" | "parallel" | "loop";
             /** Config Schema */
             config_schema: {
                 [key: string]: unknown;
             };
+            /** Ends Run */
+            ends_run: boolean;
             error: components["schemas"]["StepErrorView"];
+            /** Exits Loop */
+            exits_loop: boolean;
             /** Label Vi */
             label_vi: string;
             /** Output */

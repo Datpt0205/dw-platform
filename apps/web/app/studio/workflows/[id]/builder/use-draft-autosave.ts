@@ -21,9 +21,17 @@ import { apiClient } from "../../../../../lib/session";
 
 export type SaveState = "idle" | "saving" | "saved" | "failed" | "conflict";
 
+/** What the kind's check found in the last draft saved, with the document
+ * its pointers point into (a warning never blocks a save). */
+export interface SavedWarnings {
+  document: JsonObject;
+  items: { pointer: string; code: string; detail: string }[];
+}
+
 export interface DraftAutosave {
   state: SaveState;
   error: unknown;
+  warnings: SavedWarnings | null;
   retry: () => void;
   /** The server's draft, after which autosave runs again from its version. */
   reload: () => Promise<JsonObject>;
@@ -44,6 +52,7 @@ export function useDraftAutosave(
   const again = useRef(false);
   const [state, setState] = useState<SaveState>("idle");
   const [error, setError] = useState<unknown>(null);
+  const [warnings, setWarnings] = useState<SavedWarnings | null>(null);
 
   const save = useCallback(async (): Promise<void> => {
     if (stopped.current) return;
@@ -63,6 +72,7 @@ export function useDraftAutosave(
       );
       version.current = out.version;
       saved.current = doc;
+      setWarnings({ document: doc, items: out.warnings ?? [] });
       setError(null);
       setState("saved");
     } catch (caught) {
@@ -98,9 +108,10 @@ export function useDraftAutosave(
     stopped.current = false;
     again.current = false;
     setError(null);
+    setWarnings(null);
     setState("saved");
     return draft.document;
   }, [artifactId]);
 
-  return { state, error, retry, reload };
+  return { state, error, warnings, retry, reload };
 }

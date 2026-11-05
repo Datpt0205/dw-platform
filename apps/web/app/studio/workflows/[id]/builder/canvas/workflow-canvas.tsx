@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   BaseEdge,
+  EdgeLabelRenderer,
   Handle,
   Panel,
   Position,
@@ -33,6 +34,7 @@ import {
   Typography,
 } from "antd";
 import {
+  ArrowsAltOutlined,
   CompressOutlined,
   FieldTimeOutlined,
   HolderOutlined,
@@ -41,12 +43,15 @@ import {
   PlusOutlined,
   QuestionCircleOutlined,
   RedoOutlined,
+  ShrinkOutlined,
   WarningOutlined,
 } from "@ant-design/icons";
-import { CANVAS_ICONS, CANVAS_VOCABULARY } from "@dw/ui";
+import { CANVAS_ICONS, CANVAS_MARKS, CANVAS_VOCABULARY } from "@dw/ui";
 import type { StepGroup } from "../../../../../../lib/workflow-graph";
 import { slotAt } from "../../../../../../lib/workflow-layout";
 import type {
+  CanvasFrame,
+  CanvasJoin,
   CanvasLaneHead,
   CanvasShapes,
   CanvasSlot,
@@ -96,12 +101,27 @@ const ARIA_LABELS = {
   "handle.ariaLabel": bt("a11y.handle"),
 };
 
+/** What the validator said about a step: its own problems, and how many lie
+ * on steps inside it, which a folded frame shows (R1.7, R3.4). */
+export interface CardIssues {
+  own: string[];
+  inside: number;
+}
+
 export interface WorkflowCanvasProps {
   shapes: CanvasShapes;
   /** Each card's view, by step id. */
   views: ReadonlyMap<string, CardView>;
   /** Each lane head's label, by head id. */
   laneLabels?: ReadonlyMap<string, string>;
+  /** A lane head's menu ("Bỏ nhánh"), by head id. */
+  laneMenus?: (head: CanvasLaneHead) => MenuEntry[];
+  onLaneMenu?: (head: CanvasLaneHead, key: MenuKey) => void;
+  /** The validator's problems, by step id. */
+  issues?: ReadonlyMap<string, CardIssues>;
+  /** Fold or open a frame (R1.7); absent on a read-only canvas, where every
+   * frame is open and none folds. */
+  onToggleFrame?: (id: string) => void;
   /** Each slot's accessible name, by slot id. */
   slotLabels?: ReadonlyMap<string, string>;
   menus?: (id: string) => MenuEntry[];
@@ -145,8 +165,50 @@ function Anchors() {
   );
 }
 
-function StepBadges({ view }: { view: CardView }) {
+const MarkIcon = {
+  subworkflow: CANVAS_MARKS.subworkflow,
+  rule: CANVAS_ICONS.human,
+} as const;
+
+/** The card's badges: its marks ("Quy trình con", "Cần cả 3 người duyệt"),
+ * the validator's "N lỗi", then retry, timeout and Khi lỗi; each a word with
+ * its icon (R1.8, BU14). A folded frame counts the problems inside it. */
+function StepBadges({
+  view,
+  issues,
+  folded,
+}: {
+  view: CardView;
+  issues: CardIssues | undefined;
+  folded: boolean;
+}) {
   const badges: ReactNode[] = [];
+  for (const mark of view.marks) {
+    const Icon = MarkIcon[mark.key];
+    badges.push(
+      <Tag key={mark.key} icon={<Icon aria-hidden />}>
+        {mark.text}
+      </Tag>,
+    );
+  }
+  const own = issues?.own ?? [];
+  const inside = folded ? (issues?.inside ?? 0) : 0;
+  if (own.length + inside > 0) {
+    const lines = [
+      ...own,
+      ...(inside > 0 ? [bt("card.issuesInside", { n: inside })] : []),
+    ];
+    badges.push(
+      <Tooltip key="issues" title={lines.join(" · ")}>
+        <Tag
+          icon={<WarningOutlined aria-hidden />}
+          style={{ color: ERROR_COLOUR }}
+        >
+          {bt("card.issues", { n: own.length + inside })}
+        </Tag>
+      </Tooltip>,
+    );
+  }
   if (view.retry !== null) {
     badges.push(
       <Tag key="retry" icon={<RedoOutlined aria-hidden />}>
@@ -179,20 +241,28 @@ function StepBadges({ view }: { view: CardView }) {
   );
 }
 
-type StepNodeType = Node<{ id: string }, "step">;
+type StepNodeType = Node<{ id: string; folded: boolean }, "step">;
 
 /** A step's body: an antd Card of fixed size (R1.8). Its name is the focus
- * target and opens the configuration; the menu and the drag handle sit
- * beside it, outside the Tab order (Shift+F10 opens the menu). */
+ * target and opens the configuration; the menu, a frame's fold toggle and
+ * the drag handle sit beside it, outside the Tab order (Shift+F10 opens the
+ * menu, which folds and opens a frame too). A frame's card heads its frame,
+ * and is what a folded frame is drawn as (R1.7). */
 function StepCard({ data }: NodeProps<StepNodeType>) {
   const actions = useContext(CanvasActions);
   const view = actions.views.get(data.id);
   if (!view) return null;
   const Icon = view.known ? CANVAS_ICONS[view.group] : QuestionCircleOutlined;
   const entries = actions.menus?.(view.id) ?? [];
-  const typeLine = view.known
-    ? [view.typeLabel, view.summary].filter(Boolean).join(" · ")
-    : bt("card.unknown");
+  const typeLine = !view.known
+    ? bt("card.unknown")
+    : (view.title ??
+      [view.typeLabel, view.summary].filter(Boolean).join(" · "));
+  const toggle =
+    view.frame && actions.onToggleFrame
+      ? bt(data.folded ? "card.unfold" : "card.fold", { name: view.name })
+      : null;
+  const WaitIcon = CANVAS_MARKS.wait;
   return (
     <>
       <Handle type="target" position={Position.Top} isConnectable={false} />
@@ -201,7 +271,7 @@ function StepCard({ data }: NodeProps<StepNodeType>) {
         style={{ width: CARD_WIDTH, height: CARD_HEIGHT }}
         styles={{ body: { padding: 8 } }}
       >
-        <Flex vertical gap={4}>
+        <Flex vertical gap={view.detail ? 2 : 4}>
           <Flex align="center" gap={4}>
             <span
               aria-hidden
@@ -217,7 +287,7 @@ function StepCard({ data }: NodeProps<StepNodeType>) {
               className="min-w-0 flex-1 justify-start"
               data-stop={view.id}
               tabIndex={actions.activeStop === view.id ? 0 : -1}
-              aria-label={`${view.name}, ${view.known ? view.typeLabel : bt("card.unknown")}`}
+              aria-label={`${view.name}, ${view.known ? view.typeLabel : bt("card.unknown")}${data.folded ? `, ${bt("card.foldedState")}` : ""}`}
               onFocus={() => actions.onStopFocus?.(view.id)}
               onClick={() => actions.onOpenStep?.(view.id)}
             >
@@ -225,6 +295,25 @@ function StepCard({ data }: NodeProps<StepNodeType>) {
                 {view.name}
               </Typography.Text>
             </Button>
+            {toggle && (
+              <Tooltip title={toggle}>
+                <Button
+                  type="text"
+                  size="small"
+                  tabIndex={-1}
+                  aria-label={toggle}
+                  data-frame-toggle={view.id}
+                  icon={
+                    data.folded ? (
+                      <ArrowsAltOutlined aria-hidden />
+                    ) : (
+                      <ShrinkOutlined aria-hidden />
+                    )
+                  }
+                  onClick={() => actions.onToggleFrame?.(view.id)}
+                />
+              </Tooltip>
+            )}
             {view.known && (
               <Tooltip title={bt("card.drag")}>
                 <Button
@@ -271,7 +360,19 @@ function StepCard({ data }: NodeProps<StepNodeType>) {
           <Typography.Text type="secondary" ellipsis={{ tooltip: typeLine }}>
             {typeLine}
           </Typography.Text>
-          <StepBadges view={view} />
+          {view.detail && (
+            <Typography.Text
+              ellipsis={{ tooltip: view.detail.text }}
+              style={{ fontSize: "var(--ant-font-size-sm)" }}
+            >
+              {view.detail.wait && <WaitIcon aria-hidden />} {view.detail.text}
+            </Typography.Text>
+          )}
+          <StepBadges
+            view={view}
+            issues={actions.issues?.get(view.id)}
+            folded={data.folded}
+          />
         </Flex>
       </Card>
       <Handle type="source" position={Position.Bottom} isConnectable={false} />
@@ -334,22 +435,30 @@ function SlotButton({ data }: NodeProps<SlotNodeType>) {
 
 type HeadNodeType = Node<{ head: CanvasLaneHead }, "head">;
 
-/** A lane's head: its label in a Tag (ticket 04 draws its frame). */
+/** A lane's head: its label in a Tag, the words the outline reads too (a
+ * `cases` key, "Khác", "Duyệt", a `branches` name, "Đã đủ N lần", "Khi
+ * lỗi"), with a "…" menu where the lane comes off ("Bỏ nhánh"). */
 function LaneHead({ data }: NodeProps<HeadNodeType>) {
   const actions = useContext(CanvasActions);
-  const label = actions.laneLabels?.get(data.head.id) ?? data.head.port;
-  const error = data.head.port === "error_lane";
+  const { head } = data;
+  const label = actions.laneLabels?.get(head.id) ?? head.port;
+  const error = head.port === "error_lane";
+  const entries = actions.laneMenus?.(head) ?? [];
+  const open = actions.openMenu === head.id;
   return (
     <>
       <Anchors />
       <Flex
         justify="center"
-        style={{ width: data.head.width, height: data.head.height }}
+        align="center"
+        gap={2}
+        style={{ width: head.width, height: head.height }}
       >
         <Tag
           icon={error ? <WarningOutlined aria-hidden /> : undefined}
           style={error ? { color: ERROR_COLOUR } : undefined}
-          className="max-w-full"
+          className="min-w-0"
+          data-lane-head={head.id}
         >
           <Typography.Text
             ellipsis={{ tooltip: label }}
@@ -358,44 +467,171 @@ function LaneHead({ data }: NodeProps<HeadNodeType>) {
             {label}
           </Typography.Text>
         </Tag>
+        {entries.length > 0 && (
+          <Dropdown
+            trigger={["click"]}
+            open={open}
+            onOpenChange={(next) => actions.onOpenMenu?.(next ? head.id : null)}
+            menu={{
+              items: entries.map(({ key, label: text, danger }) => ({
+                key,
+                label: text,
+                danger,
+              })),
+              onClick: ({ key }) => {
+                actions.onOpenMenu?.(null);
+                actions.onLaneMenu?.(head, key as MenuKey);
+              },
+            }}
+          >
+            <Button
+              type="text"
+              size="small"
+              tabIndex={-1}
+              aria-label={bt("lane.menu", { lane: label })}
+              icon={<MoreOutlined aria-hidden />}
+            />
+          </Dropdown>
+        )}
       </Flex>
     </>
   );
 }
 
-function JoinPoint() {
+type FrameNodeType = Node<{ frame: CanvasFrame }, "frame">;
+
+/** A frame's outline behind its card and lanes: drawn only, never pressed;
+ * its card heads it and carries its words. */
+function FrameBox({ data }: NodeProps<FrameNodeType>) {
+  return (
+    <div
+      aria-hidden
+      data-frame={data.frame.step}
+      data-frame-kind={data.frame.kind}
+      style={{
+        width: data.frame.width,
+        height: data.frame.height,
+        border: "1px solid var(--ant-color-border)",
+        borderRadius: "var(--ant-border-radius-lg)",
+        background: "var(--ant-color-fill-quaternary)",
+        pointerEvents: "none",
+      }}
+    />
+  );
+}
+
+type JoinNodeType = Node<{ join: CanvasJoin }, "join">;
+
+/** Where flow meets again: a point, or a parallel frame's Điểm nối, a bar
+ * across its lanes saying "Chờ tất cả nhánh xong". */
+function JoinPoint({ data }: NodeProps<JoinNodeType>) {
+  const { join } = data;
+  if (join.kind !== "bar") {
+    return (
+      <>
+        <Anchors />
+        <span className="block h-px w-px" data-join={join.id} />
+      </>
+    );
+  }
+  const WaitIcon = CANVAS_MARKS.wait;
   return (
     <>
       <Anchors />
-      <span className="block h-px w-px" />
+      <Flex
+        align="center"
+        justify="center"
+        gap={4}
+        data-join={join.id}
+        style={{
+          width: join.width,
+          height: join.height,
+          border: "1px solid var(--ant-color-border)",
+          borderRadius: "var(--ant-border-radius)",
+          background: "var(--ant-color-bg-container)",
+        }}
+      >
+        <WaitIcon aria-hidden />
+        <Typography.Text>{bt("frame.bar")}</Typography.Text>
+      </Flex>
     </>
   );
 }
 
 const NODE_TYPES = {
+  frame: FrameBox,
   step: StepCard,
   slot: SlotButton,
   head: LaneHead,
   join: JoinPoint,
 };
 
-type PathEdgeType = Edge<{ points: Point[]; dashed: boolean }, "path">;
+type PathEdgeType = Edge<
+  {
+    points: Point[];
+    dashed: boolean;
+    arrow: boolean;
+    label: "repeat" | null;
+    labelAt: Point | null;
+  },
+  "path"
+>;
 
-/** A connection along the layout's polyline, not the library's routing. */
+/** An arrow head at the end of a polyline, along its last segment. */
+export function arrowHead(points: Point[], size = 6): string | null {
+  const end = points[points.length - 1];
+  const from = points[points.length - 2];
+  if (!end || !from) return null;
+  const dx = end.x - from.x;
+  const dy = end.y - from.y;
+  const length = Math.hypot(dx, dy);
+  if (length === 0) return null;
+  const ux = dx / length;
+  const uy = dy / length;
+  const bx = end.x - ux * size;
+  const by = end.y - uy * size;
+  const px = -uy * (size * 0.7);
+  const py = ux * (size * 0.7);
+  const r = (v: number) => Math.round(v * 10) / 10;
+  return `M${r(bx + px)},${r(by + py)} L${end.x},${end.y} L${r(bx - px)},${r(by - py)}`;
+}
+
+/** A connection along the layout's polyline, not the library's routing: an
+ * arrow head where it climbs back or leaves a loop, and the loop's "Lặp
+ * lại" label in antd. */
 function PathEdge({ data, style }: EdgeProps<PathEdgeType>) {
   if (!data) return null;
   const d = data.points
     .map((p, i) => `${i === 0 ? "M" : "L"}${p.x},${p.y}`)
     .join(" ");
+  const head = data.arrow ? arrowHead(data.points) : null;
+  const RepeatIcon = CANVAS_MARKS.repeat;
   return (
-    <BaseEdge
-      path={d}
-      style={
-        data.dashed
-          ? { ...style, strokeDasharray: CANVAS_VOCABULARY.edge.dash }
-          : style
-      }
-    />
+    <>
+      <BaseEdge
+        path={d}
+        style={
+          data.dashed
+            ? { ...style, strokeDasharray: CANVAS_VOCABULARY.edge.dash }
+            : style
+        }
+      />
+      {head && (
+        <path d={head} className="react-flow__edge-path" style={style} />
+      )}
+      {data.label === "repeat" && data.labelAt && (
+        <EdgeLabelRenderer>
+          <div
+            className="nodrag nopan absolute"
+            style={{
+              transform: `translate(-50%, -50%) translate(${data.labelAt.x}px, ${data.labelAt.y}px)`,
+            }}
+          >
+            <Tag icon={<RepeatIcon aria-hidden />}>{bt("frame.repeat")}</Tag>
+          </div>
+        </EdgeLabelRenderer>
+      )}
+    </>
   );
 }
 
@@ -430,11 +666,21 @@ export function toFlow(shapes: CanvasShapes): {
   edges: PathEdgeType[];
 } {
   const nodes: Node[] = [
+    // First, so every card and lane is drawn over the frame around it.
+    ...shapes.frames.map((frame) => ({
+      id: frame.id,
+      type: "frame",
+      position: { x: frame.x, y: frame.y },
+      data: { frame },
+      width: frame.width,
+      height: frame.height,
+      style: { pointerEvents: "none" as const },
+    })),
     ...shapes.cards.map((card) => ({
       id: card.id,
       type: "step",
       position: { x: card.x, y: card.y },
-      data: { id: card.id },
+      data: { id: card.id, folded: card.folded },
       width: card.width,
       height: card.height,
     })),
@@ -458,9 +704,9 @@ export function toFlow(shapes: CanvasShapes): {
       id: join.id,
       type: "join",
       position: { x: join.x, y: join.y },
-      data: {},
-      width: 1,
-      height: 1,
+      data: { join },
+      width: Math.max(1, join.width),
+      height: Math.max(1, join.height),
     })),
   ];
   return {
@@ -470,7 +716,13 @@ export function toFlow(shapes: CanvasShapes): {
       type: "path",
       source: connection.from,
       target: connection.to,
-      data: { points: connection.points, dashed: connection.dashed },
+      data: {
+        points: connection.points,
+        dashed: connection.dashed,
+        arrow: connection.arrow,
+        label: connection.label,
+        labelAt: connection.labelAt,
+      },
       // No English "Edge from … to …" (R2.9): a connection carries no name of
       // its own, the cards and "+" it joins do. 12.12.0 types the field as a
       // string, but its edge wrapper reads `null` as "no label" and anything

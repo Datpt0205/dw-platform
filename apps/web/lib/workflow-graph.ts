@@ -31,12 +31,26 @@ export type PortsSpec =
   | { kind: "fixed"; ports: PortSpec[] }
   | { kind: "keyed"; key: string; default: PortSpec | null };
 
+/**
+ * How a step of a type runs, as the lowering reads it (ADR-0112 (Accepted)
+ * decision 2, Amendments 2026-11-03): `choice` runs one of its lanes,
+ * `parallel` every lane, `loop` its body again and again; `none` holds no
+ * block. The canvas draws a step by these, never by its type's name
+ * (workflow-builder-ui R1.5).
+ */
+export type Block = "none" | "choice" | "parallel" | "loop";
+
 /** One entry of the catalogue, structurally `NodeTypeView`. */
 export interface StepTypeSpec {
   type: string;
   label_vi: string;
   config_schema: { [key: string]: unknown };
   ports: PortsSpec;
+  block: Block;
+  /** No edge leaves a step of the type: it ends the run (`flow.stop`). */
+  ends_run: boolean;
+  /** A step of the type leaves the nearest loop (`logic.break`). */
+  exits_loop: boolean;
 }
 
 export type Catalogue = ReadonlyMap<string, StepTypeSpec>;
@@ -95,12 +109,27 @@ export interface LaneNode {
   steps: StepNode[];
 }
 
+/** A step's shape, from its type's catalogue entry; an unknown type holds no
+ * block and neither ends the run nor leaves a loop. */
+export interface StepShape {
+  block: Block;
+  endsRun: boolean;
+  exitsLoop: boolean;
+}
+
+const PLAIN_SHAPE: StepShape = {
+  block: "none",
+  endsRun: false,
+  exitsLoop: false,
+};
+
 export interface StepNode {
   id: string;
   type: string;
   /** The type is in the catalogue: an unknown type's lanes are unknown, so
    * the page neither deletes nor moves it. */
   known: boolean;
+  shape: StepShape;
   /** The step as written, less the lanes held in `lanes`. */
   rest: JsonObject;
   lanes: LaneNode[];
@@ -168,6 +197,7 @@ export function toStepNode(
       id: `?${build.opaque}`,
       type: "",
       known: false,
+      shape: PLAIN_SHAPE,
       rest: {},
       lanes: [],
       opaque: raw,
@@ -175,7 +205,14 @@ export function toStepNode(
   }
   const spec = catalogue.get(raw.type);
   if (!spec) {
-    return { id: raw.id, type: raw.type, known: false, rest: raw, lanes: [] };
+    return {
+      id: raw.id,
+      type: raw.type,
+      known: false,
+      shape: PLAIN_SHAPE,
+      rest: raw,
+      lanes: [],
+    };
   }
   const rest: JsonObject = { ...raw };
   const config: JsonObject | null = isObject(raw.config)
@@ -251,7 +288,24 @@ export function toStepNode(
       steps: present ? steps(raw.error_lane as unknown[]) : [],
     });
   }
-  return { id: raw.id, type: raw.type, known: true, rest, lanes };
+  return {
+    id: raw.id,
+    type: raw.type,
+    known: true,
+    shape: {
+      block: spec.block,
+      endsRun: spec.ends_run,
+      exitsLoop: spec.exits_loop,
+    },
+    rest,
+    lanes,
+  };
+}
+
+/** A container the canvas draws as a frame and folds (R1.7): a step that runs
+ * every lane, or its body again and again. */
+export function isFrame(node: StepNode): boolean {
+  return node.shape.block === "parallel" || node.shape.block === "loop";
 }
 
 export function toTree(doc: JsonObject, catalogue: Catalogue): WorkflowTree {
@@ -885,21 +939,30 @@ interface StopEntry {
   index: number;
 }
 
+const NOTHING_FOLDED: ReadonlySet<string> = new Set();
+
+/** A step's lanes as the keyboard sees them: none while it is a folded frame
+ * (R1.7: ↑/↓ skip the steps inside a folded frame). */
+function openLanes(node: StepNode, folded: ReadonlySet<string>): LaneNode[] {
+  return folded.has(node.id) && isFrame(node) ? [] : node.lanes;
+}
+
 /** Each stop's lane and place, and each lane's items, in document order. */
-function stopIndex(tree: WorkflowTree) {
+function stopIndex(tree: WorkflowTree, folded: ReadonlySet<string>) {
   const at = new Map<string, StopEntry>();
   const lanesOf = new Map<string, LaneRef[]>();
   const add = (lane: LaneRef, steps: StepNode[]) => {
     const items =
       steps.length > 0 ? steps.map((s) => s.id) : [emptyLaneStop(lane)];
     items.forEach((stop, index) => at.set(stop, { lane, items, index }));
+    for (const node of steps) {
+      const lanes = openLanes(node, folded);
+      const refs = lanes.map((l) => ({ parent: node.id, port: l.port }));
+      lanesOf.set(node.id, refs);
+      lanes.forEach((child, i) => add(refs[i]!, child.steps));
+    }
   };
   add(ROOT_LANE, tree.steps);
-  walk(tree, (node) => {
-    const refs = node.lanes.map((l) => ({ parent: node.id, port: l.port }));
-    lanesOf.set(node.id, refs);
-    node.lanes.forEach((lane, i) => add(refs[i]!, lane.steps));
-  });
   const itemsOf = (ref: LaneRef) => {
     for (const entry of at.values()) {
       if (sameLane(entry.lane, ref)) return entry.items;
@@ -917,15 +980,17 @@ export type Direction = "up" | "down" | "left" | "right";
  * into the first step of its first lane, and from the last step of a lane out
  * to the step after the block; ↑ the other way, from the first step of a lane
  * to the card that holds it; ←/→ to the first step of the neighbouring lane
- * of the same holder. An empty lane's "Thêm Bước" slot is a stop like a step.
- * Null where there is nowhere to go.
+ * of the same holder, the "Khi lỗi" lane last. An empty lane's "Thêm Bước"
+ * slot is a stop like a step. A folded frame is a card with no lanes: its
+ * steps are skipped (R1.7). Null where there is nowhere to go.
  */
 export function navigate(
   tree: WorkflowTree,
   stop: string,
   direction: Direction,
+  folded: ReadonlySet<string> = NOTHING_FOLDED,
 ): string | null {
-  const { at, lanesOf, itemsOf } = stopIndex(tree);
+  const { at, lanesOf, itemsOf } = stopIndex(tree, folded);
   const entry = at.get(stop);
   if (!entry) return null;
   const { lane, items, index } = entry;
@@ -952,19 +1017,74 @@ export function navigate(
   return target ? (itemsOf(target)[0] ?? null) : null;
 }
 
-/** Every stop, in document order: the first is where Tab enters. */
-export function stopsInOrder(tree: WorkflowTree): string[] {
+/** Every stop, in document order, none inside a folded frame: the first is
+ * where Tab enters. */
+export function stopsInOrder(
+  tree: WorkflowTree,
+  folded: ReadonlySet<string> = NOTHING_FOLDED,
+): string[] {
   const out: string[] = [];
   const go = (steps: StepNode[], lane: LaneRef) => {
     if (steps.length === 0) out.push(emptyLaneStop(lane));
     for (const node of steps) {
       out.push(node.id);
-      for (const child of node.lanes)
+      for (const child of openLanes(node, folded))
         go(child.steps, { parent: node.id, port: child.port });
     }
   };
   go(tree.steps, ROOT_LANE);
   return out;
+}
+
+/** The frames that hold step `id`, outermost first: what "Đi tới Bước" opens
+ * when the step sits in a folded one (R1.7). */
+export function framesAround(tree: WorkflowTree, id: string): string[] {
+  const at = locate(tree, id);
+  if (!at) return [];
+  return at.ancestors.filter((a) => {
+    const holder = locate(tree, a)?.node;
+    return holder !== undefined && isFrame(holder);
+  });
+}
+
+/* ------------------------------------------------------------------------- */
+/* Where a server's problem points                                            */
+/* ------------------------------------------------------------------------- */
+
+/**
+ * The id of the step a JSON pointer (RFC 6901) of the document lies in: the
+ * deepest step object on its path, triggers excluded, or null when it points
+ * outside every step. How the save's warnings (`PUT .../draft`) and a
+ * submit's refusals reach a card (R3.4).
+ */
+export function stepAtPointer(
+  document: JsonObject,
+  pointer: string,
+): string | null {
+  if (pointer !== "" && !pointer.startsWith("/")) return null;
+  const tokens =
+    pointer === ""
+      ? []
+      : pointer
+          .slice(1)
+          .split("/")
+          .map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
+  if (tokens[0] !== "steps") return null;
+  let value: unknown = document;
+  let found: string | null = null;
+  for (const token of tokens) {
+    if (Array.isArray(value)) value = value[Number(token)];
+    else if (isObject(value)) value = value[token];
+    else break;
+    if (
+      isObject(value) &&
+      typeof value.id === "string" &&
+      typeof value.type === "string"
+    ) {
+      found = value.id;
+    }
+  }
+  return found;
 }
 
 /* ------------------------------------------------------------------------- */

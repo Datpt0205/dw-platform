@@ -439,6 +439,12 @@ def _catalogue_entry(spec: NodeTypeSpec) -> dict[str, Any]:
         "output": _output_entry(spec.output),
         "error": {"on_error": publishes, "schema": _plain(ERROR_OUTPUT)},
         "ports": _ports_entry(spec.ports),
+        # How the builder's canvas draws a step of the type (workflow-builder-ui
+        # R1.5, ticket 04): the same three facts the lowering reads, never a
+        # type name, so a new type with a known block draws without a change.
+        "block": spec.block,
+        "ends_run": spec.ends_run,
+        "exits_loop": spec.exits_loop,
         "side_effect_level": spec.side_effect_level,
     }
 

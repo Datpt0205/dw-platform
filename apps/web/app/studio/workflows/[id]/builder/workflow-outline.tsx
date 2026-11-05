@@ -31,6 +31,10 @@ import { bt } from "./messages";
  * It is the editor below `md` and at 320 px, with the canvas's menu: Enter
  * opens a step's configuration, Shift+F10 its menu, Delete removes it,
  * Ctrl+Z and Ctrl+Shift+Z undo and redo.
+ *
+ * A step node's open or closed state is the viewer's fold state (R1.7), the
+ * one owner the canvas reads too: closing a frame here folds it there, and
+ * the other way round. A lane node's state is the outline's own.
  */
 
 export const OUTLINE_LANE_PREFIX = "lane:";
@@ -45,6 +49,9 @@ interface OutlineNode extends DataNode {
 interface WorkflowOutlineProps {
   tree: WorkflowTree;
   catalogue: Catalogue;
+  /** The steps the viewer closed (`useFoldedFrames`). */
+  folded: ReadonlySet<string>;
+  onFoldedChange: (next: ReadonlySet<string>) => void;
   activeKey: string | null;
   onActiveChange: (key: string | null) => void;
   openMenu: string | null;
@@ -62,6 +69,8 @@ interface WorkflowOutlineProps {
 export function WorkflowOutline({
   tree,
   catalogue,
+  folded,
+  onFoldedChange,
   activeKey,
   onActiveChange,
   openMenu,
@@ -74,7 +83,7 @@ export function WorkflowOutline({
   onUndo,
   onRedo,
 }: WorkflowOutlineProps) {
-  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [closedLanes, setClosedLanes] = useState<Set<string>>(new Set());
 
   const { treeData, keys, steps } = useMemo(() => {
     const keys: string[] = [];
@@ -167,7 +176,12 @@ export function WorkflowOutline({
         });
         return {
           key: node.id,
-          title: withMenu(node.id, view.name, stepMenu(node, catalogue), title),
+          title: withMenu(
+            node.id,
+            view.name,
+            stepMenu(node, catalogue, folded.has(node.id)),
+            title,
+          ),
           "aria-level": level,
           "aria-posinset": index + 1,
           "aria-setsize": list.length,
@@ -180,6 +194,7 @@ export function WorkflowOutline({
   }, [
     tree,
     catalogue,
+    folded,
     openMenu,
     menuInDropdown,
     onOpenMenu,
@@ -224,10 +239,24 @@ export function WorkflowOutline({
         blockNode
         showLine
         treeData={treeData}
-        expandedKeys={keys.filter((k) => !collapsed.has(k))}
+        // rc-tree opens the parents of open keys on first mount unless told
+        // not to, which would reopen a frame the viewer folded.
+        defaultExpandParent={false}
+        expandedKeys={keys.filter((k) =>
+          steps.has(k) ? !folded.has(k) : !closedLanes.has(k),
+        )}
         onExpand={(expanded) => {
           const open = new Set(expanded.map(String));
-          setCollapsed(new Set(keys.filter((k) => !open.has(k))));
+          const closed = keys.filter((k) => !open.has(k));
+          setClosedLanes(new Set(closed.filter((k) => !steps.has(k))));
+          // Steps not in this tree (deleted since) keep no entry.
+          const next = new Set(closed.filter((k) => steps.has(k)));
+          if (
+            next.size !== folded.size ||
+            [...next].some((k) => !folded.has(k))
+          ) {
+            onFoldedChange(next);
+          }
         }}
         activeKey={activeKey ?? undefined}
         onActiveChange={(key) =>

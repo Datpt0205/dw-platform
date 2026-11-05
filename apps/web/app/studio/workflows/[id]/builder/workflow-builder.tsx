@@ -41,14 +41,15 @@ import { errorCode, errorMessage } from "../../../../../lib/error-message";
 import { apiClient } from "../../../../../lib/session";
 import {
   addLane,
-  addableFixedPorts,
   catalogueOf,
   commit,
   deleteStep,
   emptyLaneStop,
+  framesAround,
   fromTree,
   history,
   insertStep,
+  isFrame,
   isInside,
   locate,
   moveStep,
@@ -58,6 +59,7 @@ import {
   redo,
   removeLane,
   setOnError,
+  stepAtPointer,
   stepName,
   stopsInOrder,
   toStepNode,
@@ -79,10 +81,15 @@ import {
   type WorkflowTree,
 } from "../../../../../lib/workflow-graph";
 import { layoutWorkflow, metricsFor } from "../../../../../lib/workflow-layout";
-import type { CanvasSlot } from "../../../../../lib/workflow-shapes";
+import type {
+  CanvasLaneHead,
+  CanvasSlot,
+} from "../../../../../lib/workflow-shapes";
+import type { CardIssues } from "./canvas/workflow-canvas";
 import {
   cardView,
   laneLabel,
+  laneMenu,
   laneName,
   moveTargets,
   parseSlotValue,
@@ -95,7 +102,8 @@ import {
 import { ConfigDrawer } from "./config-drawer";
 import { bt, fold } from "./messages";
 import { StepPalette } from "./step-palette";
-import { useDraftAutosave } from "./use-draft-autosave";
+import { useDraftAutosave, type SavedWarnings } from "./use-draft-autosave";
+import { useFoldedFrames } from "./use-folded-frames";
 import { WorkflowOutline } from "./workflow-outline";
 
 /**
@@ -132,12 +140,48 @@ function isEditable(target: EventTarget | null): boolean {
 
 type Drag = { kind: "new"; type: string } | { kind: "move"; id: string };
 
+/** The save's warnings on the cards they point at, and how many lie inside
+ * each step, which its card shows while it is a folded frame (R1.7, R3.4). */
+function issuesOf(
+  tree: WorkflowTree,
+  warnings: SavedWarnings | null,
+): Map<string, CardIssues> {
+  const own = new Map<string, string[]>();
+  for (const item of warnings?.items ?? []) {
+    const id = stepAtPointer(warnings!.document, item.pointer);
+    if (id === null) continue;
+    own.set(id, [...(own.get(id) ?? []), item.detail]);
+  }
+  const out = new Map<string, CardIssues>();
+  if (own.size === 0) return out;
+  const count = (node: StepNode): number => {
+    let inside = 0;
+    for (const lane of node.lanes)
+      for (const step of lane.steps) inside += count(step);
+    const mine = own.get(node.id) ?? [];
+    if (mine.length + inside > 0) out.set(node.id, { own: mine, inside });
+    return mine.length + inside;
+  };
+  for (const step of tree.steps) count(step);
+  return out;
+}
+
+/** Whether a stop (a step, or an empty lane's slot) lies inside step `id`. */
+function stopInside(tree: WorkflowTree, stop: string, id: string): boolean {
+  const lane = parseEmptyLaneStop(stop);
+  const holder = lane ? lane.parent : stop;
+  if (holder === null) return false;
+  if (lane && holder === id) return true;
+  return locate(tree, holder)?.ancestors.includes(id) ?? false;
+}
+
 interface EditorProps {
   artifactId: string;
   catalogue: Catalogue;
   types: StepTypeSpec[];
   draft: StudioDraft;
   saveDelayMs: number;
+  viewerId: string | null;
 }
 
 function Editor({
@@ -146,6 +190,7 @@ function Editor({
   types,
   draft,
   saveDelayMs,
+  viewerId,
 }: EditorProps) {
   const { message, notification } = App.useApp();
   const screens = Grid.useBreakpoint();
@@ -186,8 +231,9 @@ function Editor({
   const [drag, setDrag] = useState<Drag | null>(null);
   const treeRef = useRef(tree);
   treeRef.current = tree;
+  const { folded, setFolded } = useFoldedFrames(viewerId, artifactId);
 
-  const stops = useMemo(() => stopsInOrder(tree), [tree]);
+  const stops = useMemo(() => stopsInOrder(tree, folded), [tree, folded]);
   const activeStop =
     active !== null && stops.includes(active) ? active : (stops[0] ?? null);
 
@@ -200,6 +246,42 @@ function Editor({
     setActive(stop);
     setFocusRequest((r) => ({ stop, seq: (r?.seq ?? 0) + 1 }));
   }, []);
+
+  /** Fold or open a frame (R1.7): kept for this viewer, never in the
+   * document. Folding the frame focus is inside brings focus to its card. */
+  const toggleFrame = useCallback(
+    (id: string) => {
+      const node = locate(tree, id)?.node;
+      if (!node || !isFrame(node)) return;
+      const next = new Set(folded);
+      const folding = !next.has(id);
+      if (folding) next.add(id);
+      else next.delete(id);
+      setFolded(next);
+      announce(
+        bt(folding ? "announce.folded" : "announce.unfolded", {
+          name: stepName(node, catalogue),
+        }),
+      );
+      if (folding && active !== null && stopInside(tree, active, id)) {
+        focusStop(id);
+      }
+    },
+    [active, announce, catalogue, focusStop, folded, setFolded, tree],
+  );
+
+  /** Open every folded frame around a step, as a manual open would, before
+   * going to it (R1.7: Ctrl+K, a problem pointing inside a folded frame). */
+  const reveal = useCallback(
+    (id: string) => {
+      const around = framesAround(tree, id).filter((f) => folded.has(f));
+      if (around.length === 0) return;
+      const next = new Set(folded);
+      for (const f of around) next.delete(f);
+      setFolded(next);
+    },
+    [folded, setFolded, tree],
+  );
 
   /** Every change goes through here: one history entry (or the top one
    * replaced, for a field typed into), and the delete notice closes, so its
@@ -325,10 +407,60 @@ function Editor({
     [deleted, focusStop, refuse, tree],
   );
 
+  /** Remove a lane: with steps, a deletion with its Hoàn tác notice (R2.11);
+   * empty, a change announced. */
+  const removeLaneOf = useCallback(
+    (id: string, port: string) => {
+      const node = locate(tree, id)?.node;
+      const lane = node?.lanes.find((l) => l.port === port);
+      const out = removeLane(tree, id, port);
+      if (!out.ok) return refuse(out.reason);
+      if (!node || !lane) return;
+      if (out.removed.length > 0) deleted(out, { parent: id, port });
+      else
+        apply(
+          out.tree,
+          bt("announce.laneRemoved", {
+            lane: laneLabel(lane),
+            name: stepName(node, catalogue),
+          }),
+        );
+    },
+    [apply, catalogue, deleted, refuse, tree],
+  );
+
+  const addLaneOf = useCallback(
+    (id: string, name: string): Refusal | null => {
+      const out = addLane(tree, id, name, catalogue);
+      if (!out.ok) return out.reason;
+      const before = new Set(locate(tree, id)!.node.lanes.map((l) => l.port));
+      const node = locate(out.tree, id)!.node;
+      const lane = node.lanes.find((l) => !before.has(l.port));
+      apply(
+        out.tree,
+        bt("announce.laneAdded", {
+          lane: lane ? laneLabel(lane) : name,
+          name: stepName(node, catalogue),
+        }),
+      );
+      return null;
+    },
+    [apply, catalogue, tree],
+  );
+
   const onMenu = useCallback(
     (id: string, key: MenuKey) => {
       const at = locate(tree, id);
       if (!at) return;
+      if (key.startsWith("addPort:")) {
+        const refusal = addLaneOf(id, key.slice("addPort:".length));
+        if (refusal) refuse(refusal);
+        return;
+      }
+      if (key.startsWith("removePort:")) {
+        removeLaneOf(id, key.slice("removePort:".length));
+        return;
+      }
       switch (key) {
         case "addBefore":
           setPicker({ lane: at.lane, index: at.index });
@@ -345,6 +477,10 @@ function Editor({
         case "removeLane":
           setLaneFor({ id, mode: "remove" });
           break;
+        case "fold":
+        case "unfold":
+          toggleFrame(id);
+          break;
         case "delete":
           remove(id);
           break;
@@ -356,8 +492,21 @@ function Editor({
         }
       }
     },
-    [message, remove, tree],
+    [addLaneOf, message, refuse, remove, removeLaneOf, toggleFrame, tree],
   );
+
+  const onLaneMenu = useCallback(
+    (head: CanvasLaneHead, key: MenuKey) => {
+      if (key === "removeBranch") removeLaneOf(head.parent, head.port);
+    },
+    [removeLaneOf],
+  );
+  const laneMenus = useCallback((head: CanvasLaneHead): MenuEntry[] => {
+    const lane = locate(treeRef.current, head.parent)?.node.lanes.find(
+      (l) => l.port === head.port,
+    );
+    return lane ? laneMenu(lane) : [];
+  }, []);
 
   const onOnError = useCallback(
     (id: string, value: OnError) => {
@@ -405,7 +554,7 @@ function Editor({
     if (direction && !ctrl && !event.altKey && !event.shiftKey) {
       event.preventDefault();
       event.stopPropagation();
-      const next = navigate(tree, stop, direction);
+      const next = navigate(tree, stop, direction, folded);
       if (next) focusStop(next);
       return;
     }
@@ -426,8 +575,12 @@ function Editor({
   };
 
   const shapes = useMemo(
-    () => (showCanvas ? layoutWorkflow(tree, METRICS) : null),
-    [showCanvas, tree],
+    () => (showCanvas ? layoutWorkflow(tree, METRICS, folded) : null),
+    [showCanvas, tree, folded],
+  );
+  const issues = useMemo(
+    () => issuesOf(tree, autosave.warnings),
+    [tree, autosave.warnings],
   );
   const views = useMemo(() => {
     const out = new Map<string, ReturnType<typeof cardView>>();
@@ -452,9 +605,9 @@ function Editor({
   const menus = useCallback(
     (id: string): MenuEntry[] => {
       const node = locate(treeRef.current, id)?.node;
-      return node ? stepMenu(node, catalogue) : [];
+      return node ? stepMenu(node, catalogue, folded.has(id)) : [];
     },
-    [catalogue],
+    [catalogue, folded],
   );
   const slotOf = (id: string | null): CanvasSlot | undefined =>
     id === null ? undefined : shapes?.slots.find((s) => s.id === id);
@@ -607,6 +760,10 @@ function Editor({
                 shapes={shapes}
                 views={views}
                 laneLabels={laneLabels}
+                laneMenus={laneMenus}
+                onLaneMenu={onLaneMenu}
+                issues={issues}
+                onToggleFrame={toggleFrame}
                 slotLabels={slotLabels}
                 menus={menus}
                 activeStop={activeStop}
@@ -645,6 +802,8 @@ function Editor({
           <WorkflowOutline
             tree={tree}
             catalogue={catalogue}
+            folded={folded}
+            onFoldedChange={setFolded}
             activeKey={outlineKey}
             onActiveChange={setOutlineKey}
             openMenu={openMenu}
@@ -737,34 +896,13 @@ function Editor({
         target={laneFor}
         onCancel={() => setLaneFor(null)}
         onAdd={(id, name) => {
-          const out = addLane(tree, id, name, catalogue);
-          if (!out.ok) return out.reason;
-          const node = locate(out.tree, id)!.node;
-          apply(
-            out.tree,
-            bt("announce.laneAdded", {
-              lane: name,
-              name: stepName(node, catalogue),
-            }),
-          );
-          setLaneFor(null);
-          return null;
+          const refusal = addLaneOf(id, name);
+          if (refusal === null) setLaneFor(null);
+          return refusal;
         }}
         onRemove={(id, port) => {
-          const node = locate(tree, id)?.node;
-          const lane = node?.lanes.find((l) => l.port === port);
-          const out = removeLane(tree, id, port);
           setLaneFor(null);
-          if (!out.ok || !node || !lane) return;
-          if (out.removed.length > 0) deleted(out, { parent: id, port });
-          else
-            apply(
-              out.tree,
-              bt("announce.laneRemoved", {
-                lane: laneLabel(lane),
-                name: stepName(node, catalogue),
-              }),
-            );
+          removeLaneOf(id, port);
         }}
       />
 
@@ -775,6 +913,7 @@ function Editor({
         onClose={() => setGotoOpen(false)}
         onGo={(id) => {
           setGotoOpen(false);
+          reveal(id);
           if (showCanvas) focusStop(id);
           else setOutlineKey(id);
         }}
@@ -853,6 +992,10 @@ function MoveModal({
             className="w-full"
             treeData={data}
             treeDefaultExpandAll
+            // Typing narrows the targets: the keyboard's way to a slot deep
+            // in a frame or a lane (R2.5).
+            showSearch
+            treeNodeFilterProp="title"
             value={value ?? undefined}
             onChange={(v: string) => setValue(v)}
           />
@@ -882,8 +1025,6 @@ function LaneModal({
   const node: StepNode | undefined = target
     ? locate(tree, target.id)?.node
     : undefined;
-  const spec = node ? catalogue.get(node.type) : undefined;
-  const keyed = spec?.ports.kind === "keyed";
   const close = () => {
     setValue("");
     setProblem(null);
@@ -891,8 +1032,9 @@ function LaneModal({
   };
   if (!target || !node) return null;
   const name = stepName(node, catalogue);
-  const removable = node.lanes.filter((l) => l.removable);
-  const fixed = addableFixedPorts(node, catalogue);
+  // A keyed type's entries; an optional fixed lane has menu entries of its
+  // own ("Thêm làn «…»", "Bỏ làn «…»").
+  const removable = node.lanes.filter((l) => l.kind === "keyed");
   return (
     <Modal
       open
@@ -920,7 +1062,7 @@ function LaneModal({
       destroyOnHidden
     >
       <Form layout="vertical">
-        {target.mode === "add" && keyed && (
+        {target.mode === "add" && (
           <Form.Item
             label={bt("addLane.key")}
             htmlFor="lane-key"
@@ -931,16 +1073,6 @@ function LaneModal({
               id="lane-key"
               value={value}
               onChange={(e) => setValue(e.target.value)}
-            />
-          </Form.Item>
-        )}
-        {target.mode === "add" && !keyed && (
-          <Form.Item label={bt("addLane.port")} htmlFor="lane-port">
-            <Select
-              id="lane-port"
-              value={value || undefined}
-              onChange={(v: string) => setValue(v)}
-              options={fixed.map((p) => ({ value: p.name, label: p.label_vi }))}
             />
           </Form.Item>
         )}
@@ -1076,9 +1208,12 @@ type Loaded =
 export function WorkflowBuilder({
   artifactId,
   saveDelayMs = 2000,
+  viewerId = null,
 }: {
   artifactId: string;
   saveDelayMs?: number;
+  /** The signed-in user, whose folded frames the page keeps (R1.7). */
+  viewerId?: string | null;
 }) {
   const [loaded, setLoaded] = useState<Loaded>({ status: "loading" });
   const load = useCallback(async () => {
@@ -1140,6 +1275,7 @@ export function WorkflowBuilder({
           types={loaded.types}
           draft={loaded.draft}
           saveDelayMs={saveDelayMs}
+          viewerId={viewerId}
         />
       );
   }

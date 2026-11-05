@@ -6,7 +6,7 @@ export {
   type CanvasColour,
   type CanvasGroup,
 } from "./theme";
-export { CANVAS_ICONS } from "./canvas-icons";
+export { CANVAS_ICONS, CANVAS_MARKS, type CanvasMark } from "./canvas-icons";
 export { ThemeProvider } from "./theme-provider";
 export { AppShell, type AppShellItem, type AppShellProps } from "./app-shell";
 export {

@@ -1,5 +1,6 @@
 import {
   addableFixedPorts,
+  isFrame,
   isInside,
   laneAt,
   locate,
@@ -50,6 +51,12 @@ function shortLaneLabel(tree: WorkflowTree, ref: LaneRef): string {
   return lane ? laneLabel(lane) : ref.port;
 }
 
+/** A word the card carries with its icon, never the icon alone (BU14). */
+export interface CardMark {
+  key: "subworkflow" | "rule";
+  text: string;
+}
+
 export interface CardView {
   id: string;
   name: string;
@@ -58,6 +65,14 @@ export interface CardView {
   typeLabel: string;
   group: StepGroup;
   summary: string;
+  /** The card's second line in place of "type · summary": a loop frame's
+   * "Lặp lại khi … (tối đa N lần)". */
+  title: string | null;
+  /** A third line: who approves, or "Chờ Quy trình con xong". */
+  detail: { text: string; wait: boolean } | null;
+  marks: CardMark[];
+  /** A frame the viewer can fold (R1.7). */
+  frame: boolean;
   retry: number | null;
   timeout: number | null;
   onError: OnError | null;
@@ -90,19 +105,120 @@ function summary(node: StepNode, catalogue: Catalogue): string {
   return "";
 }
 
+/** A type's name without its version: `logic.loop@1` is `logic.loop`. */
+function typeName(type: string): string {
+  return type.split("@")[0] ?? type;
+}
+
+type TypeContent = Pick<CardView, "summary" | "title" | "detail" | "marks">;
+
+/**
+ * What a card of one W1 type says beyond its type and summary, chosen by the
+ * type's name (ticket 04: only a card's content is, never its shape): the
+ * approver card, the switch's `on` as stored, the "Quy trình con" mark and
+ * its wait, the loop frame's "Lặp lại khi …". Any other type, a type with a
+ * known block and a name the page does not know included, is the plain R1.8
+ * card.
+ */
+function typeContent(
+  node: StepNode,
+  config: Record<string, unknown>,
+): TypeContent | null {
+  switch (typeName(node.type)) {
+    case "logic.switch":
+      // Verbatim, as the server stores it: no CEL is shortened here.
+      return {
+        summary: typeof config.on === "string" ? config.on : "",
+        title: null,
+        detail: null,
+        marks: [],
+      };
+    case "human.approval":
+      return approvalContent(config);
+    case "flow.subworkflow":
+      return {
+        summary: typeof config.workflow === "string" ? config.workflow : "",
+        title: null,
+        detail: { text: bt("card.subworkflowWait"), wait: true },
+        marks: [{ key: "subworkflow", text: bt("card.subworkflow") }],
+      };
+    case "logic.loop": {
+      const condition =
+        typeof config.condition === "string" && config.condition !== ""
+          ? config.condition
+          : "…";
+      const n =
+        typeof config.max_iterations === "number" ? config.max_iterations : "N";
+      return {
+        summary: "",
+        title: bt("frame.loop", { condition, n }),
+        detail: null,
+        marks: [],
+      };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * The approver card (workflow-nodes R9.1, R12.1): who is assigned and the
+ * scope they must hold; "Cần cả N người duyệt" when every assignee must
+ * approve and the config names N ≥ 2 people, "Cần mọi người được giao duyệt"
+ * when every assignee must approve and who they are is known only at run time
+ * (an expression, or whoever holds the scope); no rule line otherwise.
+ */
+function approvalContent(config: Record<string, unknown>): TypeContent {
+  const scope =
+    typeof config.required_scope === "string" ? config.required_scope : "";
+  const assignees = config.assignees;
+  const people = Array.isArray(assignees)
+    ? assignees.filter((a): a is string => typeof a === "string")
+    : null;
+  const detail =
+    people !== null && people.length > 0
+      ? bt("card.approvers", { who: people.join(", ") })
+      : typeof assignees === "string" && assignees !== ""
+        ? bt("card.approversExpression", { expression: assignees })
+        : bt("card.approversScope");
+  const marks: CardMark[] = [];
+  if (config.approval_rule === "all") {
+    if (people !== null && people.length >= 2) {
+      marks.push({
+        key: "rule",
+        text: bt("card.ruleAllOf", { n: people.length }),
+      });
+    } else if (people === null || people.length === 0) {
+      marks.push({ key: "rule", text: bt("card.ruleAll") });
+    }
+  }
+  return {
+    summary: scope === "" ? "" : bt("card.scope", { scope }),
+    title: null,
+    detail: { text: detail, wait: false },
+    marks,
+  };
+}
+
 export function cardView(node: StepNode, catalogue: Catalogue): CardView {
   const spec = catalogue.get(node.type);
   const retry = isObject(node.rest.retry)
     ? node.rest.retry.max_attempts
     : undefined;
   const onError = node.rest.on_error;
+  const config = isObject(node.rest.config) ? node.rest.config : {};
+  const content = node.known ? typeContent(node, config) : null;
   return {
     id: node.id,
     name: stepName(node, catalogue),
     known: node.known,
     typeLabel: spec?.label_vi ?? node.type,
     group: stepGroup(node.type),
-    summary: node.known ? summary(node, catalogue) : "",
+    summary: content?.summary ?? (node.known ? summary(node, catalogue) : ""),
+    title: content?.title ?? null,
+    detail: content?.detail ?? null,
+    marks: content?.marks ?? [],
+    frame: isFrame(node),
     retry: typeof retry === "number" && retry > 1 ? retry : null,
     timeout:
       typeof node.rest.timeout_s === "number" ? node.rest.timeout_s : null,
@@ -132,6 +248,11 @@ export type MenuKey =
   | "move"
   | "addLane"
   | "removeLane"
+  | `addPort:${string}`
+  | `removePort:${string}`
+  | "fold"
+  | "unfold"
+  | "removeBranch"
   | "delete"
   | "copyRef";
 
@@ -144,9 +265,16 @@ export interface MenuEntry {
 /**
  * A step's "…" menu. A step whose type the catalogue lacks has only "Sao
  * chép tham chiếu": the page cannot tell which of its config's keys hold
- * steps, so it neither moves nor deletes it.
+ * steps, so it neither moves nor deletes it. A keyed type adds and removes
+ * its entries ("Thêm nhánh", "Bỏ nhánh…"); a type with an optional fixed lane
+ * names it ("Thêm làn «Đã đủ N lần»", "Bỏ làn «Đã đủ N lần»"); a frame folds
+ * and opens from here too, the keyboard's way to it (R1.7, R2.5).
  */
-export function stepMenu(node: StepNode, catalogue: Catalogue): MenuEntry[] {
+export function stepMenu(
+  node: StepNode,
+  catalogue: Catalogue,
+  folded = false,
+): MenuEntry[] {
   const copy: MenuEntry = { key: "copyRef", label: bt("menu.copyRef") };
   if (!node.known) return [copy];
   const spec = catalogue.get(node.type);
@@ -155,17 +283,43 @@ export function stepMenu(node: StepNode, catalogue: Catalogue): MenuEntry[] {
     { key: "addAfter", label: bt("menu.addAfter") },
     { key: "move", label: bt("menu.move") },
   ];
-  if (
-    spec?.ports.kind === "keyed" ||
-    addableFixedPorts(node, catalogue).length > 0
-  ) {
-    entries.push({ key: "addLane", label: bt("menu.addLane") });
+  if (isFrame(node)) {
+    entries.push(
+      folded
+        ? { key: "unfold", label: bt("menu.unfold") }
+        : { key: "fold", label: bt("menu.fold") },
+    );
   }
-  if (node.lanes.some((l) => l.removable)) {
-    entries.push({ key: "removeLane", label: bt("menu.removeLane") });
+  if (spec?.ports.kind === "keyed") {
+    entries.push({ key: "addLane", label: bt("menu.addLane") });
+    if (node.lanes.some((l) => l.kind === "keyed")) {
+      entries.push({ key: "removeLane", label: bt("menu.removeLane") });
+    }
+  } else {
+    for (const port of addableFixedPorts(node, catalogue)) {
+      entries.push({
+        key: `addPort:${port.name}`,
+        label: bt("menu.addPort", { lane: port.label_vi }),
+      });
+    }
+    for (const lane of node.lanes) {
+      if (lane.kind !== "fixed" || !lane.removable) continue;
+      entries.push({
+        key: `removePort:${lane.port}`,
+        label: bt("menu.removePort", { lane: lane.label }),
+      });
+    }
   }
   entries.push({ key: "delete", label: bt("menu.delete"), danger: true }, copy);
   return entries;
+}
+
+/** A lane head's menu: "Bỏ nhánh" on a keyed entry (a `cases` key, a
+ * `branches` name), through the tree's lane operation; none elsewhere. */
+export function laneMenu(lane: Pick<LaneNode, "kind">): MenuEntry[] {
+  return lane.kind === "keyed"
+    ? [{ key: "removeBranch", label: bt("menu.removeBranch"), danger: true }]
+    : [];
 }
 
 /** One target of "Di chuyển…": a slot's value, or a lane's group. */

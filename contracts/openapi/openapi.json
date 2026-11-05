@@ -4174,13 +4174,31 @@
       },
       "NodeTypeView": {
         "properties": {
+          "block": {
+            "enum": [
+              "none",
+              "choice",
+              "parallel",
+              "loop"
+            ],
+            "title": "Block",
+            "type": "string"
+          },
           "config_schema": {
             "additionalProperties": true,
             "title": "Config Schema",
             "type": "object"
           },
+          "ends_run": {
+            "title": "Ends Run",
+            "type": "boolean"
+          },
           "error": {
             "$ref": "#/components/schemas/StepErrorView"
+          },
+          "exits_loop": {
+            "title": "Exits Loop",
+            "type": "boolean"
           },
           "label_vi": {
             "title": "Label Vi",
@@ -4238,6 +4256,9 @@
           "output",
           "error",
           "ports",
+          "block",
+          "ends_run",
+          "exits_loop",
           "side_effect_level"
         ],
         "title": "NodeTypeView",
