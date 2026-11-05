@@ -37,6 +37,7 @@ __all__ = [
     "DW_ATTRIBUTES",
     "DW_EGRESS_REQUEST",
     "DW_KNOWLEDGE_RERANK",
+    "DW_RESIDENCY_CHECK",
     "DW_SPAN_NAMES",
     "GENAI_ATTRIBUTES",
     "GENAI_OPERATIONS",
@@ -77,7 +78,13 @@ DW_KNOWLEDGE_RERANK: Final = "dw.knowledge.rerank"
 DW_EGRESS_REQUEST: Final = "dw.egress.request"
 # One attempt of a Studio step, inside the node wrapper (workflow-engine R4.9).
 DW_NODE: Final = "dw.node"
-DW_SPAN_NAMES: Final = frozenset({DW_KNOWLEDGE_RERANK, DW_EGRESS_REQUEST, DW_NODE})
+# One check of `ResidencyGate` (compliance-pdpl R2.1; ADR-0123 decision 6). The
+# kernel names it as `dw_kernel.residency.RESIDENCY_SPAN`, which cannot import
+# this module; `test_residency_gate.py` holds the two to one value.
+DW_RESIDENCY_CHECK: Final = "dw.residency.check"
+DW_SPAN_NAMES: Final = frozenset(
+    {DW_KNOWLEDGE_RERANK, DW_EGRESS_REQUEST, DW_NODE, DW_RESIDENCY_CHECK}
+)
 
 
 def chat_span_name(model: str) -> str:
@@ -122,6 +129,10 @@ OTEL_CORE_ATTRIBUTES: Final = frozenset({"exception.type"})
 DW_ATTRIBUTES: Final = frozenset(
     {
         "dw.channel",
+        # Where a model call was processed and who processed it (ADR-0123
+        # decisions 5, 6): `vn`/`foreign` and a processor's short name, set by
+        # configuration, never by a run.
+        "dw.data_location",
         # Why an egress call leaves: a value from a set (connections-and-vault R3).
         "dw.egress.purpose",
         "dw.graph_version",
@@ -131,6 +142,7 @@ DW_ATTRIBUTES: Final = frozenset(
         "dw.model_profile",
         "dw.output_tokens",
         "dw.policy_version",
+        "dw.processor",
         "dw.prompt_bundle_version",
         "dw.prompt_id",
         "dw.prompt_version",
@@ -138,6 +150,10 @@ DW_ATTRIBUTES: Final = frozenset(
         "dw.release_manifest_ref",
         "dw.rerank.candidates",
         "dw.rerank.top_k",
+        # Whether the gate admitted the destination: a boolean.
+        "dw.residency.admitted",
+        # The run's data route class: one of three values (ADR-0123 decision 3).
+        "dw.route_class",
         "dw.run_id",
         # live, test or simulate (tenant-config R4.3): a value from a set.
         "dw.run_mode",

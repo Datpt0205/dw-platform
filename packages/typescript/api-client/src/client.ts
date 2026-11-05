@@ -20,11 +20,13 @@ import {
   adminWorkspaceSchema,
   adminTenantSchema,
   adminSodRuleSchema,
+  dataRouteClassSchema,
   inboxSchema,
   hierarchyMemberSchema,
   type AdminWorkspace,
   type AdminTenant,
   type AutonomyLevel,
+  type DataRouteClass,
   type AdminSodRule,
   type Inbox,
   type HierarchyMember,
@@ -589,7 +591,12 @@ export class ApiClient {
   renameWorkspace(
     workspaceId: string,
     name: string,
-  ): Promise<{ workspace_id: string; slug: string; name: string }> {
+  ): Promise<{
+    workspace_id: string;
+    slug: string;
+    name: string;
+    data_route_class: DataRouteClass | null;
+  }> {
     return this.request(
       "PATCH",
       `/api/v1/admin/workspaces/${workspaceId}`,
@@ -597,6 +604,8 @@ export class ApiClient {
         workspace_id: z.string(),
         slug: z.string(),
         name: z.string(),
+        // Null inherits the company's (compliance-pdpl R2.4).
+        data_route_class: dataRouteClassSchema.nullable(),
       }),
       { body: { name } },
     );
@@ -620,6 +629,7 @@ export class ApiClient {
     locale?: string;
     record_visibility?: "open" | "restricted";
     max_autonomy_level?: AutonomyLevel;
+    data_route_class?: DataRouteClass;
   }): Promise<AdminTenant> {
     return this.request("PATCH", "/api/v1/admin/tenant", adminTenantSchema, {
       body: input,

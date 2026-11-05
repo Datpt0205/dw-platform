@@ -220,6 +220,11 @@ class QueuedRun:
     input: Mapping[str, Any]
     release_manifest_ref: str
     pinned_results: Mapping[str, Any] | None = None
+    # The root version's own `route_class` (`dw.agent/v1`, agent-builder R1.6;
+    # `dw.workflow/v1` has none in W1): the run's class is the strictest of it,
+    # the tenant's and the workspace's, pinned where the row is written
+    # (compliance-pdpl R2.1).
+    version_route_class: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,7 +254,8 @@ class RunIntakeTx(RunManifestTx, Protocol):
 
     async def insert_queued_run(self, run: QueuedRun) -> bool:
         """`INSERT ... ON CONFLICT (tenant_id, request_key) DO NOTHING`; False
-        when another run already holds the key."""
+        when another run already holds the key. The row carries the run's
+        effective data route class, read in this transaction (R2.1)."""
         ...
 
 
@@ -271,6 +277,13 @@ def _run_as_mismatch(message: str) -> PermissionDeniedError:
 
 def _pinned_invalid(message: str) -> DomainError:
     return DomainError(message, details={"reason_code": PINNED_RESULT_INVALID})
+
+
+def _version_route_class(document: Mapping[str, Any]) -> str | None:
+    """The version's `route_class`, as written; a value outside the three
+    classes refuses the admission where the class is computed."""
+    value = document.get("route_class")
+    return None if value is None else str(value)
 
 
 def _pinned_shape(result: Any) -> bool:
@@ -466,6 +479,7 @@ class RunRequestService:
             pinned_results=(
                 None if request.pinned_results is None else dict(request.pinned_results)
             ),
+            version_route_class=_version_route_class(version.document),
         )
         if not await tx.insert_queued_run(run):
             # R3.6: a concurrent request with this key committed first.

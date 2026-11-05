@@ -82,6 +82,7 @@ from dw_kernel.errors import (
     PermissionDeniedError,
 )
 from dw_kernel.ports import UtcClock
+from dw_kernel.residency import ResidencyRefusedError
 from dw_observability.metrics import DW_NODE_FAILURE_TOTAL
 from dw_observability.semconv import DW_NODE
 from dw_observability.telemetry import TelemetryPort
@@ -404,7 +405,9 @@ class StudioNode:
             try:
                 async with asyncio.timeout(self.step.timeout_s):
                     answer = await self.body(self.step.config, inputs, doors)
-            except (GraphBubbleUp, RunHaltedError):
+            except (GraphBubbleUp, RunHaltedError, ResidencyRefusedError):
+                # A residency refusal ends the run `residency_refused`: a policy
+                # answer, never a retried or routed step (compliance-pdpl R2.2).
                 raise
             except TimeoutError:
                 return await self._timed_out(ctx.run, doors), None

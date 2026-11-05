@@ -52,6 +52,8 @@ from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.errors import TenantContextMissingError
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
+from dw_kernel.residency import ResidencyRefusedError
+from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
 
@@ -133,6 +135,8 @@ FREEZE = OpenRunControl()
 OFFERED: tuple[ToolDefinition, ...] = (READ, BOOM, GATED, ADMIN_ONLY)
 
 PROFILE_ID = "agent_test"
+# The tenant whose own `PROFILE_ID` has a foreign chat route.
+ABROAD_TENANT = uuid.UUID("00000000-0000-0000-0000-00000000a6b0")
 # Small enough that a looping agent reaches it in a handful of steps, so a test
 # can tell "the budget stopped it" from "recursion_limit stopped it".
 LOOP_CEILING_TOKENS = 60
@@ -154,21 +158,29 @@ def _models(
         # The chat route doubles as the summariser's in these tests, and
         # compaction refuses a summary route without an input budget.
         route["capabilities"] = {"max_input_tokens": summary_input_tokens}
-    profiles.register(
-        ModelProfile.model_validate(
+
+    def profile(chat: dict[str, object]) -> ModelProfile:
+        return ModelProfile.model_validate(
             {
                 "schema_version": "2.0",
                 "profile_id": PROFILE_ID,
                 "routing_policy_version": "1.0.0",
                 "structured_extraction": route,
                 "reasoning": route,
-                "chat": route,
+                "chat": chat,
                 "budgets": {
                     "max_input_tokens_per_run": ceiling_tokens,
                     "max_cost_usd_per_run": 100.0,
                 },
             }
         )
+
+    profiles.register(profile(route))
+    # One tenant's own profile sends abroad: what the residency gate refuses
+    # for a `vn_only` run (compliance-pdpl R2.2).
+    profiles.register(
+        profile({**route, "data_location": "foreign", "processor": "abroad"}),
+        tenant_id=ABROAD_TENANT,
     )
     # A Studio agent's run (`run_manifest_hash` set) reads what it pinned.
     return model_resolver(profiles, PROFILE_ID, pinned=pinned_default(profiles, PROFILE_ID))
@@ -209,6 +221,7 @@ def prompt_fields(
 def _spec(model: MockChatModel, budget: RunBudgetLedger | None = None) -> AgentSpec:
     registry, executor = _registry()
     return AgentSpec(
+        residency=run_gate(),
         model=model,
         offered=OFFERED,
         registry=registry,
@@ -500,8 +513,21 @@ async def _properties(middleware: list[AgentMiddleware[Any, Any]]) -> dict[str, 
     finally:
         FREEZE.reopen()
 
+    # A `vn_only` run whose chat route is foreign (compliance-pdpl R2.2): the
+    # model is never called and the turn ends with the gate's refusal.
+    abroad = MockChatModel(responses=[AIMessage(content="xong")], mock_reply="[mock]")
+    try:
+        await agent(abroad).ainvoke(
+            {"messages": [HumanMessage("x")]},
+            context=_own_run().model_copy(update={"tenant_id": ABROAD_TENANT}),
+        )
+        refused_abroad = False
+    except ResidencyRefusedError:
+        refused_abroad = not abroad.calls
+
     return {
         "frozen run refused": halted,
+        "foreign route refused": refused_abroad,
         "runaway stopped by budget": stopped_by == "budget",
         "builtin hidden": "write_file" not in view.bound_tool_names,
         "out-of-scope hidden": "crm__purge" not in view.bound_tool_names,
@@ -524,6 +550,7 @@ OWNS = (
     "one approval card per step",
     "failure survived",
     "frozen run refused",
+    "foreign route refused",
     "runaway stopped by budget",
 )
 

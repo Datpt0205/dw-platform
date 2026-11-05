@@ -6,6 +6,7 @@ Richer formats are read by the API parsers in ``api_parsers.py`` behind the same
 
 from __future__ import annotations
 
+from dw_kernel.residency import TenantRouteScope
 from dw_knowledge.ports import ParsedDocument
 
 _TEXT_TYPES = ("text/plain", "text/markdown")
@@ -20,7 +21,10 @@ class PlaintextParser:
         name = (filename or "").lower()
         return ct in _TEXT_TYPES or name.endswith(_TEXT_SUFFIXES)
 
-    async def parse(self, data: bytes, content_type: str, filename: str) -> ParsedDocument:
+    async def parse(
+        self, data: bytes, content_type: str, filename: str, *, scope: TenantRouteScope
+    ) -> ParsedDocument:
+        del scope  # decoded in process: nothing leaves
         warnings: list[str] = []
         try:
             text = data.decode("utf-8")

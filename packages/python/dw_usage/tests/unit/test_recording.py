@@ -26,6 +26,7 @@ from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import FixedClock, Uuid7Generator
 from dw_observability.metrics import DW_USAGE_UNPRICED_TOTAL
 from dw_observability.telemetry import RecordingTelemetry
+from dw_platform.testing.residency import run_gate
 from dw_usage.application.recorder import LedgerUsageRecorder
 from dw_usage.domain.events import UsageEvent
 from dw_usage.domain.pricing import PriceBook, price_book_from_document
@@ -138,6 +139,7 @@ def _gateway(
         price_book_version=book.version,
     )
     return RoutingModelGateway(
+        residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter or mock},  # type: ignore[dict-item]
@@ -175,7 +177,13 @@ async def test_one_chat_call_writes_one_attributed_record() -> None:
     expected = (event.input_tokens * Decimal(1) + event.output_tokens * Decimal(2)) / 10**6
     assert event.cost_usd == pytest.approx(expected)
     assert event.units == {"input_uncached": event.input_tokens, "output": event.output_tokens}
-    assert (event.data_route_class, event.data_location, event.processor) == (None, None, None)
+    # compliance-pdpl R2.1: the run's class and the admitted route's location
+    # and processor, set by the gateway after the gate.
+    assert (event.data_route_class, event.data_location, event.processor) == (
+        "vn_only",
+        "vn",
+        "mock",
+    )
     assert event.occurred_at == NOW
 
 

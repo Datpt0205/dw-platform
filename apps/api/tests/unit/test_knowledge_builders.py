@@ -17,9 +17,14 @@ from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_api.bootstrap.knowledge import build_embeddings, build_reranker
 from dw_api.settings import ApiSettings
 from dw_kernel.net_guard import OutboundUrlError
+from dw_kernel.residency import ResidencyGate
 from dw_knowledge.adapters.cohere_rerank import CohereCompatibleRerankAdapter
+from dw_platform.testing.residency import StaticRouteClasses
 
 pytestmark = pytest.mark.unit
+
+# Built, never asked here: the adapters' refusals are compliance-pdpl 03's tests.
+_GATE = ResidencyGate(classes=StaticRouteClasses({}))
 
 REPO_ROOT = Path(__file__).resolve().parents[4]
 
@@ -42,7 +47,7 @@ def _profiles() -> ModelResolver:
 
 
 def test_no_reranker_by_default() -> None:
-    assert build_reranker(_settings()) is None
+    assert build_reranker(_settings(), _GATE) is None
 
 
 def test_cohere_compatible_builds_the_hosted_adapter() -> None:
@@ -53,7 +58,8 @@ def test_cohere_compatible_builds_the_hosted_adapter() -> None:
             rerank_api_key="unit-test-key",
             rerank_model="bge-reranker-v2-m3",
             rerank_timeout_seconds=5,
-        )
+        ),
+        _GATE,
     )
     assert isinstance(reranker, CohereCompatibleRerankAdapter)
     assert reranker.base_url == "https://rerank.invalid/v1"
@@ -72,7 +78,7 @@ def test_cohere_compatible_without_url_or_key_is_refused(missing: dict[str, obje
     }
     settings = _settings(**(complete | missing))
     with pytest.raises(ConfigError):
-        build_reranker(settings)
+        build_reranker(settings, _GATE)
 
 
 _HOSTED: dict[str, object] = {
@@ -88,7 +94,7 @@ def test_a_base_url_the_client_cannot_use_is_refused_at_startup(url: str) -> Non
     # Accepted, each of these fails every call, and the gateway would answer
     # every search unranked with only a log line to say so.
     with pytest.raises(OutboundUrlError):
-        build_reranker(_settings(**_HOSTED, rerank_base_url=url))
+        build_reranker(_settings(**_HOSTED, rerank_base_url=url), _GATE)
 
 
 def test_a_deployed_reranker_is_refused_over_plain_http() -> None:
@@ -99,7 +105,7 @@ def test_a_deployed_reranker_is_refused_over_plain_http() -> None:
         outbound_allowed_hosts=["rerank.invalid"],
     )
     with pytest.raises(ConfigError) as raised:
-        build_reranker(settings)
+        build_reranker(settings, _GATE)
     assert raised.value.details == {"scheme": "http"}
 
 
@@ -110,27 +116,27 @@ def test_a_deployed_reranker_over_https_builds() -> None:
         rerank_base_url="https://rerank.invalid/v1",
         outbound_allowed_hosts=["rerank.invalid"],
     )
-    assert isinstance(build_reranker(settings), CohereCompatibleRerankAdapter)
+    assert isinstance(build_reranker(settings, _GATE), CohereCompatibleRerankAdapter)
 
 
 @pytest.mark.parametrize("provider", ["tei", "cohere"])
 def test_an_unknown_rerank_provider_is_refused(provider: str) -> None:
     with pytest.raises(ConfigError) as raised:
-        build_reranker(_settings(rerank_provider=provider))
+        build_reranker(_settings(rerank_provider=provider), _GATE)
     assert raised.value.details == {"rerank_provider": provider}
 
 
 @pytest.mark.parametrize("provider", ["tei", "openai"])
 def test_an_unknown_embedding_provider_is_refused_not_hashed(provider: str) -> None:
     with pytest.raises(ConfigError) as raised:
-        build_embeddings(_settings(embedding_provider=provider), _profiles())
+        build_embeddings(_settings(embedding_provider=provider), _profiles(), _GATE)
     assert raised.value.details == {"embedding_provider": provider}
 
 
 def test_hash_embeddings_still_build_locally() -> None:
     from dw_knowledge.adapters.hash_embedding import HashEmbeddingAdapter
 
-    assert isinstance(build_embeddings(_settings(), _profiles()), HashEmbeddingAdapter)
+    assert isinstance(build_embeddings(_settings(), _profiles(), _GATE), HashEmbeddingAdapter)
 
 
 def test_a_blank_env_line_means_the_default_as_it_does_in_compose(

@@ -56,6 +56,7 @@ from dw_connectors.adapters.zalo_link import link_help
 from dw_connectors.inbound import ChannelCommandRegistry, InboundRouter
 from dw_connectors.ports import ChatSenderPort
 from dw_kernel.ports import IdGenerator, SystemClock, UtcClock, Uuid7Generator
+from dw_kernel.residency import ResidencyGate
 from dw_knowledge.adapters.evidence_store import SqlEvidenceStore
 from dw_knowledge.retention import SqlKnowledgeRetention
 from dw_memory.policy import MemoryWritePolicy
@@ -155,6 +156,7 @@ from dw_worker.composition import (
     build_feedback_bucket,
     build_ingest_components,
     build_object_storage,
+    build_residency_gate,
     build_vector_index,
     build_wflite_runtime,
 )
@@ -222,7 +224,9 @@ def _build_worker_telemetry(settings: WorkerSettings) -> TelemetryPort:
     )
 
 
-def _build_memory_vectors(settings: WorkerSettings) -> QdrantMemoryRanker | None:
+def _build_memory_vectors(
+    settings: WorkerSettings, residency: ResidencyGate
+) -> QdrantMemoryRanker | None:
     """The memory ranker's store: written by the outbox handler, purged by
     supersession, retention and offboarding. One instance for all four, so
     the collection that is written is the collection that is purged.
@@ -237,7 +241,7 @@ def _build_memory_vectors(settings: WorkerSettings) -> QdrantMemoryRanker | None
 
     return QdrantMemoryRanker(
         client=AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key),
-        embedder=build_embeddings(settings),
+        embedder=build_embeddings(settings, residency),
     )
 
 
@@ -557,7 +561,7 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         # Absent without Qdrant, and absent is survivable: the memory is stored
         # and recalled either way, it simply sorts with the ones nothing has an
         # opinion about — and there are no points to purge.
-        memory_vectors = _build_memory_vectors(settings)
+        memory_vectors = _build_memory_vectors(settings, build_residency_gate(sessions, telemetry))
         handlers: dict[str, EventHandler] = dict(
             memory_handlers(
                 MemoryService(

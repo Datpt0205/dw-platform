@@ -15,7 +15,6 @@ from langchain_core.runnables import RunnableConfig
 from dw_agent_runtime.adapters.chat_model import MockChatModel
 from dw_agent_runtime.adapters.langchain_usage import (
     LangchainUsageMeter,
-    metered_invoke,
     usage_run_context,
 )
 from dw_agent_runtime.contracts import RunContext
@@ -69,44 +68,34 @@ async def test_a_tracked_call_lands_in_the_ledger_priced_by_the_route() -> None:
     recorder = _Recorder()
     meter = LangchainUsageMeter(models=_Models(), recorder=recorder, pricing=_BOOK)  # type: ignore[arg-type]
     model = MockChatModel(responses=[AIMessage(content="x" * 400)], mock_reply="ok")
+    run_context = usage_run_context(_context(), worker_id="sales_crm.stakeholder_digest")
 
-    answer = await metered_invoke(
-        model,
-        [{"role": "user", "content": "y" * 400}],
-        meter=meter,
-        context=_context(),
-        worker_id="sales_crm.stakeholder_digest",
+    async with meter.track(
+        run_context,
         profile_id="gateway",
         task="roster_digest",
         prompt_id="sales_crm.stakeholder_digest",
         prompt_version="1.1.0",
-        timeout_seconds=5.0,
-    )
+    ) as callbacks:
+        answer = await model.ainvoke(
+            [{"role": "user", "content": "y" * 400}],
+            config=RunnableConfig(callbacks=list(callbacks)),
+        )
     assert isinstance(answer, AIMessage)
     assert len(recorder.rows) == 1
-    run_context, request, usage = recorder.rows[0]
-    assert run_context.worker_id == "sales_crm.stakeholder_digest"
+    recorded_run, request, usage = recorder.rows[0]
+    assert recorded_run.worker_id == "sales_crm.stakeholder_digest"
     assert request.task == "roster_digest" and request.prompt_id == "sales_crm.stakeholder_digest"
     # The mock speaks ~4 chars per token: 400-char turns become ~100 tokens.
     assert usage.input_tokens == 100 and usage.output_tokens == 100
     assert usage.cost_usd == pytest.approx((100 * 0.20 + 100 * 1.20) / 1_000_000)
-
-
-async def test_without_a_meter_the_call_still_answers_and_nothing_records() -> None:
-    model = MockChatModel(responses=[], mock_reply="ok")
-    answer = await metered_invoke(
-        model,
-        [{"role": "user", "content": "hi"}],
-        meter=None,
-        context=_context(),
-        worker_id="x",
-        profile_id="gateway",
-        task="t",
-        prompt_id="p",
-        prompt_version="1.0.0",
-        timeout_seconds=5.0,
+    # compliance-pdpl R2.1: the run's class and the route's location and
+    # processor reach the ledger row.
+    assert (usage.data_route_class, usage.data_location, usage.processor) == (
+        "vn_only",
+        "vn",
+        "mock",
     )
-    assert isinstance(answer, AIMessage)
 
 
 async def test_usage_survives_the_block_raising() -> None:

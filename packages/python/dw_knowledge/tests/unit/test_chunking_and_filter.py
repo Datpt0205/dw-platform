@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_kernel.errors import InfrastructureError
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
+from dw_kernel.residency import TenantRouteScope
 from dw_knowledge.adapters.memory_index import InMemoryVectorIndexAdapter
 from dw_knowledge.chunking import chunk_text
 from dw_knowledge.contracts import SearchQuery
@@ -128,7 +129,10 @@ class FakeEmbedding:
     def dimension(self) -> int:
         return 4
 
-    async def embed(self, texts):
+    scopes: list[TenantRouteScope] = field(default_factory=list)
+
+    async def embed(self, texts, *, scope: TenantRouteScope):
+        self.scopes.append(scope)
         return [[1.0, 0.0, 0.0, 0.0] for _ in texts]
 
 
@@ -289,7 +293,12 @@ class ReversingReranker:
     """Ranks the vector order backwards, so its effect is visible."""
 
     async def rerank(
-        self, query: str, candidates: Sequence[RerankCandidate], top_k: int
+        self,
+        query: str,
+        candidates: Sequence[RerankCandidate],
+        top_k: int,
+        *,
+        scope: TenantRouteScope,
     ) -> list[RerankResult]:
         return [RerankResult(id=c.id, score=0.8) for c in reversed(candidates)][:top_k]
 
@@ -299,7 +308,12 @@ class DownReranker:
     calls: int = 0
 
     async def rerank(
-        self, query: str, candidates: Sequence[RerankCandidate], top_k: int
+        self,
+        query: str,
+        candidates: Sequence[RerankCandidate],
+        top_k: int,
+        *,
+        scope: TenantRouteScope,
     ) -> list[RerankResult]:
         self.calls += 1
         raise InfrastructureError(

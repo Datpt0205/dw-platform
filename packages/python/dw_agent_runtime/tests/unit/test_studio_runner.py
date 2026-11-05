@@ -33,6 +33,7 @@ from dw_agent_runtime.testing.studio_runs import ScriptedDoor, StudioHarness, do
 from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_agent_runtime.wflite.compile import COMPILER_VERSION
 from dw_agent_runtime.wflite.node_wrapper import StudioRunPorts
+from dw_kernel.residency import ResidencyRefusedError
 
 pytestmark = pytest.mark.unit
 
@@ -323,3 +324,26 @@ async def test_a_kill_at_the_node_head_cancels_the_run_before_any_door() -> None
     assert status == RunStatus.CANCELLED
     assert store.finished == [("cancelled", {"code": "artifact_killed", "door": "node"})]
     assert door.calls == []
+
+
+# ---- compliance-pdpl 03: the data route ---------------------------------------------
+
+
+async def test_a_studio_run_carries_the_class_its_row_pinned() -> None:
+    """R2.1: read from the row at the take, never computed again."""
+    h, _ = harness()
+    store = FakeTake(studio_run(two_sends(), h, data_route_class="cross_border_minimised"))
+    await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    assert {c.route_class for c, _ in h.run_control.contexts} == {"cross_border_minimised"}
+
+
+async def test_a_residency_refusal_fails_the_run_and_is_never_retried_or_routed() -> None:
+    """R2.2: `failed` with `residency_refused`, one attempt, no later step: a
+    policy answer is not a step's error for its retry or its error lane."""
+    h, door = harness()
+    door.script = [ResidencyRefusedError("not here")]
+    store = FakeTake(studio_run(two_sends(), h))
+    status = await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    assert status == RunStatus.FAILED
+    assert store.finished == [("failed", {"code": "residency_refused"})]
+    assert len(door.calls) == 1

@@ -24,6 +24,7 @@ from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest, Output
 from dw_agent_runtime.run_control import RunControlDoor
 from dw_kernel.errors import InfrastructureError, NotFoundError, PriceNotFoundError
 from dw_kernel.ports import SystemClock, UtcClock
+from dw_kernel.residency import ResidencyGate, ResidencyRefusedError
 
 _LOG = logging.getLogger("dw_agent_runtime.model")
 
@@ -52,6 +53,13 @@ class ModelUsage:
     cost_source: CostSource | None = None
     price_book_version: str | None = None
     price_entry_ids: tuple[str, ...] = ()
+    # The run's data route class and where the call was processed, set by the
+    # door that sent it, after `ResidencyGate` admitted the route
+    # (compliance-pdpl R2.1; ADR-0123 decision 6). None until a door sets them,
+    # and the ledger then records NULL, never `vn_only`.
+    data_route_class: str | None = None
+    data_location: str | None = None
+    processor: str | None = None
 
 
 class ModelProviderAdapter(Protocol):
@@ -117,6 +125,11 @@ class RoutingModelGateway:
     # call, before the prompt is rendered; then the residency gate and the
     # limits. Injected, never defaulted, as every door's is.
     run_control: RunControlPort
+    # The data route (compliance-pdpl R2.2, R2.3; ADR-0123 decision 4): every
+    # route this call may be sent to is checked before the first send, and the
+    # refused ones leave the attempt list, so a failing `vn` route never falls
+    # through to a `foreign` fallback.
+    residency: ResidencyGate
     # Per-run ceiling from the profile's own `budgets`. Enforced here because
     # this is the only place every model call passes through.
     budget: RunBudgetLedger = field(default_factory=RunBudgetLedger)
@@ -182,6 +195,10 @@ class RoutingModelGateway:
         )
         profile_id = resolved.profile_id
         request = request.model_copy(update={"model_profile": profile_id})
+        # Before the limits: a refused call holds nothing and is recorded
+        # nowhere, since none happened (R2.2).
+        every_attempt = self._attempts(resolved)
+        attempts = await self.residency.admitted(run_context, every_attempt)
         # Checked before the call, not after: the point is to not make it.
         self.budget.check(run_context.run_id, resolved.budgets, task=request.task)
 
@@ -191,7 +208,7 @@ class RoutingModelGateway:
             else output_type.model_json_schema()
         )
         last_error: Exception | None = None
-        for index, route in enumerate(self._attempts(resolved)):
+        for index, route in enumerate(attempts):
             adapter = self.adapters.get(route.provider)
             if adapter is None:
                 if index == 0:
@@ -211,7 +228,13 @@ class RoutingModelGateway:
             except InfrastructureError as exc:
                 last_error = exc
                 continue
-            usage = replace(usage, latency_ms=(perf_counter() - started) * 1000)
+            usage = replace(
+                usage,
+                latency_ms=(perf_counter() - started) * 1000,
+                data_route_class=run_context.route_class,
+                data_location=route.data_location,
+                processor=route.processor,
+            )
             if not usage.reported:
                 usage = _estimated(usage, prompt, raw)
             priced = self._priced(route, usage, run_context)
@@ -231,6 +254,14 @@ class RoutingModelGateway:
                 last_error.__cause__ = exc
                 continue
         assert last_error is not None  # attempts list is never empty
+        if len(attempts) < len(every_attempt):
+            # Every route the gate admitted failed, and the one left to fall
+            # back on is one the run's class refuses: the run ends refused, not
+            # on the foreign route (R2.2), and says so.
+            raise ResidencyRefusedError(
+                "Lộ trình dữ liệu của công ty không cho phép chuyển sang tuyến dự phòng",
+                details={"reason": "fallback_refused", "route_class": run_context.route_class},
+            ) from last_error
         raise last_error
 
     def _priced(self, route: ModelRoute, usage: ModelUsage, run_context: RunContext) -> ModelUsage:

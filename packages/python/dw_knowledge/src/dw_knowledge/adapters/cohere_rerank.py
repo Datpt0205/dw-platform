@@ -20,6 +20,7 @@ from dataclasses import dataclass
 import httpx
 
 from dw_kernel.errors import InfrastructureError
+from dw_kernel.residency import Destination, ResidencyGate, TenantRouteScope
 from dw_knowledge.ports import RerankCandidate, RerankResult
 
 
@@ -30,6 +31,11 @@ class CohereCompatibleRerankAdapter:
     base_url: str
     api_key: str
     model: str
+    # The gate, and where the rerank endpoint processes, declared in the
+    # process settings beside its URL with no default (compliance-pdpl R2.3;
+    # ADR-0123, Amendments 2026-11-04).
+    residency: ResidencyGate
+    destination: Destination
     # The whole call's deadline, not httpx's per-phase one: a search waits on it.
     timeout: float = 10.0
     # None is httpx's own network transport; a probe or a test passes its own.
@@ -37,10 +43,18 @@ class CohereCompatibleRerankAdapter:
     transport: httpx.AsyncBaseTransport | None = None
 
     async def rerank(
-        self, query: str, candidates: Sequence[RerankCandidate], top_k: int
+        self,
+        query: str,
+        candidates: Sequence[RerankCandidate],
+        top_k: int,
+        *,
+        scope: TenantRouteScope,
     ) -> list[RerankResult]:
         if not candidates or top_k <= 0:
             return []
+        # A refusal is no `InfrastructureError`: the search refuses, rather than
+        # quietly keeping the vector order after a send that never happened.
+        await self.residency.check(scope, self.destination)
         top_n = min(top_k, len(candidates))
         payload = {
             "model": self.model,

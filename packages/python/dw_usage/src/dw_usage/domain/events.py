@@ -15,6 +15,9 @@ from decimal import Decimal
 from typing import Final
 from uuid import UUID
 
+from dw_kernel.residency import DATA_LOCATIONS as KERNEL_DATA_LOCATIONS
+from dw_kernel.residency import ROUTE_CLASSES
+
 __all__ = [
     "ACTOR_KINDS",
     "ARTIFACT_KINDS",
@@ -56,8 +59,9 @@ PAYERS: Final = frozenset({"platform", "tenant"})
 ACTOR_KINDS: Final = frozenset({"user", "service", "system"})
 ARTIFACT_KINDS: Final = frozenset({"agent", "workflow"})
 COST_SOURCES: Final = frozenset({"computed", "provider_reported", "estimated", "unpriced"})
-DATA_ROUTE_CLASSES: Final = frozenset({"vn_only", "cross_border_minimised", "cross_border_full"})
-DATA_LOCATIONS: Final = frozenset({"vn", "foreign"})
+# The kernel owns both lists (ADR-0123): the gate reads them, so does this row.
+DATA_ROUTE_CLASSES: Final = frozenset(ROUTE_CLASSES)
+DATA_LOCATIONS: Final = frozenset(KERNEL_DATA_LOCATIONS)
 
 
 def _one_of(name: str, value: str | None, allowed: frozenset[str], *, nullable: bool) -> None:
@@ -72,9 +76,9 @@ class UsageEvent:
     """One row of the ledger. `id` and `occurred_at` are minted once, before the
     first attempt to settle, and travel together on every retry (R3.2, M2).
 
-    The route columns are NULL until compliance-pdpl/03 writes them from
-    `ResidencyGate`: NULL means the call did not pass the gate, never
-    `vn_only`.
+    The route columns are the sending door's, written after `ResidencyGate`
+    admitted the route (compliance-pdpl R2.1): NULL means no door set them,
+    never `vn_only`.
     """
 
     id: UUID

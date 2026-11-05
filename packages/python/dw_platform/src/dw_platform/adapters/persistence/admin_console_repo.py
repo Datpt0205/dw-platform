@@ -16,14 +16,16 @@ import sqlalchemy as sa
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from dw_kernel.errors import ConflictError
+from dw_kernel.errors import ConflictError, NotFoundError
 from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
+from dw_platform.adapters.persistence.residency import read_route_classes
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.admin_console import (
     PermissionInfo,
     PermissionSetInfo,
+    RouteClassWrite,
     TenantSettings,
     UpdateTenantSettings,
     WorkspaceRef,
@@ -139,26 +141,85 @@ class SqlAdminConsoleRepository:
             await SqlAuditRepository(session).append(audit)
         return WorkspaceRef(workspace_id=workspace_id, slug=slug, name=name)
 
-    async def rename_workspace(
-        self, context: AccessContext, *, workspace_id: uuid.UUID, name: str, audit: AuditEvent
+    async def update_workspace(
+        self,
+        context: AccessContext,
+        *,
+        workspace_id: uuid.UUID,
+        name: str | None,
+        route_class: RouteClassWrite | None,
+        audit: AuditEvent | None,
     ) -> WorkspaceRef | None:
+        values: dict[str, object] = {}
+        if name is not None:
+            values["name"] = name
+        conditions = [
+            tables.workspaces.c.id == workspace_id,
+            tables.workspaces.c.tenant_id == context.tenant_id,
+        ]
+        if route_class is not None:
+            values["data_route_class"] = route_class.new
+            conditions.append(
+                tables.workspaces.c.data_route_class.is_(None)
+                if route_class.expected is None
+                else tables.workspaces.c.data_route_class == route_class.expected
+            )
+        returned = (
+            tables.workspaces.c.slug,
+            tables.workspaces.c.name,
+            tables.workspaces.c.data_route_class,
+        )
         scope = TenantScope.from_access_context(context)
         async with tenant_session(self.session_factory, scope) as session:
-            row = (
-                await session.execute(
-                    sa.update(tables.workspaces)
-                    .where(
-                        tables.workspaces.c.id == workspace_id,
-                        tables.workspaces.c.tenant_id == context.tenant_id,
+            if values:
+                row = (
+                    await session.execute(
+                        sa.update(tables.workspaces)
+                        .where(*conditions)
+                        .values(**values)
+                        .returning(*returned)
                     )
-                    .values(name=name)
-                    .returning(tables.workspaces.c.slug)
-                )
-            ).first()
+                ).first()
+                if (
+                    row is None
+                    and route_class is not None
+                    and await self._workspace_exists(session, context, workspace_id)
+                ):
+                    raise _route_class_moved()
+            else:
+                row = (await session.execute(sa.select(*returned).where(*conditions))).first()
             if row is None:
                 return None
-            await SqlAuditRepository(session).append(audit)
-        return WorkspaceRef(workspace_id=workspace_id, slug=row.slug, name=name)
+            for event in (audit, None if route_class is None else route_class.audit):
+                if event is not None:
+                    await SqlAuditRepository(session).append(event)
+        return WorkspaceRef(
+            workspace_id=workspace_id,
+            slug=row.slug,
+            name=row.name,
+            data_route_class=row.data_route_class,
+        )
+
+    async def _workspace_exists(
+        self, session: AsyncSession, context: AccessContext, workspace_id: uuid.UUID
+    ) -> bool:
+        found = await session.scalar(
+            sa.select(tables.workspaces.c.id).where(
+                tables.workspaces.c.id == workspace_id,
+                tables.workspaces.c.tenant_id == context.tenant_id,
+            )
+        )
+        return found is not None
+
+    async def route_classes(
+        self, context: AccessContext, workspace_id: uuid.UUID
+    ) -> tuple[str, str | None] | None:
+        scope = TenantScope.from_access_context(context)
+        async with tenant_session(self.session_factory, scope) as session:
+            try:
+                return await read_route_classes(session, context.tenant_id, workspace_id)
+            except NotFoundError:
+                return None
 
     async def archive_workspace(
         self, context: AccessContext, *, workspace_id: uuid.UUID, audit: AuditEvent
@@ -241,6 +302,7 @@ class SqlAdminConsoleRepository:
                         tables.tenants.c.max_autonomy_level,
                         tables.tenants.c.timezone,
                         tables.tenants.c.locale,
+                        tables.tenants.c.data_route_class,
                     ).where(tables.tenants.c.id == context.tenant_id)
                 )
             ).first()
@@ -249,9 +311,18 @@ class SqlAdminConsoleRepository:
         return _to_settings(row)
 
     async def update_tenant_settings(
-        self, context: AccessContext, *, command: UpdateTenantSettings, audit: AuditEvent
+        self,
+        context: AccessContext,
+        *,
+        command: UpdateTenantSettings,
+        audit: AuditEvent,
+        route_class: RouteClassWrite | None = None,
     ) -> TenantSettings | None:
         values: dict[str, object] = {}
+        conditions = [tables.tenants.c.id == context.tenant_id]
+        if route_class is not None:
+            values["data_route_class"] = route_class.new
+            conditions.append(tables.tenants.c.data_route_class == route_class.expected)
         if command.name is not None:
             values["name"] = command.name
         if command.timezone is not None:
@@ -262,13 +333,14 @@ class SqlAdminConsoleRepository:
             values["record_visibility"] = command.record_visibility
         if command.max_autonomy_level is not None:
             values["max_autonomy_level"] = command.max_autonomy_level
+        settings_changed = len(values) > (route_class is not None)
         scope = TenantScope.from_access_context(context)
         async with tenant_session(self.session_factory, scope) as session:
             if values:
                 row = (
                     await session.execute(
                         sa.update(tables.tenants)
-                        .where(tables.tenants.c.id == context.tenant_id)
+                        .where(*conditions)
                         .values(**values)
                         .returning(
                             tables.tenants.c.id,
@@ -279,6 +351,7 @@ class SqlAdminConsoleRepository:
                             tables.tenants.c.max_autonomy_level,
                             tables.tenants.c.timezone,
                             tables.tenants.c.locale,
+                            tables.tenants.c.data_route_class,
                         )
                     )
                 ).first()
@@ -294,13 +367,20 @@ class SqlAdminConsoleRepository:
                             tables.tenants.c.max_autonomy_level,
                             tables.tenants.c.timezone,
                             tables.tenants.c.locale,
+                            tables.tenants.c.data_route_class,
                         ).where(tables.tenants.c.id == context.tenant_id)
                     )
                 ).first()
             if row is None:
+                if route_class is not None:
+                    # The class moved since the service read it.
+                    raise _route_class_moved()
                 return None
-            if values:
+            if settings_changed:
                 await SqlAuditRepository(session).append(audit)
+            if route_class is not None:
+                # Same transaction: a failed audit leaves the class as it was (R2.8).
+                await SqlAuditRepository(session).append(route_class.audit)
         return _to_settings(row)
 
 
@@ -314,4 +394,12 @@ def _to_settings(row: sa.Row) -> TenantSettings:  # type: ignore[type-arg]
         timezone=row.timezone,
         locale=row.locale,
         max_autonomy_level=row.max_autonomy_level,
+        data_route_class=row.data_route_class,
+    )
+
+
+def _route_class_moved() -> ConflictError:
+    return ConflictError(
+        "the data route class changed while this request was being decided; try again",
+        details={"reason_code": "route_class_changed"},
     )

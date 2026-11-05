@@ -24,6 +24,7 @@ from dw_kernel.errors import InfrastructureError, NotFoundError, PermissionDenie
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.pagination import CursorPosition, Page, PageRequest, build_page
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_kernel.residency import TenantRouteScope
 from dw_knowledge import tables
 from dw_knowledge.chunking import structure_aware_chunks
 from dw_knowledge.contracts import (
@@ -373,7 +374,9 @@ class KnowledgeGateway:
         if leaves:
             # Embed the CONTEXTUAL text (breadcrumb prepended) for better retrieval;
             # store raw content for display/citation.
-            vectors = await self.embeddings.embed([leaf.contextual_text for leaf in leaves])
+            vectors = await self.embeddings.embed(
+                [leaf.contextual_text for leaf in leaves], scope=_route_scope(context)
+            )
             await self.vector_index.upsert(
                 [
                     IndexableChunk(
@@ -625,7 +628,10 @@ class KnowledgeGateway:
     # ------------------------------------------------------------ retrieval --
     async def search(self, query: SearchQuery, context: AccessContext) -> list[EvidenceChunk]:
         trusted_filter = build_trusted_filter(context, query.domain)
-        vector = (await self.embeddings.embed([query.text]))[0]
+        # The verified context's tenant and workspace, never the query's
+        # (compliance-pdpl R2.3): the gate reads their class under RLS.
+        scope = _route_scope(context)
+        vector = (await self.embeddings.embed([query.text], scope=scope))[0]
         # Over-fetch when a reranker is present: dense recall then cross-encoder precision.
         fetch_k = query.top_k * self.rerank_fetch_multiplier if self.reranker else query.top_k
         # The document narrowing goes to the index with the trusted filter, so
@@ -636,7 +642,7 @@ class KnowledgeGateway:
 
         rerank_scores: dict[str, float] = {}
         ranked = (
-            await _rerank_or_none(self.reranker, self.telemetry, query, hits)
+            await _rerank_or_none(self.reranker, self.telemetry, query, hits, scope)
             if self.reranker and hits
             else None
         )
@@ -673,8 +679,16 @@ class KnowledgeGateway:
         return evidence
 
 
+def _route_scope(context: AccessContext) -> TenantRouteScope:
+    return TenantRouteScope(tenant_id=context.tenant_id, workspace_id=context.workspace_id)
+
+
 async def _rerank_or_none(
-    reranker: RerankPort, telemetry: TelemetryPort, query: SearchQuery, hits: Sequence[VectorHit]
+    reranker: RerankPort,
+    telemetry: TelemetryPort,
+    query: SearchQuery,
+    hits: Sequence[VectorHit],
+    scope: TenantRouteScope,
 ) -> list[RerankResult] | None:
     """The reranker's order, or None to keep the vector order.
 
@@ -693,7 +707,7 @@ async def _rerank_or_none(
             DW_KNOWLEDGE_RERANK,
             {"dw.rerank.candidates": len(candidates), "dw.rerank.top_k": query.top_k},
         ):
-            return await reranker.rerank(query.text, candidates, query.top_k)
+            return await reranker.rerank(query.text, candidates, query.top_k, scope=scope)
     except InfrastructureError as exc:
         telemetry.add_metric(
             DW_RETRIEVAL_RERANK_SKIPPED_TOTAL,

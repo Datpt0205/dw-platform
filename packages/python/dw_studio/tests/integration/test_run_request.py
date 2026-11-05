@@ -1186,3 +1186,40 @@ async def test_r1_6_another_companys_profile_and_manifest_are_never_this_runs(
     with pytest.raises(ConfigError) as unread:
         await models.resolve(_studio_run(world.outsider, manifest_hash), None, "reasoning")
     assert unread.value.details["reason"] == "manifest_not_found"
+
+
+# ---- compliance-pdpl R2.1: the data route class, pinned at admission ------------
+
+
+async def test_the_door_pins_the_strictest_data_route_class_on_the_row(
+    door: RunRequestService, service: ArtifactService, migrator: AsyncEngine, world: RunWorld
+) -> None:
+    """Read in the transaction that writes the row: the tenant's class
+    tightened by the workspace's; the runner reads it back, never again."""
+    _, version_id = await a_sealed(service, migrator, world.runner, "live")
+    tenant, workspace = world.runner.tenant_id, world.runner.workspace_id
+    await rows(
+        migrator,
+        "UPDATE platform.tenants SET data_route_class = 'cross_border_full' WHERE id = :t",
+        t=tenant,
+    )
+    await rows(
+        migrator,
+        "UPDATE platform.workspaces SET data_route_class = 'cross_border_minimised' WHERE id = :w",
+        w=workspace,
+    )
+    try:
+        result = await door.request(ask(person(world.runner), version_id, "manual"))
+    finally:
+        await rows(
+            migrator,
+            "UPDATE platform.tenants SET data_route_class = 'vn_only' WHERE id = :t",
+            t=tenant,
+        )
+        await rows(
+            migrator,
+            "UPDATE platform.workspaces SET data_route_class = NULL WHERE id = :w",
+            w=workspace,
+        )
+
+    assert (await run_row(migrator, result.run_id)).data_route_class == "cross_border_minimised"

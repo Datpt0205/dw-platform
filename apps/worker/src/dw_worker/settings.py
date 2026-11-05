@@ -204,6 +204,23 @@ class WorkerSettings(BaseSettings):
     deepgram_api_key: str = Field(
         default="", validation_alias=AliasChoices("DW_WORKER_DEEPGRAM_API_KEY", "DEEPGRAM_API_KEY")
     )
+    # Where document extraction (the gateway at OPENAI_BASE_URL) and
+    # transcription (Deepgram) process what they are sent, and who processes
+    # it (compliance-pdpl R2.3; ADR-0123 decision 5). No default: undeclared is
+    # read as foreign by `ResidencyGate`, so a `vn_only` tenant's file is not
+    # sent until someone who knows says `vn`.
+    extraction_data_location: Literal["vn", "foreign"] | None = Field(
+        default=None, validation_alias=AliasChoices("DW_WORKER_EXTRACTION_DATA_LOCATION")
+    )
+    extraction_processor: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_WORKER_EXTRACTION_PROCESSOR")
+    )
+    transcription_data_location: Literal["vn", "foreign"] | None = Field(
+        default=None, validation_alias=AliasChoices("DW_WORKER_TRANSCRIPTION_DATA_LOCATION")
+    )
+    transcription_processor: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_WORKER_TRANSCRIPTION_PROCESSOR")
+    )
 
     # Jobs drained concurrently per tick. More than one because a single slow
     # file must not hold up every other tenant's uploads.
@@ -228,7 +245,14 @@ class WorkerSettings(BaseSettings):
     # transient fault survived twice, not a broken handler retried for ever.
     outbox_max_attempts: int = Field(default=3, ge=1, le=10)
 
-    @field_validator("embedding_provider", mode="before")
+    @field_validator(
+        "embedding_provider",
+        "extraction_data_location",
+        "extraction_processor",
+        "transcription_data_location",
+        "transcription_processor",
+        mode="before",
+    )
     @classmethod
     def _blank_means_unset(cls, value: object, info: ValidationInfo) -> object:
         """Compose reads ``${X:-default}``, so a blank line in .env is "unset" in

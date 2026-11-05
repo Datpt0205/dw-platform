@@ -31,6 +31,7 @@ import sqlalchemy as sa
 
 async def main() -> None:
     from dw_api import bootstrap
+    from dw_kernel.residency import TenantRouteScope
     from dw_knowledge import tables
     from dw_knowledge.adapters.qdrant_index import QdrantVectorIndexAdapter
     from dw_knowledge.ports import IndexableChunk
@@ -108,7 +109,14 @@ async def main() -> None:
                 ]
                 # One call: the adapter splits on the API's own ceilings, which
                 # it knows and this script should not have to.
-                vectors = await embeddings.embed(texts)
+                # The document's own tenant and workspace, from its row
+                # (compliance-pdpl R2.3): the gate reads their class.
+                vectors = await embeddings.embed(
+                    texts,
+                    scope=TenantRouteScope(
+                        tenant_id=document.tenant_id, workspace_id=document.workspace_id
+                    ),
+                )
 
                 await index.upsert(
                     [

@@ -325,15 +325,16 @@ class IngestJobStore:
                 )
             )
 
-    async def mark_failed(self, job: IngestJob, *, error: str) -> None:
+    async def mark_failed(self, job: IngestJob, *, error: str, terminal: bool = False) -> None:
         """Put the job back in the queue, or give up once its attempts run out.
 
         Failure used to be terminal on the first try, which made every transient
         provider timeout a permanently broken upload that only a human re-upload
-        could fix.
+        could fix. `terminal` is for a failure no retry changes: a refusal of
+        the data route (compliance-pdpl R2.3).
         """
         now = self.clock.now()
-        exhausted = job.attempts >= job.max_attempts
+        exhausted = terminal or job.attempts >= job.max_attempts
         values: dict[str, Any] = {
             "error": error[:_MAX_ERROR_CHARS],
             "lease_until": None,

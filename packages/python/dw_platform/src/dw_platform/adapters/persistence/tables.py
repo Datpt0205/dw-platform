@@ -33,6 +33,9 @@ tenants = sa.Table(
     sa.Column(
         "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
     ),
+    # The tenant's data route class (f97fd77ce9a0; ADR-0123 decision 3), one of
+    # `dw_kernel.residency.ROUTE_CLASSES` by CHECK.
+    sa.Column("data_route_class", sa.Text, nullable=False, server_default="vn_only"),
 )
 
 workspaces = sa.Table(
@@ -46,6 +49,8 @@ workspaces = sa.Table(
     sa.Column(
         "created_at", sa.TIMESTAMP(timezone=True), nullable=False, server_default=sa.text("now()")
     ),
+    # NULL inherits the tenant's class; a value only tightens it (f97fd77ce9a0).
+    sa.Column("data_route_class", sa.Text, nullable=True),
     sa.UniqueConstraint("tenant_id", "slug", name="uq_workspaces_tenant_slug"),
     # The target of every composite (tenant_id, workspace_id) foreign key (2997128da6ba).
     sa.UniqueConstraint("tenant_id", "id", name="uq_workspaces_tenant_id_id"),

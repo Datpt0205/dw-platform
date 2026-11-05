@@ -22,6 +22,7 @@ from typing import Any
 import httpx
 
 from dw_kernel.errors import InfrastructureError
+from dw_kernel.residency import Destination, ResidencyGate, TenantRouteScope
 from dw_knowledge.attachment_policy import AttachmentKind, AttachmentPolicy
 from dw_knowledge.ports import ParsedDocument
 
@@ -103,7 +104,10 @@ class PlaintextAttachmentParser:
     def supports(self, content_type: str, filename: str) -> bool:
         return self.policy.kind_of(filename) is AttachmentKind.PLAINTEXT
 
-    async def parse(self, data: bytes, content_type: str, filename: str) -> ParsedDocument:
+    async def parse(
+        self, data: bytes, content_type: str, filename: str, *, scope: TenantRouteScope
+    ) -> ParsedDocument:
+        del scope  # decoded in process: nothing leaves
         warnings: tuple[str, ...] = ()
         try:
             text = data.decode("utf-8")
@@ -121,6 +125,10 @@ class GatewayFileParser:
     api_key: str
     model: str
     policy: AttachmentPolicy
+    # The gate, and where the extraction endpoint processes, declared in the
+    # worker's settings beside its URL (compliance-pdpl R2.3).
+    residency: ResidencyGate
+    destination: Destination
     timeout: float = _EXTRACTION_TIMEOUT
 
     def supports(self, content_type: str, filename: str) -> bool:
@@ -129,7 +137,11 @@ class GatewayFileParser:
             AttachmentKind.IMAGE,
         )
 
-    async def parse(self, data: bytes, content_type: str, filename: str) -> ParsedDocument:
+    async def parse(
+        self, data: bytes, content_type: str, filename: str, *, scope: TenantRouteScope
+    ) -> ParsedDocument:
+        # Before the file is read into a request: a refused scope sends nothing.
+        await self.residency.check(scope, self.destination)
         kind = self.policy.kind_of(filename)
         encoded = base64.b64encode(data).decode("ascii")
         mime = _mime_for(filename)
@@ -204,12 +216,19 @@ class DeepgramTranscriptParser:
 
     api_key: str
     policy: AttachmentPolicy
+    # The gate, and where `DEEPGRAM_URL` processes, declared in the worker's
+    # settings with no default: undeclared is foreign (compliance-pdpl R2.3).
+    residency: ResidencyGate
+    destination: Destination
     timeout: float = _TRANSCRIPTION_TIMEOUT
 
     def supports(self, content_type: str, filename: str) -> bool:
         return self.policy.kind_of(filename) is AttachmentKind.AUDIO
 
-    async def parse(self, data: bytes, content_type: str, filename: str) -> ParsedDocument:
+    async def parse(
+        self, data: bytes, content_type: str, filename: str, *, scope: TenantRouteScope
+    ) -> ParsedDocument:
+        await self.residency.check(scope, self.destination)
         params = {
             "model": self.policy.transcription_model,
             "language": self.policy.transcription_language,

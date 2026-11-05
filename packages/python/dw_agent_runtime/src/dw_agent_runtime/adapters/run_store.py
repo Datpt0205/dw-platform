@@ -25,7 +25,9 @@ from dw_agent_runtime.adapters.runtime_tables import worker_runs
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
 from dw_kernel.autonomy import FAIL_CLOSED_LEVEL, AutonomyLevel
 from dw_kernel.errors import ConflictError, NotFoundError
+from dw_kernel.residency import RouteClass, effective_route_class, parse_route_class
 from dw_kernel.run_mode import RunMode
+from dw_platform.adapters.persistence.residency import read_route_classes
 
 # Migration 0015. Matched by name so an unrelated constraint violation stays a
 # bug report rather than being reported to the user as "already in flight".
@@ -139,6 +141,10 @@ class RunRecord:
     # The Studio component the run runs (workflow-engine R3.1); None for a run
     # of a code graph. A resume carries it, so its doors ask about its kill.
     artifact_id: uuid.UUID | None = None
+    # The data route class pinned at admission (compliance-pdpl R2.1): a resume
+    # reads it from here and never computes it again. A row admitted before
+    # the column existed has none, read as `vn_only`, the narrowest.
+    data_route_class: RouteClass = "vn_only"
 
 
 def resume_context(record: RunRecord, *, tenant_id: uuid.UUID, channel: str) -> RunContext:
@@ -183,6 +189,9 @@ def resume_context(record: RunRecord, *, tenant_id: uuid.UUID, channel: str) -> 
         autonomy_level=record.autonomy_level,
         autonomy_ceiling=record.autonomy_level or FAIL_CLOSED_LEVEL,
         approval_policy_version=record.approval_policy_version,
+        # Pinned at admission, never recomputed (R2.1): a workspace tightened
+        # since does not change the run it already admitted.
+        route_class=record.data_route_class,
         trace_id=f"resume-{record.id.hex[:12]}",
     )
 
@@ -231,7 +240,7 @@ class SqlWorkerRunStore:
         worker: WorkerDefinition,
         input_payload: dict[str, Any],
         release_manifest_ref: str | None = None,
-    ) -> None:
+    ) -> RunContext:
         """Claim the thread for this run, or refuse because someone else has it.
 
         The claim is the insert: `uq_worker_runs_active_thread` lets exactly one
@@ -243,9 +252,13 @@ class SqlWorkerRunStore:
         run was pinned to, and passing them one by one is how the row comes to
         disagree with the worker: five arguments are five chances to pass last
         week's value, and an argument nobody passes is a NULL nobody notices.
+
+        This is where a run of a code graph is admitted, so it returns the
+        context with its data route class pinned (compliance-pdpl R2.1): read
+        in the transaction that writes the row, which carries the same class.
         """
         try:
-            await self._insert(
+            return await self._insert(
                 run_context,
                 worker=worker,
                 input_payload=input_payload,
@@ -272,13 +285,12 @@ class SqlWorkerRunStore:
             # a decision is not stale, however long it waits, and reaping it
             # would throw away the pause a person still has to answer.
             if await self._reap_stale_thread(run_context.tenant_id, thread_id):
-                await self._insert(
+                return await self._insert(
                     run_context,
                     worker=worker,
                     input_payload=input_payload,
                     release_manifest_ref=release_manifest_ref,
                 )
-                return
             raise ConflictError(
                 "this conversation already has a turn in flight",
                 details={"thread_id": str(thread_id)},
@@ -439,51 +451,67 @@ class SqlWorkerRunStore:
         worker: WorkerDefinition,
         input_payload: dict[str, Any],
         release_manifest_ref: str | None,
-    ) -> None:
-        await self._write_and_announce(
-            run_context,
-            sa.insert(worker_runs).values(
-                id=run_context.run_id,
-                thread_id=run_context.thread_id or run_context.run_id,
-                tenant_id=run_context.tenant_id,
-                workspace_id=run_context.workspace_id,
-                worker_id=run_context.worker_id,
-                worker_version=run_context.worker_version,
-                graph_version=worker.graph_version,
-                # Every artifact version the run is pinned to, on the row that
-                # produced the result. The trace carries them too, but a trace is
-                # sampled and expires; this is the system of record.
-                prompt_bundle_version=worker.prompt_bundle_version,
-                toolset_version=worker.toolset_version,
-                policy_version=worker.policy_version,
-                memory_policy_version=worker.memory_policy_version,
-                autonomy_level=run_context.autonomy_level,
-                approval_policy_version=run_context.approval_policy_version,
-                status=RunStatus.RUNNING.value,
-                input=input_payload,
-                requested_by=run_context.requested_by or run_context.actor_id,
-                run_as_principal_id=run_context.run_as_principal_id,
-                definition_hash=run_context.definition_hash,
-                # The context's own mode, never a constant (R4.3): the row, the
-                # span and the audit read one value.
-                run_mode=run_context.run_mode,
-                actor_roles=sorted(run_context.roles),
-                actor_scopes=sorted(run_context.scopes),
-                actor_plan_id=run_context.plan_id,
-                actor_clearance=run_context.clearance,
-                actor_record_visibility=run_context.record_visibility,
-                actor_visible_owners=(
-                    None
-                    if run_context.visible_owners is None
-                    else sorted(run_context.visible_owners)
-                ),
-                trace_id=run_context.trace_id,
-                subject_ref=run_context.subject_ref,
-                release_manifest_ref=release_manifest_ref,
-                created_at=sa.func.now(),
-                updated_at=sa.func.now(),
+    ) -> RunContext:
+        async with self.session_factory() as session, session.begin():
+            await session.execute(_SET_TENANT, {"tenant_id": str(run_context.tenant_id)})
+            # A code graph has no version of its own to tighten the class.
+            route_class = effective_route_class(
+                *await read_route_classes(session, run_context.tenant_id, run_context.workspace_id),
+                None,
+            )
+            pinned = run_context.model_copy(update={"route_class": route_class})
+            await session.execute(
+                self._insert_statement(pinned, worker, input_payload, release_manifest_ref)
+            )
+            await session.execute(_NOTIFY, {"payload": _announcement(pinned, RunStatus.RUNNING)})
+        return pinned
+
+    def _insert_statement(
+        self,
+        run_context: RunContext,
+        worker: WorkerDefinition,
+        input_payload: dict[str, Any],
+        release_manifest_ref: str | None,
+    ) -> sa.Executable:
+        return sa.insert(worker_runs).values(
+            id=run_context.run_id,
+            thread_id=run_context.thread_id or run_context.run_id,
+            tenant_id=run_context.tenant_id,
+            workspace_id=run_context.workspace_id,
+            worker_id=run_context.worker_id,
+            worker_version=run_context.worker_version,
+            graph_version=worker.graph_version,
+            # Every artifact version the run is pinned to, on the row that
+            # produced the result. The trace carries them too, but a trace is
+            # sampled and expires; this is the system of record.
+            prompt_bundle_version=worker.prompt_bundle_version,
+            toolset_version=worker.toolset_version,
+            policy_version=worker.policy_version,
+            memory_policy_version=worker.memory_policy_version,
+            autonomy_level=run_context.autonomy_level,
+            approval_policy_version=run_context.approval_policy_version,
+            status=RunStatus.RUNNING.value,
+            input=input_payload,
+            requested_by=run_context.requested_by or run_context.actor_id,
+            run_as_principal_id=run_context.run_as_principal_id,
+            definition_hash=run_context.definition_hash,
+            # The context's own mode, never a constant (R4.3): the row, the
+            # span and the audit read one value.
+            run_mode=run_context.run_mode,
+            actor_roles=sorted(run_context.roles),
+            actor_scopes=sorted(run_context.scopes),
+            actor_plan_id=run_context.plan_id,
+            actor_clearance=run_context.clearance,
+            actor_record_visibility=run_context.record_visibility,
+            actor_visible_owners=(
+                None if run_context.visible_owners is None else sorted(run_context.visible_owners)
             ),
-            RunStatus.RUNNING,
+            trace_id=run_context.trace_id,
+            subject_ref=run_context.subject_ref,
+            release_manifest_ref=release_manifest_ref,
+            data_route_class=run_context.route_class,
+            created_at=sa.func.now(),
+            updated_at=sa.func.now(),
         )
 
     async def set_status(
@@ -588,6 +616,11 @@ class SqlWorkerRunStore:
             definition_hash=row.definition_hash,
             run_mode=row.run_mode,
             artifact_id=row.artifact_id,
+            data_route_class=(
+                "vn_only"
+                if row.data_route_class is None
+                else parse_route_class(row.data_route_class)
+            ),
             actor_roles=frozenset(row.actor_roles),
             actor_scopes=frozenset(row.actor_scopes),
             actor_plan_id=row.actor_plan_id,

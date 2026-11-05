@@ -13,14 +13,23 @@ way to say it, and the reading that recognises it when it does.
 from __future__ import annotations
 
 import pathlib
+import uuid
 from typing import Any
 
 import pytest
 
+from dw_kernel.residency import Destination, ResidencyGate, TenantRouteScope
 from dw_knowledge.adapters.api_parsers import GatewayFileParser
 from dw_knowledge.attachment_policy import load_attachment_policy
+from dw_platform.testing.residency import StaticRouteClasses
 
 pytestmark = pytest.mark.unit
+
+# A Vietnamese destination under a `vn_only` tenant: the gate admits it, so
+# these tests are about the dialect (compliance-pdpl 03 tests the refusals).
+_TENANT = uuid.uuid4()
+SCOPE = TenantRouteScope(tenant_id=_TENANT, workspace_id=None)
+GATE = ResidencyGate(classes=StaticRouteClasses({_TENANT: "vn_only"}))
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[5]
 POLICY = load_attachment_policy(REPO_ROOT / "configs" / "policies" / "attachment_ingest@1.1.0.yaml")
@@ -41,6 +50,8 @@ def _parser(reply: str) -> _StubbedGateway:
         api_key="unused",
         model="test-model",
         policy=POLICY,
+        residency=GATE,
+        destination=Destination("document_extraction", "vn", "fpt_ai_gateway"),
     )
     parser.reply = reply
     return parser
@@ -54,7 +65,7 @@ def test_the_document_prompt_tells_the_model_how_to_say_nothing_is_readable() ->
 
 async def test_a_readable_document_comes_back_as_its_own_text() -> None:
     parsed = await _parser("```markdown\n# Biên bản họp\nNgân sách 18 tỷ.\n```").parse(
-        b"x", "application/pdf", "bien-ban.pdf"
+        b"x", "application/pdf", "bien-ban.pdf", scope=SCOPE
     )
 
     assert parsed.text == "# Biên bản họp\nNgân sách 18 tỷ."
@@ -77,6 +88,6 @@ async def test_a_file_the_model_could_not_read_parses_to_nothing(reply: str) -> 
     An empty parse is what makes the ingest job fail, which is what makes the
     file say "could not read this" on screen and keeps it out of the index.
     """
-    parsed = await _parser(reply).parse(b"x", "application/pdf", "hong.pdf")
+    parsed = await _parser(reply).parse(b"x", "application/pdf", "hong.pdf", scope=SCOPE)
 
     assert parsed.text == ""

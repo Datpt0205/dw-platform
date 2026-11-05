@@ -337,6 +337,9 @@ services:
       DW_API_RERANK_API_KEY: ${DW_API_RERANK_API_KEY:-}
       DW_API_RERANK_MODEL: ${DW_API_RERANK_MODEL:-bge-reranker-v2-m3}
       DW_API_RERANK_TIMEOUT_SECONDS: ${DW_API_RERANK_TIMEOUT_SECONDS:-10}
+      # Where it processes, declared or blank (= foreign; compliance-pdpl R2.3).
+      DW_API_RERANK_DATA_LOCATION: ${DW_API_RERANK_DATA_LOCATION:-}
+      DW_API_RERANK_PROCESSOR: ${DW_API_RERANK_PROCESSOR:-}
       DW_APPROVAL_REMINDER_SECONDS: ${DW_APPROVAL_REMINDER_SECONDS:-5}
       # Observability → Langfuse (OTLP). Empty = NullTelemetry (no export).
       LANGFUSE_ENABLED: ${LANGFUSE_ENABLED:-}
@@ -503,6 +506,12 @@ services:
       OPENAI_BASE_URL: ${OPENAI_BASE_URL:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       DEEPGRAM_API_KEY: ${DEEPGRAM_API_KEY:-}
+      # Where extraction and transcription process, declared or blank (=
+      # foreign; compliance-pdpl R2.3).
+      DW_WORKER_EXTRACTION_DATA_LOCATION: ${DW_WORKER_EXTRACTION_DATA_LOCATION:-}
+      DW_WORKER_EXTRACTION_PROCESSOR: ${DW_WORKER_EXTRACTION_PROCESSOR:-}
+      DW_WORKER_TRANSCRIPTION_DATA_LOCATION: ${DW_WORKER_TRANSCRIPTION_DATA_LOCATION:-}
+      DW_WORKER_TRANSCRIPTION_PROCESSOR: ${DW_WORKER_TRANSCRIPTION_PROCESSOR:-}
       DW_PUBLIC_WEB_URL: ${DW_PUBLIC_WEB_URL:-http://localhost:3000}
       # Zalo self-link: the `zalo_link_poll` lane runs only with the token,
       # the link secret (the api's value) and ZALO_UPDATES_MODE=poll; the

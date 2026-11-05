@@ -11,17 +11,24 @@ from __future__ import annotations
 
 import asyncio
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
+import httpx
 import pytest
 
 from dw_kernel.errors import InfrastructureError
+from dw_kernel.residency import Destination, ResidencyGate, TenantRouteScope
+from dw_knowledge.adapters.api_parsers import DeepgramTranscriptParser
+from dw_knowledge.attachment_policy import load_attachment_policy
 from dw_knowledge.attachments import ATTACHMENT_DOMAIN, attachment_scope_of
 from dw_knowledge.gateway import IngestDocumentCommand, IngestedDocument
 from dw_knowledge.ingest_jobs import IngestJob
 from dw_knowledge.ports import ParsedDocument
 from dw_platform.application.access_context import AccessContext
+from dw_platform.testing.residency import StaticRouteClasses
 from dw_worker.composition import IngestComponents
 from dw_worker.consumers.ingest import build_ingest_consumer
 
@@ -79,6 +86,8 @@ class _FakeJobStore:
     done: list[uuid.UUID] = field(default_factory=list)
     warnings: list[tuple[str, ...]] = field(default_factory=list)
     failed: list[str] = field(default_factory=list)
+    # Whether each failure gave the job up for good (no retry).
+    terminal: list[bool] = field(default_factory=list)
     renewals: list[uuid.UUID] = field(default_factory=list)
     still_ours: bool = True
 
@@ -97,8 +106,9 @@ class _FakeJobStore:
         self.done.append(job.id)
         self.warnings.append(warnings)
 
-    async def mark_failed(self, job: IngestJob, *, error: str) -> None:
+    async def mark_failed(self, job: IngestJob, *, error: str, terminal: bool = False) -> None:
         self.failed.append(error)
+        self.terminal.append(terminal)
 
     async def renew_lease(self, job: IngestJob, *, lease_seconds: int) -> bool:
         self.renewals.append(job.id)
@@ -120,11 +130,15 @@ class _FakeParser:
     # A file the parser cannot make sense of at all — a truncated PDF, a
     # renamed archive. Raising is what the real parsers do.
     raises: Exception | None = None
+    scopes: list[TenantRouteScope] = field(default_factory=list)
 
     def supports(self, content_type: str, filename: str) -> bool:
         return True
 
-    async def parse(self, data: bytes, content_type: str, filename: str) -> ParsedDocument:
+    async def parse(
+        self, data: bytes, content_type: str, filename: str, *, scope: TenantRouteScope
+    ) -> ParsedDocument:
+        self.scopes.append(scope)
         if self.raises is not None:
             raise self.raises
         return ParsedDocument(text=self.text, warnings=self.warnings)
@@ -134,9 +148,11 @@ class _FakeParser:
 class _SlowParser(_FakeParser):
     """A stand-in for a long recording: slow enough for the beat to fire."""
 
-    async def parse(self, data: bytes, content_type: str, filename: str) -> ParsedDocument:
+    async def parse(
+        self, data: bytes, content_type: str, filename: str, *, scope: TenantRouteScope
+    ) -> ParsedDocument:
         await asyncio.sleep(HEARTBEAT_SECONDS * 4)
-        return await super().parse(data, content_type, filename)
+        return await super().parse(data, content_type, filename, scope=scope)
 
 
 @dataclass
@@ -291,3 +307,43 @@ async def test_the_heartbeat_stops_when_the_job_does() -> None:
     await asyncio.sleep(HEARTBEAT_SECONDS * 5)
 
     assert len(store.renewals) == settled
+
+
+POLICY_PATH = (
+    Path(__file__).resolve().parents[4] / "configs" / "policies" / "attachment_ingest@1.1.0.yaml"
+)
+
+
+async def test_a_recording_a_vn_only_tenant_may_not_send_abroad_fails_the_job_unsent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """compliance-pdpl R2.3 (CP3): transcription to Deepgram's fixed URL, whose
+    location the settings do not declare, for a `vn_only` tenant: the job is
+    `failed` with `residency_refused` for good (a retry sends the same file to
+    the same place) and no request leaves."""
+    sent: list[httpx.Request] = []
+    real_init = httpx.AsyncClient.__init__
+
+    def counting(self: httpx.AsyncClient, *args: Any, **kwargs: Any) -> None:
+        kwargs["transport"] = httpx.MockTransport(
+            lambda request: sent.append(request) or httpx.Response(200, json={})
+        )
+        real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(httpx.AsyncClient, "__init__", counting)
+    job = _job(scope=attachment_scope_of("lead", LEAD))
+    parser = DeepgramTranscriptParser(
+        api_key="k",
+        policy=load_attachment_policy(POLICY_PATH),
+        residency=ResidencyGate(classes=StaticRouteClasses({job.tenant_id: "vn_only"})),
+        destination=Destination("transcription", None, None),
+    )
+    store, components = _drain(job)
+    components = replace(components, parser=parser)
+
+    await _run(components)
+
+    assert store.done == []
+    assert len(store.failed) == 1 and store.failed[0].startswith("residency_refused")
+    assert store.terminal == [True]
+    assert sent == []

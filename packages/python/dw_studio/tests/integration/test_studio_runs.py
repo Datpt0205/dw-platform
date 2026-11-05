@@ -973,6 +973,32 @@ async def test_al_r8_1_a_run_is_taken_for_its_own_component(
     assert getattr(taken, "artifact_id", None) == artifact
 
 
+async def test_the_take_reads_the_data_route_class_the_door_pinned(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+) -> None:
+    """compliance-pdpl R2.1: a start and a resume read the row's class, never
+    compute it again; a row admitted before the column reads `vn_only`."""
+    _, version, _ = await a_draft(service, world, doc(source, send("gui")))
+    run_id = (await door_of(store).request(ask(world, version))).run_id
+    async with migrator.begin() as conn:
+        await conn.execute(
+            sa.text(
+                "UPDATE platform.worker_runs SET data_route_class = 'cross_border_minimised'"
+                " WHERE id = :r"
+            ),
+            {"r": run_id},
+        )
+    taken = await SqlStudioRunStore(sessions, Uuid7Generator(), SystemClock()).take(
+        world.tenant, run_id
+    )
+    assert getattr(taken, "data_route_class", None) == "cross_border_minimised"
+
+
 async def test_al_r8_1_a_killed_workflows_simulate_run_still_runs_at_the_real_node_head(
     store: SqlArtifactStore,
     service: ArtifactService,

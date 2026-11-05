@@ -72,6 +72,7 @@ from dw_kernel.errors import (
 )
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_kernel.residency import RESIDENCY_REFUSED, ResidencyRefusedError
 from dw_observability.metrics import DW_RUN_DURATION_SECONDS, DW_RUN_TOTAL
 from dw_observability.semconv import invoke_workflow_span_name
 from dw_observability.telemetry import NullTelemetry, TelemetryPort
@@ -395,7 +396,9 @@ class LangGraphWorkflowRunner:
         await self._require_allowance(run_context)
         graph = self._graph(worker.definition.worker_id, worker.definition.graph_version)
 
-        await self.run_store.create(
+        # Admission: the row and the context carry the run's data route class
+        # from here on (compliance-pdpl R2.1).
+        run_context = await self.run_store.create(
             run_context,
             worker=worker.definition,
             input_payload=input_payload,
@@ -506,6 +509,11 @@ class LangGraphWorkflowRunner:
                 error={"code": halted.reason.value, "door": halted.door.value},
             )
             return RunStatus.CANCELLED
+        except ResidencyRefusedError:
+            # A policy refusal before anything was sent, not a step's failure:
+            # no error lane takes it (compliance-pdpl R2.2).
+            await runs.finish(tenant_id, run_id, "failed", error={"code": RESIDENCY_REFUSED})
+            return RunStatus.FAILED
         except Exception as exc:
             logger.exception("a Studio run failed", extra={"run_id": str(run_id)})
             await runs.finish(
@@ -540,7 +548,9 @@ class LangGraphWorkflowRunner:
         await self._require_allowance(run_context)
         graph = self._graph(worker.definition.worker_id, worker.definition.graph_version)
 
-        await self.run_store.create(
+        # Admission: the row and the context carry the run's data route class
+        # from here on (compliance-pdpl R2.1).
+        run_context = await self.run_store.create(
             run_context,
             worker=worker.definition,
             input_payload=input_payload,
@@ -840,6 +850,11 @@ class LangGraphWorkflowRunner:
             status, event = RunStatus.CANCELLED, "run.cancelled"
             error["reason_code"] = exc.reason.value
             details = {"reason_code": exc.reason.value, "door": exc.door.value}
+        elif isinstance(exc, ResidencyRefusedError):
+            # `failed`, with the gate's reason on the row and the audit
+            # (compliance-pdpl R2.2): nothing was sent.
+            error["reason_code"] = RESIDENCY_REFUSED
+            details = {"reason_code": RESIDENCY_REFUSED}
         await self.run_store.set_status(run_context, run_id, status, error=error)
         await self._audit(run_context, event, str(run_id), details=details)
         self.telemetry.add_metric(
@@ -1061,6 +1076,9 @@ def _studio_run_context(taken: StudioRun) -> RunContext:
     return RunContext(
         run_id=taken.run_id,
         thread_id=taken.thread_id,
+        # Pinned on the row at admission (`RunRequestService`), read, never
+        # recomputed, on a start and on a resume alike (compliance-pdpl R2.1).
+        route_class=taken.data_route_class,
         tenant_id=taken.tenant_id,
         workspace_id=taken.workspace_id,
         actor_id=taken.run_as_principal_id,

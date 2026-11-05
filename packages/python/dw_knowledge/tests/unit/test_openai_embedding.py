@@ -10,12 +10,14 @@ from __future__ import annotations
 import pytest
 
 from dw_kernel.errors import InfrastructureError
+from dw_kernel.residency import Destination, ResidencyGate
 from dw_knowledge.adapters.openai_embedding import (
     MAX_TOKENS_PER_INPUT,
     MAX_TOKENS_PER_REQUEST,
     OpenAICompatibleEmbeddingAdapter,
     _estimated_tokens,
 )
+from dw_platform.testing.residency import StaticRouteClasses
 
 pytestmark = pytest.mark.unit
 
@@ -26,6 +28,8 @@ def _adapter(batch_size: int = 256) -> OpenAICompatibleEmbeddingAdapter:
         api_key="not-used-here",
         model="text-embedding-3-large",
         _dimension=3072,
+        residency=ResidencyGate(classes=StaticRouteClasses({})),
+        destination=Destination("embedding", "vn", "fpt_ai_gateway"),
         batch_size=batch_size,
     )
 

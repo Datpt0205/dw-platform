@@ -41,6 +41,10 @@ worker_runs = sa.Table(
     sa.Column("definition_hash", sa.Text, nullable=True),
     # tenant-config R4.1: no default; `ck_worker_runs_run_mode`.
     sa.Column("run_mode", sa.Text, nullable=False),
+    # The effective data route class pinned at admission (compliance-pdpl R2.1;
+    # f97fd77ce9a0); a resume reads it back. NULL: admitted before it existed,
+    # read as `vn_only`.
+    sa.Column("data_route_class", sa.Text, nullable=True),
     sa.Column("actor_roles", sa.ARRAY(sa.Text), nullable=False, server_default=sa.text("'{}'")),
     sa.Column("actor_scopes", sa.ARRAY(sa.Text), nullable=False, server_default=sa.text("'{}'")),
     sa.Column("actor_plan_id", sa.Text, nullable=False, server_default=""),

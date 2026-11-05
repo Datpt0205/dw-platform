@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import time
+import uuid
 from collections.abc import Callable
 from dataclasses import replace
 
@@ -18,10 +19,18 @@ import httpx
 import pytest
 
 from dw_kernel.errors import InfrastructureError
+from dw_kernel.residency import Destination, ResidencyGate, TenantRouteScope
 from dw_knowledge.adapters.cohere_rerank import CohereCompatibleRerankAdapter
 from dw_knowledge.ports import RerankCandidate
+from dw_platform.testing.residency import StaticRouteClasses
 
 pytestmark = pytest.mark.unit
+
+# A Vietnamese destination under a `vn_only` tenant: the gate admits it, so
+# these tests are about the dialect (compliance-pdpl 03 tests the refusals).
+_TENANT = uuid.uuid4()
+SCOPE = TenantRouteScope(tenant_id=_TENANT, workspace_id=None)
+GATE = ResidencyGate(classes=StaticRouteClasses({_TENANT: "vn_only"}))
 
 KEY = "sk-test-not-a-real-key"
 CANDIDATES = [
@@ -33,7 +42,11 @@ CANDIDATES = [
 
 def _adapter() -> CohereCompatibleRerankAdapter:
     return CohereCompatibleRerankAdapter(
-        base_url="https://rerank.invalid/v1/", api_key=KEY, model="bge-reranker-v2-m3"
+        base_url="https://rerank.invalid/v1/",
+        api_key=KEY,
+        model="bge-reranker-v2-m3",
+        residency=GATE,
+        destination=Destination("rerank", "vn", "fpt_cloud"),
     )
 
 
@@ -66,7 +79,7 @@ async def test_request_shape_and_authorization(monkeypatch: pytest.MonkeyPatch) 
         return httpx.Response(200, json=_results((1, 0.9), (0, 0.2), (2, 0.01)))
 
     _patch_client(monkeypatch, handler)
-    await _adapter().rerank("đổi trả mấy ngày?", CANDIDATES, top_k=2)
+    await _adapter().rerank("đổi trả mấy ngày?", CANDIDATES, top_k=2, scope=SCOPE)
 
     (request,) = seen
     assert request.method == "POST"
@@ -89,7 +102,7 @@ async def test_indexes_map_back_to_candidates_best_first(monkeypatch: pytest.Mon
         lambda _r: httpx.Response(200, json=_results((2, 0.01), (1, 0.9), (0, 0.2))),
     )
 
-    ranked = await _adapter().rerank("q", CANDIDATES, top_k=2)
+    ranked = await _adapter().rerank("q", CANDIDATES, top_k=2, scope=SCOPE)
 
     assert [(r.id, r.score) for r in ranked] == [("chunk-b", 0.9), ("chunk-a", 0.2)]
 
@@ -103,7 +116,7 @@ async def test_an_index_that_was_never_sent_is_refused(
     )
 
     with pytest.raises(InfrastructureError) as raised:
-        await _adapter().rerank("q", CANDIDATES, top_k=3)
+        await _adapter().rerank("q", CANDIDATES, top_k=3, scope=SCOPE)
     assert raised.value.details["index"] == bad_index
 
 
@@ -111,7 +124,7 @@ async def test_a_repeated_index_is_refused(monkeypatch: pytest.MonkeyPatch) -> N
     _patch_client(monkeypatch, lambda _r: httpx.Response(200, json=_results((0, 0.5), (0, 0.4))))
 
     with pytest.raises(InfrastructureError):
-        await _adapter().rerank("q", CANDIDATES, top_k=3)
+        await _adapter().rerank("q", CANDIDATES, top_k=3, scope=SCOPE)
 
 
 async def test_http_error_carries_status_but_not_key_or_body(
@@ -123,7 +136,7 @@ async def test_http_error_carries_status_but_not_key_or_body(
     _patch_client(monkeypatch, handler)
 
     with pytest.raises(InfrastructureError) as raised:
-        await _adapter().rerank("q", CANDIDATES, top_k=3)
+        await _adapter().rerank("q", CANDIDATES, top_k=3, scope=SCOPE)
 
     assert raised.value.details == {
         "model": "bge-reranker-v2-m3",
@@ -143,7 +156,7 @@ async def test_transport_error_is_an_infrastructure_error(
     _patch_client(monkeypatch, handler)
 
     with pytest.raises(InfrastructureError) as raised:
-        await _adapter().rerank("q", CANDIDATES, top_k=3)
+        await _adapter().rerank("q", CANDIDATES, top_k=3, scope=SCOPE)
     assert raised.value.details["error"] == "ConnectTimeout"
 
 
@@ -161,7 +174,7 @@ async def test_an_unreadable_answer_is_an_infrastructure_error(
     _patch_client(monkeypatch, lambda _r: response)
 
     with pytest.raises(InfrastructureError) as raised:
-        await _adapter().rerank("q", CANDIDATES, top_k=3)
+        await _adapter().rerank("q", CANDIDATES, top_k=3, scope=SCOPE)
     assert KEY not in repr(raised.value.details)
 
 
@@ -171,7 +184,7 @@ async def test_nothing_to_rerank_means_no_request(monkeypatch: pytest.MonkeyPatc
 
     _patch_client(monkeypatch, handler)
 
-    assert await _adapter().rerank("q", [], top_k=5) == []
+    assert await _adapter().rerank("q", [], top_k=5, scope=SCOPE) == []
 
 
 @pytest.mark.parametrize("rows", [(), ((1, 0.9),)])
@@ -183,7 +196,7 @@ async def test_fewer_results_than_asked_is_a_failed_rerank(
     _patch_client(monkeypatch, lambda _r: httpx.Response(200, json=_results(*rows)))
 
     with pytest.raises(InfrastructureError) as raised:
-        await _adapter().rerank("q", CANDIDATES, top_k=2)
+        await _adapter().rerank("q", CANDIDATES, top_k=2, scope=SCOPE)
     assert raised.value.details["error"] == "missing_results"
     assert raised.value.details["asked"] == 2
 
@@ -200,7 +213,7 @@ async def test_the_timeout_bounds_the_whole_call() -> None:
     started = time.perf_counter()
 
     with pytest.raises(InfrastructureError) as raised:
-        await adapter.rerank("q", CANDIDATES, top_k=3)
+        await adapter.rerank("q", CANDIDATES, top_k=3, scope=SCOPE)
 
     assert raised.value.details["error"] == "TimeoutError"
     assert time.perf_counter() - started < 2

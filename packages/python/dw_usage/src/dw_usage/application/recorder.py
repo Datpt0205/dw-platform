@@ -11,8 +11,8 @@ class reads that price off the usage and never prices a second time. A call that
 reached it unpriced is stored `unpriced` with no cost, logged as an error and
 counted in `dw_usage_unpriced_total` (R2.5): the gap shows, it is never zero.
 A call with no lease or Studio component is `purpose = 'run'`, `payer =
-'platform'`, `root_run_id = run_id`, with NULL artifact, lease, node and route
-columns.
+'platform'`, `root_run_id = run_id`, with NULL artifact, lease and node
+columns; the route columns are the usage's, which the sending door sets.
 """
 
 from __future__ import annotations
@@ -96,6 +96,11 @@ class LedgerUsageRecorder:
             cost_usd=None if source == "unpriced" else Decimal(str(usage.cost_usd)),
             price_book_version=usage.price_book_version or self.price_book_version,
             price_entry_ids=usage.price_entry_ids if source != "unpriced" else (),
+            # Set by the door that sent the call, after the gate admitted it
+            # (compliance-pdpl R2.1); NULL when no door set them.
+            data_route_class=usage.data_route_class,
+            data_location=usage.data_location,
+            processor=usage.processor,
         )
         if not await self.ledger.settle(event):
             # Same key, already settled: a retry that minted nothing new, or a

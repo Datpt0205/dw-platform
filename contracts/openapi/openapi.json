@@ -6164,19 +6164,6 @@
         "title": "RenameTenantRequest",
         "type": "object"
       },
-      "RenameWorkspaceBody": {
-        "properties": {
-          "name": {
-            "title": "Name",
-            "type": "string"
-          }
-        },
-        "required": [
-          "name"
-        ],
-        "title": "RenameWorkspaceBody",
-        "type": "object"
-      },
       "RequestSupportGrantBody": {
         "additionalProperties": false,
         "properties": {
@@ -7649,6 +7636,15 @@
       },
       "TenantSettingsView": {
         "properties": {
+          "data_route_class": {
+            "enum": [
+              "vn_only",
+              "cross_border_minimised",
+              "cross_border_full"
+            ],
+            "title": "Data Route Class",
+            "type": "string"
+          },
           "locale": {
             "anyOf": [
               {
@@ -7712,7 +7708,8 @@
           "record_visibility",
           "timezone",
           "locale",
-          "max_autonomy_level"
+          "max_autonomy_level",
+          "data_route_class"
         ],
         "title": "TenantSettingsView",
         "type": "object"
@@ -7948,6 +7945,22 @@
       },
       "UpdateTenantBody": {
         "properties": {
+          "data_route_class": {
+            "anyOf": [
+              {
+                "enum": [
+                  "vn_only",
+                  "cross_border_minimised",
+                  "cross_border_full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Route Class"
+          },
           "locale": {
             "anyOf": [
               {
@@ -8012,6 +8025,40 @@
           }
         },
         "title": "UpdateTenantBody",
+        "type": "object"
+      },
+      "UpdateWorkspaceBody": {
+        "description": "Only what is sent changes. `data_route_class: null` is sent on purpose:\nback to inheriting the tenant's, a loosening (409 in W1).",
+        "properties": {
+          "data_route_class": {
+            "anyOf": [
+              {
+                "enum": [
+                  "vn_only",
+                  "cross_border_minimised",
+                  "cross_border_full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Route Class"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Name"
+          }
+        },
+        "title": "UpdateWorkspaceBody",
         "type": "object"
       },
       "UpsertInput": {
@@ -8788,6 +8835,23 @@
       },
       "WorkspaceRefView": {
         "properties": {
+          "data_route_class": {
+            "anyOf": [
+              {
+                "enum": [
+                  "vn_only",
+                  "cross_border_minimised",
+                  "cross_border_full"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The workspace's data route class; null inherits the tenant's.",
+            "title": "Data Route Class"
+          },
           "name": {
             "title": "Name",
             "type": "string"
@@ -11150,7 +11214,8 @@
     },
     "/api/v1/admin/workspaces/{workspace_id}": {
       "patch": {
-        "operationId": "rename_workspace_api_v1_admin_workspaces__workspace_id__patch",
+        "description": "Rename a workspace, or tighten its data route class (compliance-pdpl\nR2.4, R2.7, R2.8): looser than the tenant's is 422, a loosening or back to\nnull is 409 `second_person_required`, another tenant's workspace is 404.",
+        "operationId": "update_workspace_api_v1_admin_workspaces__workspace_id__patch",
         "parameters": [
           {
             "in": "path",
@@ -11167,7 +11232,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RenameWorkspaceBody"
+                "$ref": "#/components/schemas/UpdateWorkspaceBody"
               }
             }
           },
@@ -11205,7 +11270,7 @@
             "description": "The server failed"
           }
         },
-        "summary": "Rename Workspace",
+        "summary": "Update Workspace",
         "tags": [
           "admin"
         ]

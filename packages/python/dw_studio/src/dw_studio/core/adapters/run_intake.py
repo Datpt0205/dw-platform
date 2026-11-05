@@ -22,6 +22,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from dw_agent_runtime.adapters.run_store import RunStatus
 from dw_agent_runtime.adapters.runtime_tables import worker_runs
+from dw_kernel.residency import effective_route_class
+from dw_platform.adapters.persistence.residency import read_route_classes
 from dw_platform.adapters.persistence.tables import entitlements
 from dw_studio.core.application.run_request import ExistingRun, QueuedRun
 
@@ -59,6 +61,12 @@ async def tenant_plan(session: AsyncSession) -> str | None:
 
 
 async def insert_queued_run(session: AsyncSession, tenant_id: uuid.UUID, run: QueuedRun) -> bool:
+    # Admission of a Studio run (compliance-pdpl R2.1): the strictest of the
+    # tenant's, the workspace's and the version's class, read in the
+    # transaction that writes the row; the runner reads it back, never again.
+    route_class = effective_route_class(
+        *await read_route_classes(session, tenant_id, run.workspace_id), run.version_route_class
+    )
     inserted = await session.scalar(
         pg_insert(worker_runs)
         .values(
@@ -88,6 +96,7 @@ async def insert_queued_run(session: AsyncSession, tenant_id: uuid.UUID, run: Qu
             inbound_event_id=run.inbound_event_id,
             request_key=run.request_key,
             priority=run.priority,
+            data_route_class=route_class,
             actor_roles=[],
             actor_scopes=[],
             actor_plan_id="",

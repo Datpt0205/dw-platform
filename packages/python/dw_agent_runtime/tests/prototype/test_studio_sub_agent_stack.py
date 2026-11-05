@@ -47,6 +47,7 @@ from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.tools import ToolRegistry
+from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
 
@@ -88,6 +89,7 @@ async def test_a_child_turn_passes_its_own_run_control_and_model_selection() -> 
         ],
     )
     spec = AgentSpec(
+        residency=run_gate(),
         model=parent_default,
         offered=offered,
         registry=registry,

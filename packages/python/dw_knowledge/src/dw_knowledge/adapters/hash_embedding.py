@@ -13,6 +13,8 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from dw_kernel.residency import TenantRouteScope
+
 _TOKEN_PATTERN = re.compile(r"[\w]+", re.UNICODE)
 
 
@@ -39,5 +41,7 @@ class HashEmbeddingAdapter:
             return vector
         return [v / norm for v in vector]
 
-    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed(self, texts: Sequence[str], *, scope: TenantRouteScope) -> list[list[float]]:
+        # Computed in process: nothing leaves, so there is nothing to gate.
+        del scope
         return [self._embed_one(text) for text in texts]

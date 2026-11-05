@@ -18,6 +18,7 @@ from pydantic import BaseModel, ConfigDict
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor
 from dw_kernel.errors import DomainError
+from dw_kernel.residency import RouteClass
 from dw_platform.domain.audit import AuditEvent
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -483,6 +484,9 @@ class StudioRun:
     engine: Mapping[str, Any]
     version_no: int | None
     trace_id: str
+    # The data route class `RunRequestService` pinned on the row at admission
+    # (compliance-pdpl R2.1); a row admitted before it existed reads `vn_only`.
+    data_route_class: RouteClass = "vn_only"
 
 
 @dataclass(frozen=True, slots=True)

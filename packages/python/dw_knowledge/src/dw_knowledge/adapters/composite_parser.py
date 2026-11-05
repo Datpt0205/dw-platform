@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from dw_kernel.residency import TenantRouteScope
 from dw_knowledge.ports import DocumentParserPort, ParsedDocument
 
 
@@ -22,8 +23,10 @@ class CompositeParser:
     def supports(self, content_type: str, filename: str) -> bool:
         return any(p.supports(content_type, filename) for p in self.parsers)
 
-    async def parse(self, data: bytes, content_type: str, filename: str) -> ParsedDocument:
+    async def parse(
+        self, data: bytes, content_type: str, filename: str, *, scope: TenantRouteScope
+    ) -> ParsedDocument:
         for parser in self.parsers:
             if parser.supports(content_type, filename):
-                return await parser.parse(data, content_type, filename)
+                return await parser.parse(data, content_type, filename, scope=scope)
         raise ValueError(f"no parser supports content_type={content_type!r} filename={filename!r}")

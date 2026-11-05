@@ -19,13 +19,14 @@ from dw_api.dependencies.auth import RequireAccessContext
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.autonomy import AutonomyLevel
 from dw_kernel.errors import InfrastructureError
+from dw_kernel.residency import RouteClass
 from dw_platform.application.admin_console import (
     AdminConsoleService,
     ArchiveWorkspace,
     CreateWorkspace,
-    RenameWorkspace,
     TenantSettings,
     UpdateTenantSettings,
+    UpdateWorkspace,
 )
 from dw_platform.application.hierarchy import HierarchyService, SetManager
 from dw_platform.application.separation_of_duties import (
@@ -51,6 +52,10 @@ class WorkspaceRefView(BaseModel):
     workspace_id: UUID
     slug: str
     name: str
+    data_route_class: RouteClass | None = Field(
+        default=None,
+        description="The workspace's data route class; null inherits the tenant's.",
+    )
 
 
 class CreateWorkspaceBody(BaseModel):
@@ -58,8 +63,13 @@ class CreateWorkspaceBody(BaseModel):
     slug: str
 
 
-class RenameWorkspaceBody(BaseModel):
-    name: str
+class UpdateWorkspaceBody(BaseModel):
+    """Only what is sent changes. `data_route_class: null` is sent on purpose:
+    back to inheriting the tenant's, a loosening (409 in W1)."""
+
+    name: str | None = None
+    # compliance-pdpl R2.4, R2.7, R2.8: under `platform.tenant.settings.write`.
+    data_route_class: RouteClass | None = None
 
 
 ScopeKind = Literal["tenant", "workspace", "record"]
@@ -103,6 +113,7 @@ class TenantSettingsView(BaseModel):
     timezone: str | None
     locale: str | None
     max_autonomy_level: AutonomyLevel
+    data_route_class: RouteClass
 
 
 class UpdateTenantBody(BaseModel):
@@ -114,6 +125,9 @@ class UpdateTenantBody(BaseModel):
     # worker's declared level and never raises it. Typed as the kernel's level
     # set, so an unknown value is a 422 here and never reaches the service.
     max_autonomy_level: AutonomyLevel | None = None
+    # compliance-pdpl R2.7, R2.8: one person tightens, audited; a loosening is
+    # 409 `second_person_required` (W1 has no second-person path).
+    data_route_class: RouteClass | None = None
 
 
 class HierarchyMemberView(BaseModel):
@@ -229,16 +243,30 @@ async def create_workspace(
 
 
 @router.patch("/workspaces/{workspace_id}", response_model=WorkspaceRefView)
-async def rename_workspace(
+async def update_workspace(
     workspace_id: UUID,
-    payload: RenameWorkspaceBody,
+    payload: UpdateWorkspaceBody,
     context: RequireAccessContext,
     container: RequireContainer,
 ) -> WorkspaceRefView:
-    w = await _service(container).rename_workspace(
-        context, RenameWorkspace(workspace_id=workspace_id, name=payload.name)
+    """Rename a workspace, or tighten its data route class (compliance-pdpl
+    R2.4, R2.7, R2.8): looser than the tenant's is 422, a loosening or back to
+    null is 409 `second_person_required`, another tenant's workspace is 404."""
+    w = await _service(container).update_workspace(
+        context,
+        UpdateWorkspace(
+            workspace_id=workspace_id,
+            name=payload.name,
+            data_route_class=payload.data_route_class,
+            sets_route_class="data_route_class" in payload.model_fields_set,
+        ),
     )
-    return WorkspaceRefView(workspace_id=w.workspace_id, slug=w.slug, name=w.name)
+    return WorkspaceRefView(
+        workspace_id=w.workspace_id,
+        slug=w.slug,
+        name=w.name,
+        data_route_class=cast("RouteClass | None", w.data_route_class),
+    )
 
 
 @router.post("/workspaces/{workspace_id}/archive", status_code=204)
@@ -307,6 +335,7 @@ async def update_tenant(
             locale=payload.locale,
             record_visibility=payload.record_visibility,
             max_autonomy_level=payload.max_autonomy_level,
+            data_route_class=payload.data_route_class,
         ),
     )
     # record_visibility and max_autonomy_level both change what every request in
@@ -423,4 +452,5 @@ def _tenant_view(s: TenantSettings) -> TenantSettingsView:
         timezone=s.timezone,
         locale=s.locale,
         max_autonomy_level=cast(AutonomyLevel, s.max_autonomy_level),
+        data_route_class=cast(RouteClass, s.data_route_class),
     )

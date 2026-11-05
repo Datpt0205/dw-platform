@@ -23,6 +23,7 @@ from dw_kernel.autonomy import is_autonomy_level
 from dw_kernel.errors import DomainError, NotFoundError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_kernel.residency import tenant_class_change, workspace_class_change
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.ports import AuthorizationPort
 from dw_platform.domain.audit import AuditEvent
@@ -38,6 +39,8 @@ _ACTION_WS_CREATE = "platform.workspace.create"
 _ACTION_WS_RENAME = "platform.workspace.rename"
 _ACTION_WS_ARCHIVE = "platform.workspace.archive"
 _ACTION_TENANT_UPDATE = "platform.tenant.settings.update"
+# compliance-pdpl R2.8: the one event of a route class change, tenant or workspace.
+ACTION_RESIDENCY_CHANGED = "residency.class_changed"
 _RES_WORKSPACE = "workspace"
 _RES_TENANT = "tenant"
 
@@ -56,6 +59,8 @@ class WorkspaceRef:
     workspace_id: uuid.UUID
     slug: str
     name: str
+    # NULL inherits the tenant's data route class (compliance-pdpl R2.4).
+    data_route_class: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +100,7 @@ class TenantSettings:
     timezone: str | None
     locale: str | None
     max_autonomy_level: str
+    data_route_class: str = "vn_only"
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,6 +113,29 @@ class CreateWorkspace:
 class RenameWorkspace:
     workspace_id: uuid.UUID
     name: str
+
+
+@dataclass(frozen=True, slots=True)
+class UpdateWorkspace:
+    """`PATCH /admin/workspaces/{id}`: only what is set changes. `data_route_class`
+    is read only when `sets_route_class`, because `None` there is a value (back
+    to inheriting the tenant's, a loosening) and not "leave as is"."""
+
+    workspace_id: uuid.UUID
+    name: str | None = None
+    data_route_class: str | None = None
+    sets_route_class: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class RouteClassWrite:
+    """A tightening the service decided on, written only while the row still
+    holds `expected` (a concurrent change refuses the write), with its
+    `residency.class_changed` event in the same transaction (R2.8)."""
+
+    expected: str | None
+    new: str | None
+    audit: AuditEvent
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,6 +152,7 @@ class UpdateTenantSettings:
     locale: str | None = None
     record_visibility: str | None = None
     max_autonomy_level: str | None = None
+    data_route_class: str | None = None
 
 
 class AdminConsoleRepositoryPort(Protocol):
@@ -141,10 +171,26 @@ class AdminConsoleRepositoryPort(Protocol):
         if the slug is already taken there."""
         ...
 
-    async def rename_workspace(
-        self, context: AccessContext, *, workspace_id: uuid.UUID, name: str, audit: AuditEvent
+    async def update_workspace(
+        self,
+        context: AccessContext,
+        *,
+        workspace_id: uuid.UUID,
+        name: str | None,
+        route_class: RouteClassWrite | None,
+        audit: AuditEvent | None,
     ) -> WorkspaceRef | None:
-        """Rename a workspace in the caller's tenant, or None if there is none."""
+        """Rename a workspace in the caller's tenant and/or tighten its route
+        class, each audit event in the same transaction, or None if there is no
+        such workspace. Raises `ConflictError` when `route_class.expected` no
+        longer holds."""
+        ...
+
+    async def route_classes(
+        self, context: AccessContext, workspace_id: uuid.UUID
+    ) -> tuple[str, str | None] | None:
+        """The tenant's and the workspace's class, or None when the workspace is
+        not the caller's tenant's (RLS returns no row)."""
         ...
 
     async def archive_workspace(
@@ -160,8 +206,16 @@ class AdminConsoleRepositoryPort(Protocol):
     async def get_tenant_settings(self, context: AccessContext) -> TenantSettings | None: ...
 
     async def update_tenant_settings(
-        self, context: AccessContext, *, command: UpdateTenantSettings, audit: AuditEvent
-    ) -> TenantSettings | None: ...
+        self,
+        context: AccessContext,
+        *,
+        command: UpdateTenantSettings,
+        audit: AuditEvent,
+        route_class: RouteClassWrite | None = None,
+    ) -> TenantSettings | None:
+        """`command.data_route_class` is not read: a class is written only
+        through `route_class`, the change the service decided on."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -210,30 +264,73 @@ class AdminConsoleService:
     async def rename_workspace(
         self, context: AccessContext, command: RenameWorkspace
     ) -> WorkspaceRef:
-        await self.authz.require(
-            context=context, action=WORKSPACES_WRITE, resource_type=_RES_WORKSPACE
+        return await self.update_workspace(
+            context, UpdateWorkspace(workspace_id=command.workspace_id, name=command.name)
         )
-        name = command.name.strip()
-        if not name:
+
+    async def update_workspace(
+        self, context: AccessContext, command: UpdateWorkspace
+    ) -> WorkspaceRef:
+        """The name under `platform.workspaces.write`; the data route class under
+        `platform.tenant.settings.write`, a tenant-depth key, because the route
+        is the controller's decision (compliance-pdpl R2.4, R2.7, R2.8). Every
+        refusal comes before any write, so a refused request changes nothing."""
+        if command.name is None and not command.sets_route_class:
+            raise DomainError("nothing to change")
+        if command.name is not None:
+            await self.authz.require(
+                context=context, action=WORKSPACES_WRITE, resource_type=_RES_WORKSPACE
+            )
+        if command.sets_route_class:
+            await self.authz.require(
+                context=context, action=TENANT_SETTINGS_WRITE, resource_type=_RES_WORKSPACE
+            )
+        name = command.name.strip() if command.name is not None else None
+        if name is not None and not name:
             raise DomainError("a workspace needs a name")
-        result = await self.repo.rename_workspace(
+        route_class: RouteClassWrite | None = None
+        if command.sets_route_class:
+            classes = await self.repo.route_classes(context, command.workspace_id)
+            if classes is None:
+                raise _no_workspace(command.workspace_id)
+            tenant_class, current = classes
+            # 422 when looser than the tenant, 409 when it loosens the
+            # workspace's own: both before anything is written. The class it
+            # already holds writes and audits nothing.
+            change = workspace_class_change(tenant_class, current, command.data_route_class)
+            if change == "tightened":
+                route_class = RouteClassWrite(
+                    expected=current,
+                    new=command.data_route_class,
+                    audit=self._residency_event(
+                        context,
+                        command.workspace_id,
+                        _RES_WORKSPACE,
+                        str(command.workspace_id),
+                        before=current,
+                        after=command.data_route_class,
+                    ),
+                )
+        result = await self.repo.update_workspace(
             context,
             workspace_id=command.workspace_id,
             name=name,
-            audit=self._event(
-                context,
-                _ACTION_WS_RENAME,
-                command.workspace_id,
-                _RES_WORKSPACE,
-                str(command.workspace_id),
-                {"name": name},
+            route_class=route_class,
+            audit=(
+                None
+                if name is None
+                else self._event(
+                    context,
+                    _ACTION_WS_RENAME,
+                    command.workspace_id,
+                    _RES_WORKSPACE,
+                    str(command.workspace_id),
+                    {"name": name},
+                )
             ),
         )
         if result is None:
-            raise NotFoundError(
-                "no such workspace in this tenant",
-                details={"workspace_id": str(command.workspace_id)},
-            )
+            raise _no_workspace(command.workspace_id)
         return result
 
     async def archive_workspace(self, context: AccessContext, command: ArchiveWorkspace) -> None:
@@ -310,8 +407,31 @@ class AdminConsoleService:
             record_visibility=command.record_visibility,
             max_autonomy_level=command.max_autonomy_level,
         )
+        route_class: RouteClassWrite | None = None
+        if command.data_route_class is not None:
+            current = await self.repo.get_tenant_settings(context)
+            if current is None:
+                raise NotFoundError("tenant not found")
+            # One person tightens; loosening is 409 before anything is written
+            # (compliance-pdpl R2.7, R2.8). The class it already holds changes
+            # nothing and is not audited.
+            change = tenant_class_change(current.data_route_class, command.data_route_class)
+            if change == "tightened":
+                route_class = RouteClassWrite(
+                    expected=current.data_route_class,
+                    new=command.data_route_class,
+                    audit=self._residency_event(
+                        context,
+                        context.workspace_id,
+                        _RES_TENANT,
+                        str(context.tenant_id),
+                        before=current.data_route_class,
+                        after=command.data_route_class,
+                    ),
+                )
         settings = await self.repo.update_tenant_settings(
             context,
+            route_class=route_class,
             command=normalised,
             audit=self._event(
                 context,
@@ -343,6 +463,26 @@ class AdminConsoleService:
             raise NotFoundError("tenant not found")
         return settings
 
+    def _residency_event(
+        self,
+        context: AccessContext,
+        workspace_id: uuid.UUID,
+        resource_type: str,
+        resource_id: str,
+        *,
+        before: str | None,
+        after: str | None,
+    ) -> AuditEvent:
+        # Which class, before and after, and of what (R2.8); NULL inherits.
+        return self._event(
+            context,
+            ACTION_RESIDENCY_CHANGED,
+            workspace_id,
+            resource_type,
+            resource_id,
+            {"scope": resource_type, "from": before, "to": after},
+        )
+
     def _event(
         self,
         context: AccessContext,
@@ -363,3 +503,9 @@ class AdminConsoleService:
             occurred_at=self.clock.now(),
             details=details,
         )
+
+
+def _no_workspace(workspace_id: uuid.UUID) -> NotFoundError:
+    return NotFoundError(
+        "no such workspace in this tenant", details={"workspace_id": str(workspace_id)}
+    )

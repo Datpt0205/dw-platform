@@ -19,6 +19,7 @@ from dataclasses import dataclass
 import httpx
 
 from dw_kernel.errors import InfrastructureError
+from dw_kernel.residency import Destination, ResidencyGate, TenantRouteScope
 
 # API limits, measured against the configured gateway on 2026-08-17 (see
 # docs/architecture/model-gateway-findings.md).
@@ -49,6 +50,11 @@ class OpenAICompatibleEmbeddingAdapter:
     api_key: str
     model: str
     _dimension: int
+    # The process's one gate and where the embedding route processes (its
+    # `data_location` and `processor`, ADR-0123 decision 5): asked before any
+    # text is sent (compliance-pdpl R2.3).
+    residency: ResidencyGate
+    destination: Destination
     # Only sent when it differs from the model's native width: the parameter is
     # rejected by pre-v3 embedding models, and this adapter is not the place to
     # know which ones those are.
@@ -60,9 +66,11 @@ class OpenAICompatibleEmbeddingAdapter:
     def dimension(self) -> int:
         return self._dimension
 
-    async def embed(self, texts: Sequence[str]) -> list[list[float]]:
+    async def embed(self, texts: Sequence[str], *, scope: TenantRouteScope) -> list[list[float]]:
         if not texts:
             return []
+        # Before the client exists: a refused scope sends no byte.
+        await self.residency.check(scope, self.destination)
         out: list[list[float]] = []
         try:
             async with httpx.AsyncClient(

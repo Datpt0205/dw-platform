@@ -40,6 +40,7 @@ from dw_agent_runtime.wflite.assistant_wire import from_wire, to_wire
 from dw_agent_runtime.wflite.catalog import load_shipped_packs, load_yaml
 from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_kernel.errors import DomainError
+from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
 
@@ -212,6 +213,7 @@ async def test_a_malformed_answer_is_invalid_after_the_gateways_retries(
     prompts = PromptRegistry()
     prompts.load_directory(CONFIGS / "prompts")
     gateway = RoutingModelGateway(
+        residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter},

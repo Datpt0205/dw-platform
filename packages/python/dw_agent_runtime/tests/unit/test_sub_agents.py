@@ -28,6 +28,7 @@ from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
+from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
 
@@ -42,6 +43,7 @@ def _spec(
 ) -> AgentSpec:
     registry, executor = _registry()
     return AgentSpec(
+        residency=run_gate(),
         model=model,
         offered=OFFERED,
         registry=registry,

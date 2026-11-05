@@ -67,5 +67,13 @@ class TelemetryUsageRecorder:
         # request when the provider did not say.
         if usage.response_model is not None:
             attributes["gen_ai.response.model"] = usage.response_model
+        # ADR-0123 decision 6: identifiers only, never content.
+        for key, value in (
+            ("dw.route_class", usage.data_route_class),
+            ("dw.data_location", usage.data_location),
+            ("dw.processor", usage.processor),
+        ):
+            if value is not None:
+                attributes[key] = value
         with self.telemetry.span(chat_span_name(usage.model), attributes):
             pass

@@ -67,6 +67,7 @@ from dw_api.bootstrap.paths import (
 )
 from dw_api.settings import ApiSettings
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_kernel.residency import ResidencyGate
 from dw_knowledge.adapters.evidence_store import SqlEvidenceStore
 from dw_knowledge.attachment_policy import load_attachment_policy
 from dw_knowledge.gateway import KnowledgeGateway
@@ -81,6 +82,7 @@ from dw_platform.adapters.persistence.plan_model_profiles import (
     CachingPlanModelProfiles,
     SqlPlanModelProfiles,
 )
+from dw_platform.adapters.persistence.residency import SqlRouteClasses
 from dw_platform.application.config_versions import CONFIG_PREFIX
 from dw_platform.application.decision_gate import (
     DW_DECISION,
@@ -119,7 +121,9 @@ class RuntimeWiring:
     run_trails: RunTrailReader
 
 
-def _build_memory_ranker(settings: ApiSettings, models: ModelResolver) -> QdrantMemoryRanker | None:
+def _build_memory_ranker(
+    settings: ApiSettings, models: ModelResolver, residency: ResidencyGate
+) -> QdrantMemoryRanker | None:
     """The memory ranker, when this deployment has a vector store to rank with.
 
     `None` rather than a stub: a stub that returned an empty order would look
@@ -138,7 +142,7 @@ def _build_memory_ranker(settings: ApiSettings, models: ModelResolver) -> Qdrant
 
     return _Ranker(
         client=AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key),
-        embedder=build_embeddings(settings, models),
+        embedder=build_embeddings(settings, models, residency),
     )
 
 
@@ -188,6 +192,11 @@ def build_runtime(
         price_book_version=price_book.version,
     )
 
+    # ---- data route ------------------------------------------------------
+    # The process's one residency gate (compliance-pdpl R2.3; ADR-0123
+    # decision 4): every door that sends content to a model holds this one.
+    residency = ResidencyGate(classes=SqlRouteClasses(session_factory), telemetry=telemetry)
+
     # ---- model gateway ---------------------------------------------------
     # Built by the one builder the worker uses too (`build_model_stack`): the
     # gateway, ONE per-run spend ledger for the whole process — shared by the
@@ -206,6 +215,7 @@ def build_runtime(
         pricing=price_book,
         ledger=ledger,
         run_control=run_control,
+        residency=residency,
     )
     budget = model_stack.budget
     gateway = model_stack.gateway
@@ -221,11 +231,11 @@ def build_runtime(
     knowledge_gateway = KnowledgeGateway(
         session_factory=session_factory,
         vector_index=build_vector_index(settings),
-        embeddings=build_embeddings(settings, models),
+        embeddings=build_embeddings(settings, models, residency),
         object_storage=object_storage,
         clock=clock,
         id_generator=ids,
-        reranker=build_reranker(settings),
+        reranker=build_reranker(settings, residency),
         telemetry=telemetry,
     )
     # Upload path: the API stages the raw file and enqueues; the worker ingests.
@@ -297,7 +307,7 @@ def build_runtime(
         # Orders a long list of recalled facts by what the turn is about. Absent
         # without Qdrant, and absence costs only the ordering: recall still
         # answers, confidence-first, exactly as it did before ranking existed.
-        ranker=_build_memory_ranker(settings, models),
+        ranker=_build_memory_ranker(settings, models, residency),
     )
 
     # ---- graphs, workers, runner ----------------------------------------
@@ -397,6 +407,7 @@ def build_runtime(
         usage_meter=usage_meter,
         budget=budget,
         pricing=price_book,
+        residency=residency,
         tools=tool_registry,
         tool_executor=tool_executor,
         tool_specs=tool_specs,

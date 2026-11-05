@@ -162,6 +162,15 @@ class ApiSettings(BaseSettings):
     rerank_model: str = Field(
         default="bge-reranker-v2-m3", validation_alias=AliasChoices("DW_API_RERANK_MODEL")
     )
+    # Where the rerank endpoint processes the passages it is sent, and who
+    # processes them (compliance-pdpl R2.3; ADR-0123 decision 5). No default:
+    # undeclared is read as foreign by `ResidencyGate`.
+    rerank_data_location: Literal["vn", "foreign"] | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_RERANK_DATA_LOCATION")
+    )
+    rerank_processor: str | None = Field(
+        default=None, validation_alias=AliasChoices("DW_API_RERANK_PROCESSOR")
+    )
     # A search waits on this, so it stays short: past it the gateway keeps the
     # vector order instead of failing the search.
     rerank_timeout_seconds: float = Field(
@@ -355,7 +364,13 @@ class ApiSettings(BaseSettings):
         validation_alias=AliasChoices("DW_API_LANGFUSE_SECRET_KEY", "LANGFUSE_SECRET_KEY"),
     )
 
-    @field_validator("embedding_provider", "rerank_provider", mode="before")
+    @field_validator(
+        "embedding_provider",
+        "rerank_provider",
+        "rerank_data_location",
+        "rerank_processor",
+        mode="before",
+    )
     @classmethod
     def _blank_means_unset(cls, value: object, info: ValidationInfo) -> object:
         """Compose reads ``${X:-default}``, so a blank line in .env is "unset" in

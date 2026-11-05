@@ -22,6 +22,7 @@ from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_observability.metrics import DW_MODEL_TOKENS_TOTAL
 from dw_observability.semconv import contract_violations, load_snapshot, snapshot_path
 from dw_observability.telemetry import RecordingTelemetry
+from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
 
@@ -108,6 +109,7 @@ async def test_a_gateway_call_emits_only_pinned_names_and_no_input_value() -> No
         )
     )
     gateway = RoutingModelGateway(
+        residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter},

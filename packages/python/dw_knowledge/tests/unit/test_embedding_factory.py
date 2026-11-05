@@ -15,9 +15,11 @@ from pathlib import Path
 import pytest
 
 from dw_kernel.errors import ConfigError
+from dw_kernel.residency import ResidencyGate
 from dw_knowledge.adapters.embedding_factory import build_embeddings
 from dw_knowledge.adapters.hash_embedding import HashEmbeddingAdapter
 from dw_knowledge.adapters.openai_embedding import OpenAICompatibleEmbeddingAdapter
+from dw_platform.testing.residency import StaticRouteClasses
 
 pytestmark = pytest.mark.unit
 
@@ -31,6 +33,12 @@ class _Route:
     model: str = "text-embedding-3-large"
     dimensions: int | None = 3072
     timeout_seconds: int = 120
+    data_location: str = "foreign"
+    processor: str = "fpt_ai_gateway"
+
+
+# Built, never called here: the refusal at the adapter is compliance-pdpl 03's test.
+_GATE = ResidencyGate(classes=StaticRouteClasses({}))
 
 
 def _build(provider: str = "openai_compatible", route: _Route | None = None) -> object:
@@ -40,6 +48,7 @@ def _build(provider: str = "openai_compatible", route: _Route | None = None) -> 
         base_url="https://gateway.invalid/v1",
         api_key="unit-test-key",
         profile_id="gateway",
+        residency=_GATE,
     )
 
 
@@ -68,7 +77,12 @@ def test_a_route_without_dimensions_is_refused() -> None:
 def test_a_profile_without_an_embedding_route_is_refused() -> None:
     with pytest.raises(ConfigError) as raised:
         build_embeddings(
-            "openai_compatible", None, base_url="https://g.invalid", api_key="k", profile_id="luna"
+            "openai_compatible",
+            None,
+            base_url="https://g.invalid",
+            api_key="k",
+            profile_id="luna",
+            residency=_GATE,
         )
     assert raised.value.details == {"profile_id": "luna"}
 
@@ -79,13 +93,20 @@ def test_a_profile_without_an_embedding_route_is_refused() -> None:
 def test_the_gateway_needs_a_url_and_a_key(base_url: str | None, api_key: str | None) -> None:
     with pytest.raises(ConfigError):
         build_embeddings(
-            "openai_compatible", _Route(), base_url=base_url, api_key=api_key, profile_id="gateway"
+            "openai_compatible",
+            _Route(),
+            base_url=base_url,
+            api_key=api_key,
+            profile_id="gateway",
+            residency=_GATE,
         )
 
 
 def test_hash_needs_no_route() -> None:
     assert isinstance(
-        build_embeddings("hash", None, base_url=None, api_key=None, profile_id="x"),
+        build_embeddings(
+            "hash", None, base_url=None, api_key=None, profile_id="x", residency=_GATE
+        ),
         HashEmbeddingAdapter,
     )
 

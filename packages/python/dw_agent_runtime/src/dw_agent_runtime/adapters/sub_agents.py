@@ -50,6 +50,7 @@ from dw_agent_runtime.adapters.langchain_tools import (
     ScopedToolsMiddleware,
     platform_tools,
 )
+from dw_agent_runtime.adapters.residency_middleware import ResidencyGateMiddleware
 from dw_agent_runtime.adapters.run_budget import RunBudgetMiddleware
 from dw_agent_runtime.adapters.run_control_middleware import RunControlMiddleware
 from dw_agent_runtime.contracts import ToolDefinition
@@ -119,6 +120,9 @@ def sub_agent_spec(parent: AgentSpec, child: SubAgentSpec) -> dict[str, Any]:
             parent.executor.run_control,
             artifacts=() if child.artifact_id is None else (child.artifact_id,),
         ),
+        # The data route at a delegated turn's model call, for the route the
+        # child's profile resolves to, before its limits (compliance-pdpl R2.3).
+        ResidencyGateMiddleware(parent.residency, parent.models, profile_id),
         # The SAME ledger object the parent holds — not a copy, not a fresh one.
         # This single argument is what keeps a delegated turn inside the ceiling
         # the run was given.

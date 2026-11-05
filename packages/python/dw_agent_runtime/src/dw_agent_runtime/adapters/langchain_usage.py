@@ -33,14 +33,12 @@ boundary); the recorder port and pricing helpers come from ``model/``.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field, replace
-from typing import Any
 
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
@@ -48,7 +46,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.budget import PriceKey, route_cost
 from dw_agent_runtime.model.gateway import ModelUsage, UsageRecorderPort
 from dw_agent_runtime.model.pricing import PricingPort
-from dw_agent_runtime.model.profiles import Provider
+from dw_agent_runtime.model.profiles import ModelRoute, Provider
 from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.ports import ModelRequest
 from dw_kernel.errors import PriceNotFoundError
@@ -179,13 +177,19 @@ class LangchainUsageMeter:
                         model=model_name,
                         input_tokens=input_tokens,
                         output_tokens=output_tokens,
+                        # The route the agent loop's gate admitted before the
+                        # call (compliance-pdpl R2.1); unknown when the
+                        # resolver no longer answers.
+                        data_route_class=None if route is None else run_context.route_class,
+                        data_location=None if route is None else route.data_location,
+                        processor=None if route is None else route.processor,
                     ),
                 )
                 await self.recorder.record(run_context, request, usage)
         except Exception:
             _LOG.exception("usage recording failed for run %s", run_context.run_id)
 
-    async def _chat_route(self, run_context: RunContext, profile_id: str) -> PriceKey | None:
+    async def _chat_route(self, run_context: RunContext, profile_id: str) -> ModelRoute | None:
         """The chat route the resolver answers for this run (model-connections
         R1.1), or None when it refuses: the tokens are spent by now, so the
         meter still records them, priced by the model the provider named. It
@@ -261,35 +265,3 @@ def usage_run_context(
         scopes=context.scopes,
         trace_id=str(run_id),
     )
-
-
-async def metered_invoke(
-    model: Any,
-    messages: list[dict[str, str]],
-    *,
-    meter: LangchainUsageMeter | None,
-    context: AccessContext,
-    worker_id: str,
-    profile_id: str,
-    task: str,
-    prompt_id: str,
-    prompt_version: str,
-    timeout_seconds: float,
-) -> Any:
-    """One structured LangChain call, timed out and — when a meter is wired —
-    billed under its own fresh run id. ``None`` meter keeps the exact old
-    behaviour, so hosts without a database still answer."""
-    if meter is None:
-        return await asyncio.wait_for(model.ainvoke(messages), timeout=timeout_seconds)
-    run_context = usage_run_context(context, worker_id=worker_id)
-    async with meter.track(
-        run_context,
-        profile_id=profile_id,
-        task=task,
-        prompt_id=prompt_id,
-        prompt_version=prompt_version,
-    ) as callbacks:
-        return await asyncio.wait_for(
-            model.ainvoke(messages, config={"callbacks": callbacks}),
-            timeout=timeout_seconds,
-        )

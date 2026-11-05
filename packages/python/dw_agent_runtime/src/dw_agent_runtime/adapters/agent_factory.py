@@ -62,6 +62,7 @@ from dw_agent_runtime.adapters.langchain_tools import (
 )
 from dw_agent_runtime.adapters.model_retry import ModelRetryMiddleware
 from dw_agent_runtime.adapters.recalled_memory import MemoryRecallPort, RecalledMemoryMiddleware
+from dw_agent_runtime.adapters.residency_middleware import ResidencyGateMiddleware
 from dw_agent_runtime.adapters.run_budget import RunBudgetMiddleware
 from dw_agent_runtime.adapters.run_control_middleware import RunControlMiddleware
 from dw_agent_runtime.adapters.studio_tools import PinnedTools, StrictToolsMiddleware
@@ -77,6 +78,7 @@ from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.tools import ToolRegistry
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_kernel.residency import ResidencyGate
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 
 __all__ = [
@@ -155,6 +157,9 @@ class AgentSpec:
     # run's context (model-connections R1.1): `RuntimeSeam.models`.
     models: ModelResolver
     profile_id: str
+    # The one residency gate of the process (compliance-pdpl R2.3): the agent
+    # loop's model calls, a sub-agent's and a summary's ask it before sending.
+    residency: ResidencyGate
     compaction: CompactionSpec | None = None
     # What this worker already learned about the record in view. Optional the
     # same way compaction is: a context that stores no memory wires none, and a
@@ -243,6 +248,10 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
         # The freeze at the model call (agent-lifecycle R7.1): the executor's
         # own port, the one instance this process asks at every door.
         RunControlMiddleware(spec.executor.run_control),
+        # The data route (compliance-pdpl R2.2, R2.3): after the freeze and
+        # before the limits, so a refused call holds and spends nothing
+        # (usage-and-limits R6.5).
+        ResidencyGateMiddleware(spec.residency, spec.models, spec.profile_id),
         # The only ceiling on the path that can loop. Without it an agent run is
         # bounded by `recursion_limit`, which counts steps and not money.
         RunBudgetMiddleware(spec.budget, spec.models, spec.profile_id, spec.pricing),
@@ -277,6 +286,7 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
                 trigger=spec.compaction.trigger,
                 keep=spec.compaction.keep,
                 run_control=spec.executor.run_control,
+                residency=spec.residency,
             )
         )
     return stack

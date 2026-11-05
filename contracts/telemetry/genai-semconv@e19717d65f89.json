@@ -169,10 +169,12 @@
     "span_names": [
       "dw.egress.request",
       "dw.knowledge.rerank",
-      "dw.node"
+      "dw.node",
+      "dw.residency.check"
     ],
     "attributes": [
       "dw.channel",
+      "dw.data_location",
       "dw.egress.purpose",
       "dw.graph_version",
       "dw.input_tokens",
@@ -181,6 +183,7 @@
       "dw.model_profile",
       "dw.output_tokens",
       "dw.policy_version",
+      "dw.processor",
       "dw.prompt_bundle_version",
       "dw.prompt_id",
       "dw.prompt_version",
@@ -188,6 +191,8 @@
       "dw.release_manifest_ref",
       "dw.rerank.candidates",
       "dw.rerank.top_k",
+      "dw.residency.admitted",
+      "dw.route_class",
       "dw.run_id",
       "dw.run_mode",
       "dw.step_id",

@@ -20,6 +20,7 @@ from dw_agent_runtime.testing.models import route as test_route
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import DomainError, NotFoundError
+from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
 
@@ -98,6 +99,7 @@ def make_gateway(adapter: MockModelAdapter) -> RoutingModelGateway:
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     return RoutingModelGateway(
+        residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter},
@@ -153,6 +155,7 @@ async def test_recorded_usage_carries_the_book_s_price() -> None:
     prompts.register(make_prompt())
     recorder = InMemoryUsageRecorder()
     gateway = RoutingModelGateway(
+        residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"openai_responses": adapter},
@@ -160,7 +163,9 @@ async def test_recorded_usage_carries_the_book_s_price() -> None:
         pricing=_BOOK,
         run_control=OpenRunControl(),
     )
-    run_context = make_run_context()
+    # The `gateway` profile's routes are foreign, which only this class
+    # admits (compliance-pdpl R2.2); the subject here is the price.
+    run_context = make_run_context().model_copy(update={"route_class": "cross_border_full"})
 
     await gateway.generate_structured(
         ModelRequest(
@@ -244,6 +249,7 @@ async def test_gateway_unknown_provider_fails_fast() -> None:
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     gateway = RoutingModelGateway(
+        residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={},
@@ -329,6 +335,7 @@ async def test_gateway_uses_fallback_route_when_primary_provider_errors() -> Non
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     gateway = RoutingModelGateway(
+        residency=run_gate(),
         models=model_resolver(profiles, "with_fallback"),
         prompts=prompts,
         adapters={"flaky": FailingAdapter(), "mock": mock},
@@ -373,6 +380,7 @@ def _asking_gateway(adapter: _SchemaSeen) -> RoutingModelGateway:
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     return RoutingModelGateway(
+        residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter},
@@ -453,6 +461,7 @@ def _summarizing_gateway(
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     return RoutingModelGateway(
+        residency=run_gate(),
         models=model_resolver(profiles, default_profile),
         prompts=prompts,
         adapters={"mock": adapter, "down": _Down()},

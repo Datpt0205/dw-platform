@@ -56,6 +56,7 @@ from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import EntitlementDeniedError, PermissionDeniedError
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
+from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
 
@@ -154,6 +155,7 @@ def _gateway(models: ModelResolver, adapter: _Seen, pricing: FlatPricing) -> Rou
     prompts = PromptRegistry()
     prompts.register(make_prompt())
     return RoutingModelGateway(
+        residency=run_gate(),
         models=models,
         prompts=prompts,
         adapters={"mock": adapter},
@@ -209,6 +211,7 @@ async def _through_compaction(models: ModelResolver, run: RunContext) -> list[st
     summary = MockChatModel(responses=[AIMessage(content="tóm tắt")], mock_reply="tóm tắt")
     compaction = PlatformSummarizationMiddleware(
         summary,
+        residency=run_gate(),
         copy=COPY,
         uow_factory=FakeUoWFactory(audit_repo=FakeAuditRepo()),
         clock=FixedClock(NOW),

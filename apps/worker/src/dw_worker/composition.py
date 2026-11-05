@@ -55,6 +55,7 @@ from dw_agent_runtime.wflite.starter import WorkflowRunStarter
 from dw_agent_runtime.wflite.waits import WorkQueueRunWaits
 from dw_connectors.egress import EgressClient, NoCatalogueHosts
 from dw_kernel.ports import IdGenerator, SystemClock, UtcClock, Uuid7Generator
+from dw_kernel.residency import Destination, ResidencyGate
 from dw_knowledge.adapters.api_parsers import (
     DeepgramTranscriptParser,
     GatewayFileParser,
@@ -73,6 +74,7 @@ from dw_platform.adapters.persistence.plan_model_profiles import (
     CachingPlanModelProfiles,
     SqlPlanModelProfiles,
 )
+from dw_platform.adapters.persistence.residency import SqlRouteClasses
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.application.entitlement import PlanEntitlementService
 from dw_platform.application.work_queue import WorkQueue
@@ -153,7 +155,15 @@ def build_feedback_bucket(settings: WorkerSettings) -> ObjectStoragePort:
     )
 
 
-def build_embeddings(settings: WorkerSettings) -> EmbeddingPort:
+def build_residency_gate(
+    sessions: async_sessionmaker[AsyncSession], telemetry: TelemetryPort | None = None
+) -> ResidencyGate:
+    """The data route gate (compliance-pdpl R2.3): the class of a call outside
+    a run read under RLS on `sessions`, a run's from what it pinned."""
+    return ResidencyGate(classes=SqlRouteClasses(sessions), telemetry=telemetry)
+
+
+def build_embeddings(settings: WorkerSettings, residency: ResidencyGate) -> EmbeddingPort:
     """Public because two lanes need it: knowledge ingestion, and the memory
     index. Built by `dw_knowledge`'s one builder, the one the API embeds
     questions with, so "which model embeds this deployment's text" has a
@@ -172,6 +182,7 @@ def build_embeddings(settings: WorkerSettings) -> EmbeddingPort:
         base_url=settings.openai_base_url,
         api_key=settings.openai_api_key,
         profile_id=settings.model_profile,
+        residency=residency,
     )
 
 
@@ -190,7 +201,7 @@ def build_vector_index(settings: WorkerSettings) -> VectorIndexPort:
     return InMemoryVectorIndexAdapter()
 
 
-def build_parser(settings: WorkerSettings) -> DocumentParserPort:
+def build_parser(settings: WorkerSettings, residency: ResidencyGate) -> DocumentParserPort:
     """Route by extension: plaintext in process, everything else to an API.
 
     Public because a context's own lane reads PDFs through the same parser: a
@@ -210,10 +221,27 @@ def build_parser(settings: WorkerSettings) -> DocumentParserPort:
                 api_key=settings.openai_api_key,
                 model=settings.extraction_model,
                 policy=policy,
+                residency=residency,
+                destination=Destination(
+                    name="document_extraction",
+                    data_location=settings.extraction_data_location,
+                    processor=settings.extraction_processor,
+                ),
             )
         )
     if settings.deepgram_api_key:
-        parsers.append(DeepgramTranscriptParser(api_key=settings.deepgram_api_key, policy=policy))
+        parsers.append(
+            DeepgramTranscriptParser(
+                api_key=settings.deepgram_api_key,
+                policy=policy,
+                residency=residency,
+                destination=Destination(
+                    name="transcription",
+                    data_location=settings.transcription_data_location,
+                    processor=settings.transcription_processor,
+                ),
+            )
+        )
     # A missing key is not silently a missing format: CompositeParser raises
     # "no parser supports ..." and the job records that as its error, which is
     # what the upload status shows.
@@ -230,11 +258,12 @@ def build_ingest_components(settings: WorkerSettings) -> IngestComponents | None
     clock = SystemClock()
     id_generator = Uuid7Generator()
     storage = build_object_storage(settings)
+    residency = build_residency_gate(session_factory)
 
     gateway = KnowledgeGateway(
         session_factory=session_factory,
         vector_index=build_vector_index(settings),
-        embeddings=build_embeddings(settings),
+        embeddings=build_embeddings(settings, residency),
         object_storage=storage,
         clock=clock,
         id_generator=id_generator,
@@ -250,7 +279,7 @@ def build_ingest_components(settings: WorkerSettings) -> IngestComponents | None
         gateway=gateway,
         job_store=job_store,
         job_queue=IngestJobQueue(session_factory=session_factory, clock=clock),
-        parser=build_parser(settings),
+        parser=build_parser(settings, residency),
         object_storage=storage,
     )
 
@@ -323,6 +352,7 @@ def build_model_stack_for(
             price_book_version=price_book.version,
         ),
         run_control=run_control,
+        residency=build_residency_gate(sessions, telemetry),
     )
 
 

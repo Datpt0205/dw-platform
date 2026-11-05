@@ -43,6 +43,7 @@ from pydantic import BaseModel
 
 from dw_agent_runtime.model.profiles import ModelCapabilities, ModelRoute
 from dw_agent_runtime.testing.run_control import OpenRunControl
+from dw_platform.testing.residency import run_gate
 from dw_usage.adapters.price_book_file import load_price_book
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -166,6 +167,8 @@ async def probe(profile_id: str | None = None) -> int:
         usage_recorder=recorder,
         pricing=load_price_book(),
         run_control=OpenRunControl(),
+        # Every model call passes the gate, the probe's too (ADR-0123 decision 4).
+        residency=run_gate(),
     )
     host = urlsplit(settings.openai_base_url or "").hostname or "(no OPENAI_BASE_URL)"
     print(f"provider={settings.model_provider} profile={profile.profile_id} endpoint={host}")
@@ -189,6 +192,11 @@ async def probe(profile_id: str | None = None) -> int:
             roles=frozenset(),
             scopes=frozenset(),
             trace_id="check-model",
+            # The probe sends a random token and no tenant's content, to every
+            # route a profile declares, foreign ones included: the operator's
+            # measurement of a route, never a run of a tenant (compliance-pdpl
+            # 03, decided under delegation 31/10/2026).
+            route_class="cross_border_full",
         )
         request = ModelRequest(
             task=kind,

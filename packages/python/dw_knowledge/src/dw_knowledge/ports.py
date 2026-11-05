@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from dw_kernel.residency import TenantRouteScope
 from dw_knowledge.contracts import EvidenceChunk, SearchQuery
 from dw_platform.application.access_context import AccessContext
 
@@ -97,7 +98,12 @@ class DocumentParserPort(Protocol):
 
     def supports(self, content_type: str, filename: str) -> bool: ...
 
-    async def parse(self, data: bytes, content_type: str, filename: str) -> ParsedDocument: ...
+    async def parse(
+        self, data: bytes, content_type: str, filename: str, *, scope: TenantRouteScope
+    ) -> ParsedDocument:
+        """`scope` is the job's tenant and workspace, which a parser that sends
+        the file out asks `ResidencyGate` about first (compliance-pdpl R2.3)."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -116,8 +122,15 @@ class RerankPort(Protocol):
     """Cross-encoder reranker seam: a hosted rerank API, or none (vector order)."""
 
     async def rerank(
-        self, query: str, candidates: Sequence[RerankCandidate], top_k: int
-    ) -> list[RerankResult]: ...
+        self,
+        query: str,
+        candidates: Sequence[RerankCandidate],
+        top_k: int,
+        *,
+        scope: TenantRouteScope,
+    ) -> list[RerankResult]:
+        """`scope`: the verified context's tenant and workspace, for the gate."""
+        ...
 
 
 @dataclass(frozen=True)
@@ -189,7 +202,11 @@ class EmbeddingPort(Protocol):
     @property
     def dimension(self) -> int: ...
 
-    async def embed(self, texts: Sequence[str]) -> list[list[float]]: ...
+    async def embed(self, texts: Sequence[str], *, scope: TenantRouteScope) -> list[list[float]]:
+        """`scope`: the tenant and workspace whose content this is, from a
+        verified context or a job row, never from a request; an adapter that
+        sends it out asks `ResidencyGate` first (compliance-pdpl R2.3)."""
+        ...
 
 
 class ObjectStoragePort(Protocol):

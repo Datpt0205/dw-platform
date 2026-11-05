@@ -24,7 +24,14 @@ from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, ToolMe
 from langchain_core.outputs import ChatGeneration, ChatResult
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.types import Command
-from test_agent_factory import LOOP_CEILING_TOKENS, PROFILE_ID, THREAD, _models, _spec
+from test_agent_factory import (
+    ABROAD_TENANT,
+    LOOP_CEILING_TOKENS,
+    PROFILE_ID,
+    THREAD,
+    _models,
+    _spec,
+)
 from test_langchain_tools import make_run_context
 
 from dw_agent_runtime.adapters.agent_factory import platform_middleware
@@ -42,7 +49,9 @@ from dw_agent_runtime.run_control import HaltReason, RunControlDoor, RunHaltedEr
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
+from dw_kernel.residency import ResidencyRefusedError
 from dw_platform.domain.audit import AuditEvent
+from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
 
@@ -88,6 +97,7 @@ def _compactor(
     repo = audit if audit is not None else FakeAuditRepo()
     middleware = PlatformSummarizationMiddleware(
         summariser,
+        residency=run_gate(),
         copy=COPY,
         uow_factory=FakeUoWFactory(audit_repo=repo),
         clock=FixedClock(NOW),
@@ -281,6 +291,31 @@ async def test_a_frozen_run_is_stopped_before_any_summary_call() -> None:
     assert control.doors() == [RunControlDoor.COMPACTION]
 
 
+async def test_a_foreign_summary_route_is_refused_before_any_summary_call() -> None:
+    """compliance-pdpl R2.3 (CP3): compaction calls its model outside the
+    agent's model node, so it asks the residency gate itself, before every
+    summary call and outside the fail-open block: a `vn_only` run whose
+    summary route is foreign sends nothing and records nothing."""
+    summariser = _summariser()
+    middleware, audit = _compactor(summariser)
+    agent: Any = create_agent(
+        model=MockChatModel(responses=[AIMessage(content="xong")], mock_reply="xong"),
+        tools=[],
+        middleware=[middleware],
+        context_schema=RunContext,
+        checkpointer=InMemorySaver(),
+    )
+    # This tenant's own profile sends abroad (`test_agent_factory._models`).
+    context = make_run_context().model_copy(
+        update={"tenant_id": ABROAD_TENANT, "route_class": "vn_only"}
+    )
+
+    with pytest.raises(ResidencyRefusedError):
+        await agent.ainvoke({"messages": _history(30)}, THREAD, context=context)
+    assert summariser.calls == []
+    assert audit.events == []
+
+
 # ------------------------------------------------------- 3. not user-authored --
 
 
@@ -366,6 +401,7 @@ def test_it_refuses_a_copy_without_the_summary_text(older: str) -> None:
     with pytest.raises(ConfigError, match=r"runtime@1\.6\.0"):
         PlatformSummarizationMiddleware(
             _summariser(),
+            residency=run_gate(),
             copy=load_runtime_copy(_COPY_DIR / older),
             uow_factory=FakeUoWFactory(),
             clock=FixedClock(NOW),
@@ -573,6 +609,7 @@ def test_a_summary_route_without_an_input_budget_is_refused_at_build() -> None:
     with pytest.raises(ConfigError, match="max_input_tokens"):
         PlatformSummarizationMiddleware(
             _summariser(),
+            residency=run_gate(),
             copy=COPY,
             uow_factory=FakeUoWFactory(),
             clock=FixedClock(NOW),

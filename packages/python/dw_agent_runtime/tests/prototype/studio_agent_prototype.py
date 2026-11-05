@@ -67,6 +67,7 @@ from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.ids import TenantId
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
+from dw_platform.testing.residency import run_gate
 
 HERE = Path(__file__).resolve().parent
 FIXTURE = HERE / "fixtures" / "studio_agent.json"
@@ -404,6 +405,7 @@ class StudioGraphSource:
         prompts.register(FRAME)
         instructions = document.instructions
         spec = AgentSpec(
+            residency=run_gate(),
             model=self.default_model,
             offered=(),
             registry=self.registry,

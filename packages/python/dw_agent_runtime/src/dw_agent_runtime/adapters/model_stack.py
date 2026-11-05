@@ -61,6 +61,7 @@ from dw_agent_runtime.model.single_call import SingleCallModelGateway
 from dw_agent_runtime.ports import PinnedEnginePort, PlanModelProfilesPort, RunControlPort
 from dw_kernel.net_guard import ensure_allowed_outbound_url
 from dw_kernel.ports import SystemClock, UtcClock
+from dw_kernel.residency import ResidencyGate
 from dw_kernel.resilience import CircuitBreaker
 from dw_observability.telemetry import TelemetryPort
 
@@ -171,6 +172,7 @@ def build_model_stack(
     pricing: PricingPort,
     ledger: UsageRecorderPort,
     run_control: RunControlPort,
+    residency: ResidencyGate,
 ) -> ModelStack:
     """`pricing` and `ledger` come from `dw_usage`, which this package may not
     import: the composition root builds both and passes them, so both processes
@@ -197,6 +199,9 @@ def build_model_stack(
         pricing=pricing,
         # The process's one port, the gateway's first door (agent-lifecycle R7.1).
         run_control=run_control,
+        # The process's one gate, after the freeze and before the limits
+        # (compliance-pdpl R2.3).
+        residency=residency,
         budget=budget,
         clock=clock,
     )

@@ -27,6 +27,7 @@ from dw_agent_runtime.model.budget import RunBudgetLedger
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_platform.application.access_context import AccessContext
+from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
 
@@ -84,6 +85,7 @@ def _model(reply: str = "xong") -> MockChatModel:
 def _spec(model: MockChatModel, recall: Any, *, copy: Any = COPY_WITH_FRAME) -> AgentSpec:
     registry, executor = _registry()
     return AgentSpec(
+        residency=run_gate(),
         model=model,
         offered=OFFERED,
         registry=registry,

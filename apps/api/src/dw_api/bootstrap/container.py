@@ -54,6 +54,7 @@ from dw_connectors.adapters.zalo_link import ZaloLinking
 from dw_connectors.egress import EgressPort
 from dw_connectors.inbound import InboundUpdateInboxPort
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_kernel.residency import ResidencyGate
 from dw_knowledge.gateway import KnowledgeGateway
 from dw_knowledge.ingest_jobs import IngestJobStore
 from dw_knowledge.ports import ObjectStoragePort
@@ -145,6 +146,9 @@ class RuntimeSeam:
     # The price book every call is priced by (usage-and-limits R2.1); a context
     # building an `AgentSpec` passes this one.
     pricing: PricingPort
+    # The process's one residency gate (compliance-pdpl R2.3): an `AgentSpec`
+    # takes it as `residency`, and a context's own model door asks it.
+    residency: ResidencyGate
     tools: ToolRegistry
     tool_executor: ToolExecutor
     tool_specs: ToolSpecRegistry

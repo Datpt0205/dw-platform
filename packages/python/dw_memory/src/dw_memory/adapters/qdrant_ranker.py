@@ -39,6 +39,7 @@ from dataclasses import dataclass, field
 
 from qdrant_client import AsyncQdrantClient, models
 
+from dw_kernel.residency import TenantRouteScope
 from dw_knowledge.ports import EmbeddingPort
 
 logger = logging.getLogger("dw_memory.qdrant_ranker")
@@ -118,7 +119,11 @@ class QdrantMemoryRanker:
         try:
             if not self._ready:
                 await self.ensure_ready()
-            [vector] = await self.embedder.embed([content])
+            # The memory's own tenant and workspace (compliance-pdpl R2.3); a
+            # refusal sends nothing and leaves this memory unranked.
+            [vector] = await self.embedder.embed(
+                [content], scope=TenantRouteScope(tenant_id=tenant_id, workspace_id=workspace_id)
+            )
             await self.client.upsert(
                 collection_name=self.collection,
                 points=[
@@ -163,7 +168,9 @@ class QdrantMemoryRanker:
         """
         if not candidate_ids:
             return ()
-        [vector] = await self.embedder.embed([query])
+        [vector] = await self.embedder.embed(
+            [query], scope=TenantRouteScope(tenant_id=tenant_id, workspace_id=workspace_id)
+        )
         found = await self.client.query_points(
             collection_name=self.collection,
             query=vector,

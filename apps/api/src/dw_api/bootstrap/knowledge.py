@@ -14,11 +14,14 @@ from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.registry import ConfigError
 from dw_api.bootstrap.models import checked_base_url
 from dw_api.settings import ApiSettings
+from dw_kernel.residency import Destination, ResidencyGate
 from dw_knowledge.adapters.embedding_factory import build_embeddings as shared_build_embeddings
 from dw_knowledge.ports import EmbeddingPort, RerankPort, VectorIndexPort
 
 
-def build_embeddings(settings: ApiSettings, models: ModelResolver) -> EmbeddingPort:
+def build_embeddings(
+    settings: ApiSettings, models: ModelResolver, residency: ResidencyGate
+) -> EmbeddingPort:
     """The question is embedded by the same builder the worker embeds chunks with.
 
     Retrieval must embed the query exactly as ingestion embedded the chunks, so
@@ -31,10 +34,11 @@ def build_embeddings(settings: ApiSettings, models: ModelResolver) -> EmbeddingP
         base_url=settings.openai_base_url,
         api_key=settings.openai_api_key,
         profile_id=settings.model_profile,
+        residency=residency,
     )
 
 
-def build_reranker(settings: ApiSettings) -> RerankPort | None:
+def build_reranker(settings: ApiSettings, residency: ResidencyGate) -> RerankPort | None:
     """None means the vector order stands, which is what "none" asks for."""
     if settings.rerank_provider == "none":
         return None
@@ -58,6 +62,14 @@ def build_reranker(settings: ApiSettings) -> RerankPort | None:
             base_url=base_url,
             api_key=settings.rerank_api_key,
             model=settings.rerank_model,
+            residency=residency,
+            # Declared beside the URL, no default: undeclared is foreign
+            # (compliance-pdpl R2.3).
+            destination=Destination(
+                name="rerank",
+                data_location=settings.rerank_data_location,
+                processor=settings.rerank_processor,
+            ),
             timeout=settings.rerank_timeout_seconds,
         )
     raise ConfigError(

@@ -6,6 +6,7 @@ import uuid
 
 import pytest
 
+from dw_kernel.residency import PLATFORM_SCOPE
 from dw_knowledge.adapters.text_parser import PlaintextParser
 from dw_knowledge.identity import chunk_id_for, doc_key_for, document_id_for
 
@@ -130,6 +131,8 @@ async def test_plaintext_parser_extracts_title_and_text() -> None:
     parser = PlaintextParser()
     assert parser.supports("text/markdown", "quy-che.md")
     assert not parser.supports("application/pdf", "luat.pdf")  # an API parser reads this
-    parsed = await parser.parse(b"# Quy che mua sam\nNoi dung...", "text/markdown", "x.md")
+    parsed = await parser.parse(
+        b"# Quy che mua sam\nNoi dung...", "text/markdown", "x.md", scope=PLATFORM_SCOPE
+    )
     assert parsed.detected_title == "Quy che mua sam"
     assert "Noi dung" in parsed.text

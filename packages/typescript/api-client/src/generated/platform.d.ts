@@ -542,8 +542,13 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        /** Rename Workspace */
-        patch: operations["rename_workspace_api_v1_admin_workspaces__workspace_id__patch"];
+        /**
+         * Update Workspace
+         * @description Rename a workspace, or tighten its data route class (compliance-pdpl
+         *     R2.4, R2.7, R2.8): looser than the tenant's is 422, a loosening or back to
+         *     null is 409 `second_person_required`, another tenant's workspace is 404.
+         */
+        patch: operations["update_workspace_api_v1_admin_workspaces__workspace_id__patch"];
         trace?: never;
     };
     "/api/v1/admin/workspaces/{workspace_id}/archive": {
@@ -5232,11 +5237,6 @@ export interface components {
             /** Name */
             name: string;
         };
-        /** RenameWorkspaceBody */
-        RenameWorkspaceBody: {
-            /** Name */
-            name: string;
-        };
         /** RequestSupportGrantBody */
         RequestSupportGrantBody: {
             /** Duration Hours */
@@ -5812,6 +5812,11 @@ export interface components {
         };
         /** TenantSettingsView */
         TenantSettingsView: {
+            /**
+             * Data Route Class
+             * @enum {string}
+             */
+            data_route_class: "vn_only" | "cross_border_minimised" | "cross_border_full";
             /** Locale */
             locale: string | null;
             /**
@@ -5931,6 +5936,8 @@ export interface components {
         };
         /** UpdateTenantBody */
         UpdateTenantBody: {
+            /** Data Route Class */
+            data_route_class?: ("vn_only" | "cross_border_minimised" | "cross_border_full") | null;
             /** Locale */
             locale?: string | null;
             /** Max Autonomy Level */
@@ -5941,6 +5948,17 @@ export interface components {
             record_visibility?: string | null;
             /** Timezone */
             timezone?: string | null;
+        };
+        /**
+         * UpdateWorkspaceBody
+         * @description Only what is sent changes. `data_route_class: null` is sent on purpose:
+         *     back to inheriting the tenant's, a loosening (409 in W1).
+         */
+        UpdateWorkspaceBody: {
+            /** Data Route Class */
+            data_route_class?: ("vn_only" | "cross_border_minimised" | "cross_border_full") | null;
+            /** Name */
+            name?: string | null;
         };
         /** UpsertInput */
         UpsertInput: {
@@ -6273,6 +6291,11 @@ export interface components {
         };
         /** WorkspaceRefView */
         WorkspaceRefView: {
+            /**
+             * Data Route Class
+             * @description The workspace's data route class; null inherits the tenant's.
+             */
+            data_route_class?: ("vn_only" | "cross_border_minimised" | "cross_border_full") | null;
             /** Name */
             name: string;
             /** Slug */
@@ -7830,7 +7853,7 @@ export interface operations {
             };
         };
     };
-    rename_workspace_api_v1_admin_workspaces__workspace_id__patch: {
+    update_workspace_api_v1_admin_workspaces__workspace_id__patch: {
         parameters: {
             query?: never;
             header?: never;
@@ -7841,7 +7864,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["RenameWorkspaceBody"];
+                "application/json": components["schemas"]["UpdateWorkspaceBody"];
             };
         };
         responses: {

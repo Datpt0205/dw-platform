@@ -17,6 +17,7 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
+from dw_kernel.residency import RESIDENCY_REFUSED, ResidencyRefusedError, TenantRouteScope
 from dw_knowledge.gateway import IngestDocumentCommand
 from dw_knowledge.ingest_jobs import (
     DEFAULT_HEARTBEAT_SECONDS,
@@ -46,7 +47,10 @@ def _context_for(job: IngestJob) -> AccessContext:
 
 async def _process(job: IngestJob, components: IngestComponents) -> None:
     data = await components.object_storage.get_object(job.storage_key)
-    parsed = await components.parser.parse(data, job.content_type, job.filename)
+    # The job row's tenant and workspace, written from the uploader's verified
+    # context when the job was made (compliance-pdpl R2.3).
+    scope = TenantRouteScope(tenant_id=job.tenant_id, workspace_id=job.workspace_id)
+    parsed = await components.parser.parse(data, job.content_type, job.filename, scope=scope)
     if not parsed.text.strip():
         # The one sentence a person reads on the file row, so it says what the
         # file is rather than what the code did: an empty parse means either an
@@ -131,6 +135,13 @@ def build_ingest_consumer(
         beat = asyncio.create_task(_beat(job))
         try:
             await asyncio.wait_for(_process(job, components), timeout=job_timeout_seconds)
+        except ResidencyRefusedError as refused:
+            # A policy answer, not a provider's bad minute: retrying sends the
+            # same file to the same place the tenant's class does not allow.
+            logger.warning("ingest job %s refused by the data route", job.id)
+            await components.job_store.mark_failed(
+                job, error=f"{RESIDENCY_REFUSED}: {refused.message}", terminal=True
+            )
         except TimeoutError:
             logger.warning("ingest job %s timed out after %ss", job.id, job_timeout_seconds)
             await components.job_store.mark_failed(

@@ -28,6 +28,7 @@ from dw_agent_runtime.testing.models import resolver as model_resolver
 from dw_agent_runtime.testing.pricing import FlatPricing
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_kernel.errors import QuotaExceededError
+from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
 
@@ -106,6 +107,7 @@ def _gateways(adapter: MockModelAdapter) -> tuple[RoutingModelGateway, RunBudget
     )
     ledger = RunBudgetLedger()
     gateway = RoutingModelGateway(
+        residency=run_gate(),
         models=model_resolver(profiles, "balanced"),
         prompts=prompts,
         adapters={"mock": adapter},

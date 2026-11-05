@@ -33,6 +33,7 @@ from dw_agent_runtime.ports import StudioRun, StudioRunBlocked
 from dw_kernel.errors import ConfigError, ConflictError
 from dw_kernel.ids import TenantId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_kernel.residency import parse_route_class
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 from dw_platform.domain.audit import lane_audit_event
@@ -112,6 +113,8 @@ class SqlStudioRunStore:
                 engine=dict(resolver.body.get("engine") or {}),
                 version_no=root.version_no,
                 trace_id=row.trace_id or str(run_id),
+                # As admitted; NULL is a row admitted before the column.
+                data_route_class=parse_route_class(row.data_route_class or "vn_only"),
             )
 
     async def finish(

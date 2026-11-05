@@ -13,6 +13,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from dw_kernel.autonomy import FAIL_CLOSED_LEVEL, AutonomyLevel
+from dw_kernel.residency import RouteClass
 from dw_kernel.run_mode import RunMode
 
 _SEMVER_PATTERN = r"^\d+\.\d+\.\d+$"
@@ -203,6 +204,13 @@ class RunContext(BaseModel):
     # through the runner, and the policy treats that as ask-everything.
     autonomy_level: AutonomyLevel | None = None
     approval_policy_version: str | None = None
+    # The strictest data route class of the tenant, the workspace and the
+    # version, pinned where the run is admitted and read back from the run row
+    # where it resumes (compliance-pdpl R2.1; ADR-0123 decisions 3, 6). Every
+    # model door's `ResidencyGate` reads it. `vn_only` by default, the narrowest
+    # value, as `clearance` is: a construction site that forgets it sends to
+    # Vietnamese routes only, never abroad.
+    route_class: RouteClass = "vn_only"
 
 
 class MessageSpec(BaseModel):

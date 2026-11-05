@@ -94,6 +94,7 @@ from dw_agent_runtime.run_control import RunControlDoor
 from dw_kernel.errors import PriceNotFoundError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
+from dw_kernel.residency import ResidencyGate
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.domain.audit import AuditEvent
 
@@ -133,6 +134,10 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         # The freeze before every summary call (agent-lifecycle R7.1): the
         # process's one port, never a default.
         run_control: RunControlPort,
+        # The data route before every summary call (compliance-pdpl R2.3):
+        # compaction calls its model directly, outside the agent's model node,
+        # so the loop's `ResidencyGateMiddleware` never sees it.
+        residency: ResidencyGate,
     ) -> None:
         if (
             copy.context_summary_prompt is None
@@ -167,6 +172,7 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
         self._ids = ids
         self._budget = budget
         self._run_control = run_control
+        self._residency = residency
         self._pricing = pricing
         self._models = models
         self._profile_id = profile_id
@@ -239,6 +245,10 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
             # there, the refusal would read as "the summariser failed, carry
             # on" and neither would stop anything.
             await self._run_control.require_open(run_context, door=RunControlDoor.COMPACTION)
+            # A refusal ends the turn like the freeze does: a summary of the
+            # run's history is content, and it is not sent where the run's
+            # class does not allow (compliance-pdpl R2.2).
+            await self._residency.check(run_context, summary_route)
             self._budget.check(run_context.run_id, ceiling, task=COMPACTION_TASK)
             try:
                 summary, input_tokens, output_tokens = await self._summarise(anchor, chunk)

@@ -98,6 +98,14 @@ export type AdminWorkspace = z.infer<typeof adminWorkspaceSchema>;
 export const autonomyLevelSchema = z.enum(["A0", "A1", "A2", "A3", "A4"]);
 export type AutonomyLevel = z.infer<typeof autonomyLevelSchema>;
 
+// The data route classes, strictest first (`dw_kernel.residency.ROUTE_CLASSES`).
+export const dataRouteClassSchema = z.enum([
+  "vn_only",
+  "cross_border_minimised",
+  "cross_border_full",
+]);
+export type DataRouteClass = z.infer<typeof dataRouteClassSchema>;
+
 export const adminTenantSchema = z.object({
   tenant_id: z.string(),
   slug: z.string(),
@@ -112,6 +120,9 @@ export const adminTenantSchema = z.object({
   // The most autonomy any of this tenant's workers may run at. It lowers a
   // worker's own level and never raises it.
   max_autonomy_level: autonomyLevelSchema,
+  // Where the company's data may be processed (compliance-pdpl R2): one person
+  // tightens it, loosening is refused in W1 (409 `second_person_required`).
+  data_route_class: dataRouteClassSchema,
 });
 export type AdminTenant = z.infer<typeof adminTenantSchema>;
 

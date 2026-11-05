@@ -20,6 +20,7 @@ import asyncio
 import dataclasses
 import sys
 import time
+import uuid
 from urllib.parse import urlsplit
 
 import httpx
@@ -51,13 +52,23 @@ class _StatusRecorder(httpx.AsyncBaseTransport):
 async def probe() -> int:
     from dw_api.bootstrap.knowledge import build_reranker
     from dw_api.settings import ApiSettings
+    from dw_kernel.residency import ResidencyGate, TenantRouteScope
     from dw_knowledge.ports import RerankCandidate
+    from dw_platform.testing.residency import StaticRouteClasses
+
+    # The probe sends the fixed passages below and no tenant's content, to the
+    # endpoint wherever it processes: the operator's measurement of a route,
+    # under a class of its own (compliance-pdpl 03, decided under delegation
+    # 31/10/2026). Every call still passes the gate.
+    probe_tenant = uuid.uuid4()
+    gate = ResidencyGate(classes=StaticRouteClasses({probe_tenant: "cross_border_full"}))
+    scope = TenantRouteScope(tenant_id=probe_tenant, workspace_id=None)
 
     settings = ApiSettings()
     host = urlsplit(settings.rerank_base_url or "").hostname or "(no DW_API_RERANK_BASE_URL)"
     print(f"provider={settings.rerank_provider} model={settings.rerank_model} endpoint={host}")
     try:
-        reranker = build_reranker(settings)
+        reranker = build_reranker(settings, gate)
     except Exception as exc:  # a probe reports the failure, it does not trace it
         print(f"FAIL configuration: {type(exc).__name__}: {exc}")
         return 1
@@ -77,7 +88,7 @@ async def probe() -> int:
     candidates = [RerankCandidate(id=key, text=text) for key, text in _DOCUMENTS.items()]
     started = time.perf_counter()
     try:
-        ranked = await reranker.rerank(_QUERY, candidates, top_k=len(candidates))
+        ranked = await reranker.rerank(_QUERY, candidates, top_k=len(candidates), scope=scope)
     except Exception as exc:  # a probe reports every failure
         details = getattr(exc, "details", {})
         print(f"FAIL status={_status(recorder)} {type(exc).__name__}: {exc} {details}")

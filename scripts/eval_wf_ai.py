@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from dw_agent_runtime.testing.run_control import OpenRunControl
+from dw_platform.testing.residency import run_gate
 from dw_usage.adapters.price_book_file import load_price_book
 
 if TYPE_CHECKING:
@@ -73,6 +74,9 @@ def live_gateway() -> ModelGateway:
         usage_recorder=InMemoryUsageRecorder(),
         pricing=load_price_book(),
         run_control=OpenRunControl(),
+        # The platform's eval runs `vn_only` (compliance-pdpl R2.3): a foreign
+        # profile is refused until a route processed in Vietnam exists.
+        residency=run_gate(),
     )
 
 

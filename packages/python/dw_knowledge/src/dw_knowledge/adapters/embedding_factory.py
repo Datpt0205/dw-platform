@@ -16,6 +16,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from dw_kernel.errors import ConfigError
+from dw_kernel.residency import Destination, ResidencyGate
 from dw_knowledge.ports import EmbeddingPort
 
 __all__ = ["EmbeddingRoute", "build_embeddings"]
@@ -37,6 +38,12 @@ class EmbeddingRoute(Protocol):
     @property
     def timeout_seconds(self) -> int: ...
 
+    @property
+    def data_location(self) -> str: ...
+
+    @property
+    def processor(self) -> str: ...
+
 
 def build_embeddings(
     provider: str,
@@ -45,6 +52,7 @@ def build_embeddings(
     base_url: str | None,
     api_key: str | None,
     profile_id: str,
+    residency: ResidencyGate,
 ) -> EmbeddingPort:
     if provider == "openai_compatible":
         from dw_knowledge.adapters.openai_embedding import OpenAICompatibleEmbeddingAdapter
@@ -65,6 +73,14 @@ def build_embeddings(
             api_key=api_key,
             model=route.model,
             _dimension=route.dimensions,
+            # The route's own declaration (ADR-0123 decision 5), checked by the
+            # process's one gate before each call (compliance-pdpl R2.3).
+            residency=residency,
+            destination=Destination(
+                name=f"{profile_id}.embedding",
+                data_location=route.data_location,
+                processor=route.processor,
+            ),
             timeout=float(route.timeout_seconds),
         )
     if provider == "hash":

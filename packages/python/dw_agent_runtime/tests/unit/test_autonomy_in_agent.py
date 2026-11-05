@@ -39,6 +39,7 @@ from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.tools import RegisteredTool, ToolRegistry, pydantic_behaviour
 from dw_kernel.autonomy import AutonomyLevel
 from dw_kernel.ports import FixedClock, SequentialIdGenerator
+from dw_platform.testing.residency import run_gate
 
 pytestmark = pytest.mark.unit
 
@@ -77,6 +78,7 @@ def _spec(
         run_control=OpenRunControl(),
     )
     return AgentSpec(
+        residency=run_gate(),
         model=model,
         offered=offered,
         registry=registry,
