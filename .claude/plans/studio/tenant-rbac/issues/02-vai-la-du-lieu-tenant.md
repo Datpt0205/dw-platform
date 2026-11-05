@@ -491,3 +491,13 @@ xóa cache ở route khóa của foundations-hardening/02 là tạm và ticket n
   `test_rls_coverage.py`, `test_privileges.py`, `test_offboarding_coverage.py`); chờ lúc đóng hàng: `scripts/mutate.py`
   trên `mutations/02.yaml`, `make test-integration` đầy đủ, P50/P95/P99 (kèm số đo FOG-38 trên tenant 5.000 người,
   M11), ảnh Playwright của màn `/platform`, `/code-review`.
+- 2026-11-05 (agent): M11, phần FOG-38: đã đo ở discovery 08 (`db/bench/rbac/RESULTS.md`), công ty 5.000 người, 200
+  workspace, ở head. Đọc `tenant_access_versions` mỗi request 0,12 ms p95 phía máy chủ; `effective_grants` 9,9 ms p95 với
+  người 30 vai trò ở 10 workspace (1.358 dòng); `GET /api/v1/me` cache nóng P95/P99 237/264 ms, ngay sau tăng version
+  267/317 ms (đạt ngân sách tạm); đuôi là GC của Python, `gc.freeze()` sau khởi động đưa P95 về 30 ms. Bước 17 của ticket
+  này tốn nhất ở quy mô: `check_owner_coverage` chạy ở mỗi lệnh trên bảng vai trò, 18 ms mỗi lệnh ở 5.000 thành viên, 59%
+  của một lần gán 1.000 người (30,2 giây). M7 (trigger trên `platform.tenants` tăng version ở mọi cột) không đo riêng; giá
+  của một lần tăng version là mỗi người trượt cache một lần, cột "ngay sau tăng version" ở trên. Lần gán hay sửa vai trò lớn khóa dòng version của công ty tới commit, mọi lần ghi quyền khác của công ty chờ (30
+  giây). Đề xuất ticket theo dõi (người điều phối mở): `check_owner_coverage` một lần mỗi giao dịch (trigger ràng buộc
+  hoãn tới commit), `_HELD` gọi `scopes_in` trong FROM (28 ms p50 so với 6,7 ms của `effective_grants`), `gc.freeze()` ở
+  lifespan của API. Phần P50/P95/P99 so với commit đầu hàng đợi của M11 vẫn của lúc đóng hàng.

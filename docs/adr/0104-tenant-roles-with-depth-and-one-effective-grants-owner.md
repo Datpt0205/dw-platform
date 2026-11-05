@@ -252,6 +252,16 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
    role templates name its object keys stays open.
 6. **FOG-38 (prototype).** Cost of `effective_grants` and the version read per request; triggers under bulk assignment
    and on a role with 1,000 holders; whether `FOR SHARE` closes the revoke-while-assigning race on PostgreSQL 16.
+   Answered 2026-11-05 by measurement (discovery 08, `db/bench/rbac/RESULTS.md`; the dev machine, a 5,000-member
+   tenant): the version read costs 0.12 ms p95 on the server and one round trip, so decision 7 stands and the NOTIFY
+   fallback is not taken; `effective_grants` runs 9.9 ms p95 for a person with 30 roles in 10 workspaces (1,358 rows),
+   3.4 ms for an owner; `GET /me` holds P95 ≤ 300 ms and P99 ≤ 1 s cached (237/264 ms) and after a version bump
+   (267/317 ms), and misses P95 beside one role edit (311 ms) and uncached (328-433 ms), both from Python's full
+   collections, which `gc.freeze()` at startup removes (P95 51 ms beside a 1,000-person assignment). Row triggers stay:
+   a statement-level separation-of-duties trigger halves only a multi-row statement the role service does not issue.
+   `FOR SHARE` closes both races (0/200 leaks each; 196/200 and 99/200 with it removed). The `session_user` exemption
+   stays (2,000/2,000 borrows of the API's asyncpg pools read the login role). A threshold for `effective_grants`
+   itself remains Đạt's.
 7. **Q-h1 (Đạt, before tenant-rbac/02 is ready).** Who may do what while a tenant is `setup` (decision 10)? Proposed:
    `setup` behaves as `locked` at every tenant route, except the two owners' first sign-in and their acceptance of the
    owner invitation, and the operators' routes; no run, no publish and no other invitation until the tenant is

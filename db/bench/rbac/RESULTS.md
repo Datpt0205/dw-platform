@@ -1,0 +1,265 @@
+# Đo chi phí vai trò của tenant ở quy mô D12 (discovery 08, FOG-38)
+
+Ticket: [`.claude/plans/studio/discovery/issues/08-rbac-cost.md`](../../../.claude/plans/studio/discovery/issues/08-rbac-cost.md).
+Harness: [`bench_rbac.py`](bench_rbac.py) (`ad7d80c`). Mọi số ở đây là _measured_ trên máy dev ngày 5/11/2026, trên schema ở head
+`044859c` (tenant-rbac/02 `b5677d345bc1`, /03 `d2b57239ef50`, /04 `ef68083f2905`), không phải máy tham chiếu.
+
+## Cách chạy lại
+
+```sh
+make bench-rbac                                   # setup q1 q1gc q2 q3 q4 drop, JSON vào thư mục tạm của hệ thống
+# hay từng bước, giữ database giữa các lần:
+export DW_TEST_DB_SUFFIX=_fog38
+uv run python db/bench/rbac/bench_rbac.py setup            # dw_bench_rbac_fog38: alembic upgrade head rồi gieo
+uv run python db/bench/rbac/bench_rbac.py q1 q1gc q2 q3 q4 --out <thư mục>
+uv run python db/bench/rbac/bench_rbac.py drop             # xóa dòng danh mục đã gieo, rồi drop database
+```
+
+`q2` chạy một lần trên một lần `setup` (vai trò gán hàng loạt và khóa đã thêm ở lại). Không có trong `testpaths`, không
+chạy trong CI. Lần chạy ghi ở đây: `setup q1 q1gc q2 q3 q4` liền một mạch (gieo 66 giây, đo 19 phút), rồi `drop` (0 dòng
+danh mục thử còn lại, database đã xóa).
+
+## Máy và cấu hình
+
+- Windows 11 (10.0.26300), 16 luồng, Python 3.12.10 (venv chung; CI dùng 3.12.15), SQLAlchemy 2.0.54, asyncpg 0.31.0,
+  redis-py 5.3.1; Docker Desktop 16 CPU, 7,9 GB.
+- PostgreSQL 16.15 (`postgres:16-alpine`) của compose `dwskel`, 127.0.0.1:25432, container không giới hạn CPU hay bộ
+  nhớ, `shared_buffers` 128 MB, `work_mem` 4 MB, `synchronous_commit` on, READ COMMITTED; dùng chung với làn build 1,
+  có thể chạy test cùng lúc. Một vòng `SELECT 1` từ harness: p50 1,29 ms, p95 1,67 ms. `track_functions = all` chỉ trên
+  database đo, để chia thời gian một lần ghi cho từng trigger (`pg_stat_xact_user_functions`).
+- Valkey 8.1.10 của compose (`redis://127.0.0.1:16379/7`) làm cache của `CachingMembershipLookup`, như wiring của API.
+- App: `build_container(ApiSettings(profile="test", ...))` và `create_app` thật, gọi qua `httpx.ASGITransport` như
+  `apps/api/tests/integration`; `rate_limit_per_minute=0` (240/phút mỗi người gọi từ chối chính lần đo; test cũng đặt 0).
+  Hai bản app (có Valkey và không cache) và harness chạy chung **một tiến trình, một event loop**: `/me` của câu 2 (hai
+  làn cạnh một lần ghi) vì thế chậm hơn ở một tiến trình API riêng, và lần gán "một mình" là số của riêng cơ sở dữ liệu.
+
+## Dữ liệu gieo
+
+Một công ty theo D12: 5.000 thành viên `active`, 200 workspace, mỗi người một membership và vai trò `member`; hai
+`tenant_owner`. 200 khóa danh mục thử (`bench.k_000`..`bench.k_199`, `dw_migrator` chèn, `drop` xóa), 40 object × 5 hành
+động = 200 khóa `obj.*` sinh từ định nghĩa sống (tenant-rbac/04), mỗi object 10 trường (800 khóa `fld.*` cho chủ sở
+hữu). 30 vai trò, mỗi vai trò 20 khóa danh mục, 20 quyền object (độ sâu own/workspace/tenant xen kẽ) và 5 quyền trường.
+
+- **Người nặng**: 10 membership ở 10 workspace, 3 vai trò mỗi workspace (30 vai trò khác nhau) cùng `member`:
+  `effective_grants` trả 1.358 dòng, 458 khóa khác nhau (600 dòng `obj.*`, 150 dòng `fld.*`).
+- **Chủ sở hữu**: `tenant_owner` (quyền tính động: mọi khóa danh mục cấp được, mọi `obj.*`, mọi `fld.*`), 1.255 dòng.
+- **Người thường**: chỉ `member`, 8 dòng.
+- `bench_held`: vai trò 1.000 người giữ (câu 2); sáu vai trò `bench_bulk_*` cho các lần gán 1.000 người.
+- Một luật tách nhiệm miễn trừ được (`sod_bench_left_right`) và bốn luật trơ trên khóa không ai giữ.
+- Câu 3 trên một công ty nhỏ riêng (5 người: hai chủ sở hữu, người gán, người của cuộc đua a, người nhận của cuộc đua b):
+  cuộc đua không phụ thuộc cỡ công ty, còn mỗi lệnh trên bảng vai trò chạy `check_owner_coverage` của cả công ty.
+
+## Bảng kết luận
+
+| #   | Đạt khi (ticket)                                                                | Số đo                                                                                                                                                                                                                           | Kết quả                                                                            |
+| --- | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| 1   | `GET /api/v1/me` P95 ≤ 300 ms, P99 ≤ 1 s (`latency.md`)                         | Cache nóng P95/P99: người nặng 237,2/264,1 ms, chủ sở hữu 244,0/288,8, người thường 13,7/15,5. Ngay sau tăng version: 266,9/317,3; 275,9/306,7; 47,3/59,5                                                                       | **Đạt**; P95 sát ngưỡng vì GC của Python (Câu 1)                                   |
+| 2   | Như dòng 1, kể cả lúc gán hàng loạt                                             | Trong lần gán 1.000 người: cache nóng P95 261,6 / P99 290,6 (n = 1.259); không cache 340,4 / 369,4 (n = 413). Cạnh lần sửa vai trò 1.000 người giữ: cache nóng P95 255,9-310,8. Với `gc.freeze()`: 50,9 / 62,7 và 142,9 / 166,4 | **Đạt** lúc gán hàng loạt có cache; **trượt P95** ở hai chỗ (Câu 2), P99 đạt mọi ô |
+| 3   | 0 lần gán lọt sau thu hồi trên 200 lượt; bỏ `FOR SHARE` cho ít nhất một lần lọt | Head: 0/200 (miễn trừ tách nhiệm) và 0/200 (quyền của người gán). Bỏ `FOR SHARE`: 196/200 và 99/200 lần lọt                                                                                                                     | **Đạt**, hai test đỏ được                                                          |
+| 4   | `session_user` là vai đăng nhập ở 1.000/1.000 lần                               | Pool `dw_app` của API 1.000/1.000, pool `dw_provisioner` 1.000/1.000, cả trong hàm SECURITY DEFINER; `SET ROLE`, `SET SESSION AUTHORIZATION` sang `dw_migrator` bị từ chối 200/200 mỗi loại                                     | **Đạt**                                                                            |
+
+## Câu 1: `effective_grants`, đọc access version, `AccessContext`
+
+1.000 lần mỗi câu dưới `dw_app` (`app.tenant_id` đặt cho phiên), sau 20 lần làm nóng. "Thực thi" là `Execution Time` của
+`EXPLAIN (ANALYZE)` (1.000 lần riêng), "khứ hồi" là thời gian harness qua SQLAlchemy và asyncpg như app.
+
+| Câu lệnh                                   | Dòng  | Thực thi p50 / p95 / p99 (ms) | Khứ hồi p50 / p95 / p99 (ms) |
+| ------------------------------------------ | ----- | ----------------------------- | ---------------------------- |
+| Đọc `tenant_access_versions` (mỗi request) | 1     | 0,07 / 0,12 / 0,16            | 1,38 / 2,09 / 2,60           |
+| `effective_grants`, người nặng             | 1.358 | 6,67 / 9,93 / 12,18           | 11,36 / 16,59 / 257,24       |
+| `effective_grants`, chủ sở hữu             | 1.255 | 2,42 / 3,43 / 4,08            | 4,83 / 6,58 / 7,84           |
+| `effective_grants`, người thường           | 8     | 0,92 / 1,30 / 1,66            | 1,93 / 2,66 / 3,28           |
+| Câu dựng AccessContext (`_HELD`), nặng     | 1     | 28,10 / 38,83 / 46,44         | 33,12 / 44,60 / 56,78        |
+| `_HELD`, chủ sở hữu                        | 1     | 21,19 / 28,00 / 32,80         | 25,80 / 36,49 / 43,88        |
+| `_HELD`, người thường                      | 1     | 10,17 / 15,12 / 19,61         | 11,74 / 15,20 / 17,99        |
+
+`GET /api/v1/me`, 300 request mỗi ô qua app thật (ms):
+
+| Người      | Cache nóng (Valkey) p50 / p95 / p99 | Ngay sau tăng version p50 / p95 / p99 | Không cache p50 / p95 / p99 |
+| ---------- | ----------------------------------- | ------------------------------------- | --------------------------- |
+| Nặng       | 21,9 / 237,2 / 264,1                | 70,6 / 266,9 / 317,3                  | 69,6 / 296,5 / 334,5        |
+| Chủ sở hữu | 22,5 / 244,0 / 288,8                | 66,6 / 275,9 / 306,7                  | 62,7 / 290,3 / 316,6        |
+| Thường     | 10,6 / 13,7 / 15,5                  | 36,0 / 47,3 / 59,5                    | 33,1 / 40,6 / 45,8          |
+
+"Ngay sau tăng version": trước mỗi request đo, `dw_migrator` tăng `tenant_access_versions.version` của công ty (điều mọi
+trigger trên bảng quyền làm), nên mỗi request trượt cache: đọc version, đọc Valkey, dựng lại, ghi Valkey.
+
+**Kích thước `AccessContext` đã tuần tự hóa** (`caching_lookup._serialize`, thứ Valkey giữ): người nặng 110.158 byte (1.358
+grant, 318 scope), chủ sở hữu 130.928 byte (1.255 grant, 1.247 scope), người thường 1.127 byte. Thân `/me`: 154.563,
+171.007 và 1.295 byte. Một mục cho mỗi (version, workspace, issuer, subject), TTL 30 giây: 5.000 người thường cùng đăng
+nhập ở một version là khoảng 5,5 MB; mỗi người nặng hay chủ sở hữu thêm 110-131 KB; một lần tăng version bỏ cả tập (khóa
+cũ hết hạn theo TTL). Valkey chứa được; không cần cache trong tiến trình.
+
+**Đuôi P95 là GC của Python, không phải cơ sở dữ liệu** (`q1gc`). Cùng 300 request cache nóng của người nặng, mỗi lần GC
+đo bằng `gc.callbacks`: 16 lần thu gom thế hệ 2, mỗi lần 241 ms p50 (264 ms tối đa), đúng cỡ đuôi; người thường không gây
+lần nào. Sau `gc.collect(); gc.freeze()` khi app đã khởi động (heap lúc khởi động ra khỏi bộ thu gom): P95 238,96 → 29,52
+ms, P99 276,43 → 33,10 ms, mỗi lần thế hệ 2 còn 0,74 ms p50. Khứ hồi của `effective_grants` nặng cũng thế (p99 257 ms khi
+thực thi p99 12 ms): 1.358 dòng giải mã thành đối tượng Python là thứ kích hoạt thu gom.
+
+**Câu dựng AccessContext đắt gấp 3-10 lần `effective_grants`** (`_HELD` 28 ms p50 so với 6,7 ms với người nặng; 10 ms so
+với 0,9 ms với người thường): `platform.scopes_in` được gọi trong danh sách SELECT (`ARRAY(SELECT platform.scopes_in(...))`),
+nên hàm SQL trả tập không được inline và chạy như một hàm riêng với kế hoạch chung (một `EXPLAIN` riêng: 30 ms với người
+thường). Gọi nó trong FROM, hay chiếu scope từ chính các grant câu đã đọc, bỏ được phần này (đề xuất, chưa đo).
+
+## Câu 2: gán 1.000 người, sửa vai trò 1.000 người giữ
+
+Mỗi lần ghi là một giao dịch `dw_app` như service ghi: `app.tenant_id`, `app.user_id` = chủ sở hữu 1 (người xác nhận), và
+mỗi thay đổi mở rộng đi qua đề xuất `platform.role_change_requests` của chủ sở hữu 2 (gieo sẵn), xác nhận trong chính giao
+dịch (`UPDATE ... confirmed`, `app.role_change_id`) rồi mới ghi, như `SqlRoleAdminRepository.confirm` (không có lần hỏi
+trước của service). Một đề xuất `assignment_grant` khớp đúng một membership, nên 1.000 người là 1.000 đề xuất, 1.000 cặp
+`UPDATE` + `INSERT` trong một giao dịch. Thời gian từng trigger lấy từ `pg_stat_xact_user_functions` trước commit.
+
+| Lần ghi (một giao dịch)                                      | Thời gian (ms) | Trigger tốn nhất (tổng ms trong giao dịch)                                                                                                   |
+| ------------------------------------------------------------ | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Gán 1.000 người, không gì chạy cạnh                          | 30.246         | `check_owner_coverage` 17.936 (1.000 lần), `rbac_guard` 4.061, `role_is_critical` 1.594, tách nhiệm 1.205, `guard_role_change_request` 1.064 |
+| Gán 1.000 người, hai làn `/me` cạnh                          | 58.594         | như trên (18.867, 4.406, ...); phần thêm là event loop chung với hai làn `/me`                                                               |
+| Gán 1.000 người, hai làn `/me`, `gc.freeze()`                | 44.867         | như trên                                                                                                                                     |
+| Thêm 1 khóa vào vai trò 1.000 người giữ                      | 1.966          | tách nhiệm 993 (1.000 × `sod_violation`), `rbac_guard` 627 (1.000 × `holder_covers_grant`)                                                   |
+| Thêm 10 khóa, 10 lệnh (như `_set_privileges`)                | 15.059         | tách nhiệm 7.411 (10.000 × `sod_violation`), `rbac_guard` 6.483 (10.000 × `holder_covers_grant`)                                             |
+| Thêm 10 khóa, 1 lệnh, trigger theo dòng (head)               | 16.088         | tách nhiệm 8.314, `rbac_guard` 7.181                                                                                                         |
+| Thêm 10 khóa, 1 lệnh, tách nhiệm theo câu lệnh (nguyên mẫu)  | 8.301          | `rbac_guard` 6.903, tách nhiệm 734 (1.000 × `sod_violation`)                                                                                 |
+| Thêm 10 khóa, 10 lệnh, tách nhiệm theo câu lệnh (nguyên mẫu) | 16.830         | tách nhiệm 7.986, `rbac_guard` 7.865                                                                                                         |
+| Bỏ 10 khóa (thu hẹp, không đề xuất; bốn lần)                 | 6.963-9.486    | `rbac_guard` 6.598-9.033 (10.000 × `holder_covers_grant`)                                                                                    |
+| Thêm 5 quyền object                                          | 5.118          | `rbac_guard` 4.511 (5.000 × `holder_covers_grant`)                                                                                           |
+
+Mỗi lần gán trong bulk một mình: p50 27,9 ms, p95 40,7 ms, p99 61,5 ms; commit 3-17 ms. Nguyên mẫu "theo câu lệnh" thay
+trigger tách nhiệm trên `tenant_role_permissions` bằng một trigger `FOR EACH STATEMENT` có bảng chuyển tiếp, xét mỗi người
+giữ một lần cho cả lệnh, trong database đo, rồi dựng lại trigger của head.
+
+**Ai trả giá.** Một lần sửa vai trò trả theo (số dòng quyền × số lần gán của vai trò): `rbac_refusals` (op `add`,
+`remove`) xét luật giữ quyền với từng lần gán của vai trò (1.000 lần `holder_covers_grant`, 0,65 ms mỗi lần, trong khi
+1.000 lần gán ấy chỉ ở 200 workspace và người làm giữ khóa ở mức `tenant`), và trigger tách nhiệm xét lại cả 1.000 người
+giữ cho mỗi dòng (1.000 lần `sod_held_keys`, kể cả khi khóa thêm vào không thuộc luật nào). Một lần gán trả
+`check_owner_coverage` (18 ms mỗi lệnh ở 5.000 thành viên: `checker_candidates` dựng `effective_grants` của mọi thành
+viên cho hai khóa) ở mỗi lệnh trên `role_assignments`, `tenant_role_permissions`, `tenant_roles`, `tenant_members`: 59%
+thời gian của lần gán 1.000 người.
+
+**Khóa giữ.** `pg_locks` của giao dịch ghi, đọc 0,5 giây sau lệnh ghi đầu: 95-137 khóa, đều `granted`: `RowExclusiveLock`
+trên các bảng nó ghi (`role_assignments` hay `tenant_role_permissions`, `role_change_requests`, `tenant_access_versions`,
+`tenants`, `studio.principal_scopes` hay `studio.access_epochs`, `outbox_events`), `AccessShareLock`/`RowShareLock` trên
+bảng và index nó đọc, một khóa tư vấn theo người (M4 của tenant-rbac/02) với lần gán. Không khóa bảng nào chặn `/me` (đọc
+MVCC). Khóa dòng thì có: lệnh ghi đầu khóa dòng `tenant_access_versions` của công ty (trigger tăng version, chạy cuối
+chuỗi trigger của dòng) tới commit; thử `FOR UPDATE NOWAIT` trên dòng đó bị từ chối, trên dòng `tenants` và
+`studio.access_epochs` thì không. Một phiên khác ghi một bảng tăng version của **cùng công ty** (ở đây
+`UPDATE platform.tenants SET name = name`) chờ cả giao dịch: 30.141 ms sau lần gán một mình, 58.213 ms sau lần gán có
+làn `/me`, 13.311 ms sau "thêm 10 khóa, 10 lệnh"; `pg_locks` thấy nó chờ `transactionid ShareLock`. Cùng lệnh trên **công
+ty khác** xong trong 107-201 ms. Một lần gán hàng loạt hay sửa vai trò lớn vì thế chặn mọi lần ghi quyền khác của công ty
+đó (mời, gán, sửa vai trò, đổi trạng thái thành viên, khóa công ty) tới commit, không chặn công ty khác, không chặn đọc.
+
+`/me` của người nặng chạy liên tục cạnh mỗi lần ghi, một làn qua app có Valkey, một làn qua app không cache (ms):
+
+| Lần ghi                        | Nóng: n, p50 / p95 / p99     | Không cache: n, p50 / p95 / p99 |
+| ------------------------------ | ---------------------------- | ------------------------------- |
+| Gán 1.000 người                | 1.259, 29,2 / 261,6 / 290,6  | 413, 94,0 / 340,4 / 369,4       |
+| Gán 1.000 người, `gc.freeze()` | 1.290, 33,3 / 50,9 / 62,7    | 407, 106,2 / 142,9 / 166,4      |
+| Thêm 1 khóa                    | 60, 26,8 / 271,8 / 306,6     | 18, 92,8 / 365,8 / 365,8        |
+| Thêm 10 khóa, 10 lệnh          | 333, 28,0 / 260,7 / 286,4    | 109, 90,6 / 328,0 / 383,5       |
+| Thêm 10 khóa, 1 lệnh           | 315, 35,2 / 290,8 / 343,9    | 102, 116,5 / 389,2 / 425,4      |
+| Bỏ 10 khóa (bốn lần)           | 162-179, p95 255,9-298,8     | 51-57, p95 357,6-412,0          |
+| Thêm 5 quyền object            | 91, 35,7 / **310,8** / 327,3 | 28, 124,7 / 432,9 / 461,6       |
+
+P99 dưới 1 s ở mọi ô (lớn nhất 640 ms, không cache, cạnh một lần bỏ 10 khóa). P95 ≤ 300 ms đạt ở cấu hình có cache lúc
+gán hàng loạt (261,6) và **trượt** ở hai chỗ: cạnh lần thêm 5 quyền object, cache nóng P95 310,8 ms (n = 91); và mọi ô
+không cache (328-433 ms; cấu hình không triển khai, compose đặt `REDIS_URL`). Nguyên nhân đo được ở cả hai là GC thế hệ 2
+(khoảng 240 ms mỗi lần, Câu 1) trong một tiến trình chung với harness, app thứ hai và lần ghi: với `gc.freeze()`, cùng lần
+gán 1.000 người cho P95 50,9 ms (cache) và 142,9 ms (không cache). Phần cơ sở dữ liệu: đọc version 0,12 ms p95; dựng lại
+khi trượt cache 21-28 ms p50 với hai người lớn.
+
+## Câu 3: `FOR SHARE` và cuộc đua thu hồi trong lúc gán
+
+Hai phiên `dw_app`, mỗi phiên một kết nối giữ suốt 200 lượt; mỗi lượt theo một lịch: lượt chẵn để bên gán lấy khóa trước
+và giữ giao dịch mở 150-300 ms trong khi bên thu hồi tới sau 80-200 ms; lượt lẻ ngược lại (bên thu hồi giữ 100-250 ms,
+bên gán tới sau 20-60 ms); trong mỗi khoảng thời điểm là ngẫu nhiên (seed cố định).
+
+- **a. Miễn trừ tách nhiệm** (`platform.sod_violation`, khóa `FOR SHARE` miễn trừ đang mở; cuộc đua của `f381f1694395`).
+  Người giữ vế trái của luật miễn trừ được; bên gán xác nhận đề xuất gán vế phải (trigger AFTER xét tách nhiệm), bên thu
+  hồi `UPDATE platform.sod_waivers SET revoked_at` (trigger `refuse_revoking_a_waiver_in_use` đếm người đang dựa vào).
+  Lọt: sau lượt, người đó giữ cả hai vế mà không có miễn trừ mở nào.
+- **b. Quyền của người gán** (`platform.rbac_refusals`, khóa `FOR SHARE OF a` các lần gán của người làm; tenant-rbac/03).
+  Người gán giữ `platform.roles.bind` qua đúng một lần gán; bên gán xác nhận đề xuất gán một vai trò không trọng yếu cho
+  người khác, bên thu hồi (chủ sở hữu) xóa lần gán cho quyền `bind` đó. Lọt: cả hai commit và lần thu hồi commit xong
+  trước khi bên gán gửi COMMIT, tức lần gán được xét theo một quyền đã bị thu hồi lúc nó có hiệu lực.
+
+| Cuộc đua               | Head (200 lượt)                                                                                                                                    | Bỏ `FOR SHARE` (200 lượt)                                      |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| a. Miễn trừ tách nhiệm | **0 lọt**. Gán trước: 100/100 thu hồi bị từ chối (`ck_sod_waivers_not_in_use`). Thu hồi trước: 100/100 gán bị từ chối (`ck_roles_sod_memberships`) | **196 lọt**: 96/100 lượt gán trước, 100/100 lượt thu hồi trước |
+| b. Quyền của người gán | **0 lọt**. Gán trước: 100/100 cả hai commit, gán trước thu hồi. Thu hồi trước: 100/100 gán bị từ chối (`rbac_escalation`)                          | **99 lọt**: 99/100 lượt thu hồi trước; 0/100 lượt gán trước    |
+
+Phép đột biến làm **trong database đo, không trong tệp nào của repo**: lấy `pg_get_functiondef` của hàm, thay đúng một lần
+`FOR SHARE;` (a) hay `FOR SHARE OF a;` (b) bằng `;` (đếm đúng một lần trước khi thay), `CREATE OR REPLACE` dưới
+`dw_migrator`, kiểm `md5(prosrc)` đã đổi (a: `57ac3bd9…` → `48feda15…`; b: `166f4cb2…` → `b72c6f9f…`), chạy 200 lượt,
+rồi tạo lại định nghĩa đã lưu và kiểm `md5` trùng bản gốc (failure-modes #3: phép đột biến không đổi gì thì không chứng
+minh gì). Hai test đỏ được.
+
+Vì sao b không lọt ở lượt "gán trước" ngay cả khi bỏ `FOR SHARE`: lệnh gán, ở trigger cuối của dòng, khóa dòng version
+của công ty tới commit, nên lệnh xóa của bên thu hồi chờ ở đó và commit sau. Khóa ấy chỉ đến **sau** các trigger BEFORE đã
+xét, nên ở lượt "thu hồi trước" nó không cứu gì (99/100 lọt): `FOR SHARE` là thứ duy nhất làm bên gán đọc lại sau khi bên
+thu hồi commit. Cuộc đua a đi qua `sod_waivers`, không tăng version, nên lọt ở cả hai lịch.
+
+## Câu 4: `session_user` qua pool asyncpg của API
+
+1.000 lần mượn kết nối từ `container.engine` (pool `dw_app` 10 + 20 của API) và 1.000 lần từ
+`container.provisioner_engine` (pool `dw_provisioner`), 25 lần song song mỗi đợt. Mỗi lần thứ năm làm một việc: không gì;
+`SET LOCAL ROLE <vai đăng nhập>` trong giao dịch; `SET LOCAL ROLE dw_migrator`; `SET SESSION AUTHORIZATION dw_migrator`;
+`SET ROLE <vai đăng nhập>` ở mức phiên rồi trả kết nối về pool (để lại cho người mượn sau). Rồi đọc `session_user`,
+`current_user` và `fog38.whoami()`, một hàm SECURITY DEFINER của `dw_migrator` trả `session_user`, `current_user` như một
+trigger SECURITY DEFINER thấy.
+
+| Pool             | `session_user` = vai đăng nhập | Trong hàm SECURITY DEFINER                                                    | Bị từ chối                                                                                                  |
+| ---------------- | ------------------------------ | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `dw_app`         | 1.000/1.000                    | `session_user` = `dw_app` 1.000/1.000; `current_user` = `dw_migrator`         | `SET LOCAL ROLE dw_migrator` 200/200 ("permission denied to set role"), `SET SESSION AUTHORIZATION` 200/200 |
+| `dw_provisioner` | 1.000/1.000                    | `session_user` = `dw_provisioner` 1.000/1.000; `current_user` = `dw_migrator` | như trên, 200/200 mỗi loại                                                                                  |
+
+`dw_app` không là thành viên vai nào (`pg_auth_members` chỉ có `dw_monitor`), nên `SET ROLE` chỉ đặt được chính nó; và
+`SET ROLE` chỉ đổi `current_user`: một phiên siêu người dùng `dw_admin` đặt `SET ROLE dw_migrator` rồi ghi
+`tenant_role_object_privileges` vẫn bị `rbac_guard` từ chối (`rbac_actor_missing`), vì `session_user` vẫn là `dw_admin`.
+Trong hàm SECURITY DEFINER `current_user` là chủ hàm (`dw_migrator`), nên phép miễn trừ đọc `current_user` sẽ miễn trừ mọi
+người gọi; trigger đọc `session_user`, đúng chỗ.
+
+## Quyết định các phép đo này chốt
+
+1. **Version trong khóa cache, không NOTIFY.** Đọc version mỗi request tốn 0,12 ms p95 phía máy chủ, 2,1 ms p95 khứ hồi;
+   một lần trượt cache dựng lại 21-28 ms p50 với người lớn. Phương án dự phòng của ADR-0104 Open 6 (xóa cache bằng
+   NOTIFY thay vì đọc version) tiết kiệm nhiều nhất một vòng khứ hồi mỗi request và thêm một kênh có thể mất tin; không
+   dùng. Cache ở Valkey như hiện có: 1,1 KB mỗi người thường, 110-131 KB mỗi người nặng hay chủ sở hữu.
+2. **Trigger theo dòng giữ nguyên.** Tách nhiệm theo câu lệnh chỉ nhanh hơn (16,1 → 8,3 giây cho 10 khóa) khi cả lần sửa
+   là một lệnh nhiều dòng, mà `_set_privileges` ghi mỗi khóa một lệnh (16,8 giây, không lợi gì); nửa còn lại là luật giữ
+   quyền theo dòng của `rbac_guard`, không đổi theo dạng trigger. Thứ đáng sửa là việc mỗi dòng làm (mục Phát hiện).
+3. **`FOR SHARE` đủ trên PostgreSQL 16**, ở cả hai chỗ: 0/400 lần lọt ở head, 196/200 và 99/200 khi bỏ nó. Không cần
+   khóa khác (khóa tư vấn, SERIALIZABLE).
+4. **Giữ miễn trừ theo `session_user`** trong `rbac_guard` và `guard_role_change_request`: 2.000/2.000 lần qua hai pool
+   asyncpg của API là vai đăng nhập. Điều kiện để nó còn đúng: không ứng dụng nào đăng nhập bằng `dw_migrator` hay
+   `dw_provisioner`, không vai ứng dụng nào là thành viên của hai vai đó, và một bộ gộp kết nối (PgBouncer) nếu có thì
+   đăng nhập phía máy chủ bằng đúng vai của pool phía khách (`session_user` là vai đăng nhập của kết nối máy chủ).
+
+## Phát hiện cho các ticket đã dựng
+
+Mỗi mục là đề xuất, chưa đo sau khi sửa; người điều phối mở ticket theo dõi.
+
+1. **`gc.freeze()` khi API khởi động** (apps/api `main.py` lifespan): đuôi P95 của `/me` với người nặng 237 → 30 ms, lần gán
+   1.000 người 261,6 → 50,9 ms. Là nguyên nhân của mọi lần trượt P95 ở đây.
+2. **`check_owner_coverage` một lần mỗi giao dịch, không mỗi lệnh** (tenant-rbac/02 bước 17): 18 ms mỗi lệnh ở 5.000
+   thành viên, 59% của lần gán 1.000 người; một trigger ràng buộc hoãn tới commit (như `trg_z_bump_access_version_access_mode`
+   của field-security/01) chạy nó một lần.
+3. **Luật giữ quyền theo neo, không theo lần gán** (`platform.rbac_refusals`, op `add`/`remove`/`role_delete`): xét
+   `DISTINCT a.workspace_id` của vai trò (≤ 200) thay vì từng lần gán (1.000), và một lần khi người làm giữ khóa ở mức
+   `tenant`. Hiện 0,65 ms × 1.000 cho mỗi dòng quyền.
+4. **Tách nhiệm bỏ qua khóa không thuộc luật nào** (`platform.enforce_role_separation_of_duties` trên
+   `tenant_role_permissions`): hiện xét lại 1.000 người giữ cho mỗi khóa thêm vào (993 ms), kể cả khi khóa ấy không ở
+   `left_scopes`/`right_scopes` của luật nào.
+5. **`_HELD` gọi `scopes_in` trong FROM** (`membership_lookup.py`): hàm trả tập trong danh sách SELECT không được inline;
+   câu dựng AccessContext 28 ms p50 với người nặng so với 6,7 ms của `effective_grants`.
+6. Một lần ghi quyền lớn khóa dòng version của công ty tới commit: mọi lần ghi quyền khác của công ty đó chờ (30 giây với
+   lần gán 1.000 người một mình). Không chặn đọc, không chặn công ty khác. Ghi lại, không sửa: là giá của việc version do
+   cơ sở dữ liệu tăng trong cùng giao dịch (ADR-0104 quyết định 7).
+
+## Chưa đo, và vì sao
+
+- **Máy tham chiếu.** Mọi số là của máy dev ở trên, PostgreSQL của compose không giới hạn và dùng chung với một làn khác.
+  Kết quả đúng/sai (câu 3, câu 4) không phụ thuộc máy; số tuyệt đối của câu 1, 2 phải đo lại ở máy pilot (discovery/20).
+- **Một tiến trình API riêng.** `/me` đo trong cùng tiến trình với harness; số của một tiến trình uvicorn riêng sẽ thấp hơn,
+  không đo.
+- **Ngưỡng riêng cho `effective_grants`** do Đạt chốt; ở đây chỉ ghi số.
+- **Lần hỏi trước của service** (`rbac_refusals` với `p_lock = false`, `_check_still_true`) và audit của mỗi lần xác nhận
+  không nằm trong lần gán đo ở đây: lần gán đi thẳng vào bảng như lệnh ghi cuối của service.
+- **Bản sửa của các phát hiện** chưa đo lại.
