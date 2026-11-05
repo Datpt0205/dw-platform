@@ -1,6 +1,6 @@
 # 07 — Đuôi `GET /api/v1/me` ở cỡ D12: `gc.freeze()` khi API khởi động, `scopes_in` trong FROM
 
-Status: ready-for-agent
+Status: resolved (2026-11-05, main)
 Blocked by: 02, 04
 Area: studio
 Yêu cầu: không (chi phí của đường đọc R2.2 theo hai phát hiện của discovery/08, ngân sách tạm của `.claude/rules/latency.md`; không đổi câu trả lời nào của spec, R2.2, R2.4, R2.5 và RB5-RB7 giữ bằng test hiện có cộng test bằng nhau ở đây)
@@ -64,25 +64,25 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket; mỗi dòng mộ
 
 ## Tiêu chí chấp nhận
 
-- [ ] K1: test bằng nhau xanh cho người nặng (mỗi workspace của họ), chủ sở hữu và người thường, gồm `role_keys`,
+- [x] K1: test bằng nhau xanh cho người nặng (mỗi workspace của họ), chủ sở hữu và người thường, gồm `role_keys`,
       `grants` và AccessContext của `find_access`; sai nếu một khóa thêm hay mất ở bất kỳ membership nào, và đột biến của
       K1 làm test đỏ.
-- [ ] K2: ca hai tenant xanh; sai nếu dựng ở A trả bất kỳ khóa nào chỉ vai trò ở B cấp (hay ngược lại), hay thiếu khóa
+- [x] K2: ca hai tenant xanh; sai nếu dựng ở A trả bất kỳ khóa nào chỉ vai trò ở B cấp (hay ngược lại), hay thiếu khóa
       riêng của chính tenant đó, và đột biến của K2 làm chính test hai tenant đỏ.
-- [ ] K3: test lifespan xanh với thứ tự `run_events.start`, `gc.collect`, `gc.freeze` khi vào và `gc.unfreeze` khi ra,
+- [x] K3: test lifespan xanh với thứ tự `run_events.start`, `gc.collect`, `gc.freeze` khi vào và `gc.unfreeze` khi ra,
       mỗi thứ một lần; sai nếu `create_app` một mình đã gọi `gc`, hay một trong ba đột biến của K3 vẫn xanh.
-- [ ] Số đo: `_HELD` của người nặng thực thi p50 dưới 28,1 ms của commit gốc, đo cùng lần chạy, và kế hoạch sau không
+- [x] Số đo: `_HELD` của người nặng thực thi p50 dưới 28,1 ms của commit gốc, đo cùng lần chạy, và kế hoạch sau không
       còn lời gọi `scopes_in` như một hàm riêng (nút `Function Scan` hay `ProjectSet` trên `platform.scopes_in`); sai nếu
       p50 không giảm hay kế hoạch còn nút đó.
-- [ ] Số đo: mọi ô `/me` của `q1` và `q2` (cache nóng, sau tăng version, không cache, cạnh lần ghi), cả ba người,
+- [x] Số đo: mọi ô `/me` của `q1` và `q2` (cache nóng, sau tăng version, không cache, cạnh lần ghi), cả ba người,
       P95 ≤ 300 ms và P99 ≤ 1 s sau sửa, trước và sau ghi ở `RESULTS.md` và Comments. Một ô trượt chỉ được nhận khi số đo
       chỉ ra nguyên nhân ngoài hai thay đổi của ticket này (GC của API, `_HELD`), ghi số, nguyên nhân và ticket sở hữu nó
       (ticket 08 hay một ticket mới); sai nếu một ô trượt vì GC hay `_HELD`, trượt mà thiếu số, nguyên nhân hay chủ, hay
       P95 sau tệ hơn trước quá 20% mà không có lý do (`.claude/rules/latency.md`).
-- [ ] Worker (bước 2): thời gian `gc.collect()` trong tiến trình worker, không đóng băng và đóng băng, ghi ở Comments
+- [x] Worker (bước 2): thời gian `gc.collect()` trong tiến trình worker, không đóng băng và đóng băng, ghi ở Comments
       cùng quyết định (đường dẫn ticket mới hay lý do không cần); sai nếu thiếu một trong hai số hay quyết định, hay diff
       của ticket này sửa `apps/worker`.
-- [ ] Xong: `uv run python -m pytest apps/api/tests/unit/test_gc_freeze_at_startup.py packages/python/dw_platform/tests/integration/test_access_lookup_scopes_from.py` xanh.
+- [x] Xong: `uv run python -m pytest apps/api/tests/unit/test_gc_freeze_at_startup.py packages/python/dw_platform/tests/integration/test_access_lookup_scopes_from.py` xanh.
 
 ## Nguồn
 
@@ -122,3 +122,23 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket; mỗi dòng mộ
   không phải tenant B; (l) fixture nên có một khóa bản ghi sinh ra ngoài danh mục để phủ nhánh
   `coalesce(k.scope_kind, 'record')`.
 - 2026-11-05 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): dựng xong, `resolved`. Số ở `db/bench/rbac/RESULTS.md` (mục "Đo lại sau
+  tenant-rbac/07"), cả hai lần từ bản `git archive` (trước `125f2fe`, sau `953d072` cộng tệp của ticket), mỗi lần
+  `setup q1 q1gc q2` rồi `drop` trên `dw_bench_rbac_fog38`. `/me`, 33 ô của `q1`, `q2`: trước 23 ô trượt P95 (lớn nhất 491,9
+  ms), sau 0 ô (lớn nhất P95 135,2 ms, P99 283,9 ms); người nặng cache nóng P50/P95/P99 23,5/249,6/272,0 → 18,3/28,5/34,5,
+  sau tăng version 82,2/314,8/346,6 → 54,5/74,7/88,0, không cache 82,2/318,8/384,3 → 50,3/65,8/78,2, cạnh lần gán 1.000
+  người 39,5/314,4/360,6 → 27,3/52,7/69,4 (không cache 130,8/420,5/457,6 → 83,4/119,0/140,1); không ô nào tệ hơn. `_HELD`
+  hai dạng cùng một lần trên cùng database: người nặng p50 25,16 → 19,34 ms, chủ sở hữu 21,55 → 12,36, người thường
+  10,36 → 3,04; 5.009/5.009 membership cùng `scopes`, `role_keys`, `grants`; kế hoạch mới không còn `ProjectSet` gọi
+  `platform.scopes_in` (lập kế hoạch 8,3 → 10,6 ms). Làm khác ticket ở ba chỗ: (1) `gc.unfreeze()` gọi trước
+  `container.shutdown()`, không sau (MEDIUM (d) của gate: một lần tắt lỗi vẫn tan băng); (2) chú thích trong
+  `membership_lookup.py` ghi số đo thay cho "3-10 lần" của discovery; (3) bench không đổi: pha `default` của `q1gc` nay đã
+  đóng băng bởi lifespan, ghi ở `RESULTS.md` (MEDIUM (c)). Đột biến bằng tay trên bản xuất: K1 (đọc khóa không qua phép
+  chiếu) đỏ 2 test, K2 (tenant khác cho `scopes_in`) đỏ cả 5, K3 (bỏ `gc.freeze()`) đỏ; `mutations/07.yaml` (6 đột biến)
+  chạy lúc đóng hàng đợi. Nếu sai thì: `scripts/mutate.py` lúc đóng hàng đợi chỉ ra đột biến nào sống, sửa ở commit mới.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): worker không đóng băng. Đo (một tiến trình dựng `build_registry`, bảy lần
+  `gc.collect()`): 209.435 đối tượng, thu gom đầy đủ 101,4 ms trung vị (tối đa 106,0), 0,0 ms sau `gc.freeze()`; API cùng
+  cách 213,1 ms. Worker không phục vụ request nào có ngân sách độ trễ: một lần dừng 100 ms lùi một nhịp lane (khoảng giây)
+  hay một bước run chờ mô hình hàng giây, nên không có ngân sách nào trượt; `apps/worker` lại thuộc làn build 1. Nếu sai
+  thì: cùng ba dòng `gc.collect()`, `gc.freeze()`, `gc.unfreeze()` quanh `run_worker` sau `build_registry`, trong một
+  ticket mới của spec này, khi một lane có ngân sách độ trễ.

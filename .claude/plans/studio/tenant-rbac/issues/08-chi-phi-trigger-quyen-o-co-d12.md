@@ -68,3 +68,8 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket; mỗi dòng mộ
 - 2026-11-05 (agent, theo ủy quyền 31/10/2026): cắt từ Phát hiện 2-4 của discovery/08 cùng lúc với ticket 07, để ba
   việc cần migration không mất; chưa gate. Chờ ticket 07 vì cùng harness và cùng mốc đo (`gc.freeze()` bỏ nhiễu GC khỏi
   số `/me` cạnh lần ghi). Nếu sai thì: tách thành ba ticket, mỗi trigger một.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): từ gate của ticket 07 (MEDIUM (i)): `_STANDING`
+  (`packages/python/dw_platform/src/dw_platform/adapters/persistence/digital_workers_repo.py:511-521`) và `_HOLDERS`
+  (`packages/python/dw_platform/src/dw_platform/adapters/persistence/scope_holders.py:29-40`) gọi `platform.scopes_in`
+  trong danh sách SELECT như `_HELD` trước ticket 07, không nằm trên đường `/me`, chưa đo. Gate ticket này quyết đưa vào
+  đây (không migration) hay tách ticket. Nếu sai thì: một ticket riêng không migration, cùng test bằng nhau của ticket 07.

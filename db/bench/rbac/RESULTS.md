@@ -234,7 +234,8 @@ người gọi; trigger đọc `session_user`, đúng chỗ.
 
 ## Phát hiện cho các ticket đã dựng
 
-Mỗi mục là đề xuất, chưa đo sau khi sửa; người điều phối mở ticket theo dõi.
+Mỗi mục là đề xuất, chưa đo sau khi sửa; người điều phối mở ticket theo dõi. Ngày 5/11/2026: mục 1 và 5 đã sửa và đo lại
+ở tenant-rbac/07 (mục ngay dưới); mục 2-4 là tenant-rbac/08 (`needs-triage`), cần migration.
 
 1. **`gc.freeze()` khi API khởi động** (apps/api `main.py` lifespan): đuôi P95 của `/me` với người nặng 237 → 30 ms, lần gán
    1.000 người 261,6 → 50,9 ms. Là nguyên nhân của mọi lần trượt P95 ở đây.
@@ -253,6 +254,77 @@ Mỗi mục là đề xuất, chưa đo sau khi sửa; người điều phối m
    lần gán 1.000 người một mình). Không chặn đọc, không chặn công ty khác. Ghi lại, không sửa: là giá của việc version do
    cơ sở dữ liệu tăng trong cùng giao dịch (ADR-0104 quyết định 7).
 
+## Đo lại sau tenant-rbac/07: `gc.freeze()` khi API khởi động, `scopes_in` trong FROM
+
+Ticket: [`tenant-rbac/07`](../../../.claude/plans/studio/tenant-rbac/issues/07-gc-freeze-va-scopes-in-trong-from.md). Đo
+ngày 5/11/2026, cùng máy và cấu hình như trên, `setup q1 q1gc q2` rồi `drop` (`DW_TEST_DB_SUFFIX=_fog38`, 0 dòng danh mục
+thử còn lại, database đã xóa sau mỗi lần). **Trước** là `git archive` của `125f2fe` (commit gốc của ticket), **sau** là
+`git archive` của `953d072` cộng các tệp của ticket, cả hai chạy từ bản xuất sạch, không từ cây làm việc chung với làn
+build 1. Lần "trước" chạy cùng lúc với việc khác của làn này (gate, `check_plans.py`), lần "sau" thì không, nên phần cơ sở
+dữ liệu chênh theo máy: `effective_grants` của người nặng, không đổi ở ticket này, thực thi p50 7,7 ms ở lần trước và 5,6
+ms ở lần sau. Phép so sánh hai dạng câu dựng AccessContext vì thế đo riêng, cùng một lần, trên cùng database (dưới).
+
+**Câu dựng AccessContext, hai dạng cùng một lần** (500 lần `EXPLAIN (ANALYZE)` mỗi dạng sau 20 lần làm nóng, `dw_app`,
+database của lần "trước" sau `q2`): cả 5.009 membership của công ty cho cùng `scopes`, `role_keys` và `grants` ở hai dạng,
+và `scopes` bằng đúng `platform.scopes_in` (0 lệch).
+
+| Câu                               | Người      | `scopes_in` trong SELECT p50 / p95 / p99 (ms) | `scopes_in` trong FROM p50 / p95 / p99 (ms) |
+| --------------------------------- | ---------- | --------------------------------------------- | ------------------------------------------- |
+| `_HELD` (dựng AccessContext)      | Nặng       | 25,16 / 33,91 / 44,97                         | 19,34 / 27,65 / 39,09                       |
+| `_HELD`                           | Chủ sở hữu | 21,55 / 29,74 / 41,46                         | 12,36 / 17,95 / 21,77                       |
+| `_HELD`                           | Thường     | 10,36 / 14,39 / 17,64                         | 3,04 / 4,31 / 5,57                          |
+| `_SCOPES_IN` (`effective_scopes`) | Nặng       | 14,07 / 20,09 / 25,09                         | 7,56 / 12,19 / 14,68                        |
+| `_SCOPES_IN`                      | Chủ sở hữu | 12,50 / 16,71 / 21,77                         | 3,68 / 5,03 / 6,22                          |
+| `_SCOPES_IN`                      | Thường     | 8,34 / 10,80 / 12,96                          | 1,65 / 2,59 / 3,17                          |
+
+Kế hoạch (`EXPLAIN (ANALYZE, VERBOSE)`, người nặng): dạng cũ có `InitPlan 1 -> ProjectSet` với
+`Output: platform.scopes_in(...)`, một lời gọi hàm kín 23,8-26,0 ms cho 318 dòng; dạng mới không còn nút nào gọi
+`platform.scopes_in`, hàm được inline thành `Unique` trên các grant đã khai triển (5,2-5,3 ms). Thực thi 47,5 → 17,8 ms ở
+lần chụp đó, lập kế hoạch 8,3 → 10,6 ms (kế hoạch inline dài hơn: 280 → 529 dòng). Phần còn lại của người nặng là hai lần
+`effective_grants` (một trong phép chiếu, một cho cột `grants`); gộp hai lần đó là một bản thứ hai của luật chiếu nên không
+làm (ticket 07, bước 3).
+
+**`GET /api/v1/me`, 300 request mỗi ô** (ms; app thật, Valkey; "sau" có `gc.freeze()` trong lifespan):
+
+| Người      | Ô                     | Trước p50 / p95 / p99    | Sau p50 / p95 / p99 |
+| ---------- | --------------------- | ------------------------ | ------------------- |
+| Nặng       | Cache nóng            | 23,5 / 249,6 / 272,0     | 18,3 / 28,5 / 34,5  |
+| Nặng       | Ngay sau tăng version | 82,2 / **314,8** / 346,6 | 54,5 / 74,7 / 88,0  |
+| Nặng       | Không cache           | 82,2 / **318,8** / 384,3 | 50,3 / 65,8 / 78,2  |
+| Chủ sở hữu | Cache nóng            | 25,6 / 63,5 / 304,2      | 20,3 / 30,4 / 40,9  |
+| Chủ sở hữu | Ngay sau tăng version | 92,4 / **331,2** / 411,0 | 50,1 / 66,6 / 84,3  |
+| Chủ sở hữu | Không cache           | 71,4 / 154,7 / 350,9     | 44,3 / 57,9 / 72,2  |
+| Thường     | Cache nóng            | 13,0 / 16,0 / 18,3       | 9,1 / 11,8 / 13,3   |
+| Thường     | Ngay sau tăng version | 49,2 / 78,0 / 124,3      | 25,5 / 36,5 / 48,1  |
+| Thường     | Không cache           | 38,4 / 49,6 / 67,1       | 21,8 / 29,5 / 33,7  |
+
+`q1gc` sau: pha "default" giờ đã đóng băng bởi lifespan (không còn là heap mặc định của Python), người nặng P95 26,2 ms với
+29 lần thu gom thế hệ 2, mỗi lần 6,93 ms p50 (trước: 16 lần, 257,2 ms mỗi lần, P95 265,7); pha "frozen" của harness thêm
+`gc.collect(); gc.freeze()` trên cả heap của harness: P95 22,8 ms, 0,64 ms mỗi lần.
+
+**`/me` của người nặng cạnh mỗi lần ghi của `q2`** (ms, p50 / p95 / p99; n trước → sau):
+
+| Lần ghi                                | Nóng trước               | Nóng sau           | Không cache trước         | Không cache sau      |
+| -------------------------------------- | ------------------------ | ------------------ | ------------------------- | -------------------- |
+| Gán 1.000 người (n 1.351 → 1.317)      | 39,5 / **314,4** / 360,6 | 27,3 / 52,7 / 69,4 | 130,8 / **420,5** / 457,6 | 83,4 / 119,0 / 140,1 |
+| Thêm 1 khóa                            | 38,2 / **331,4** / 346,8 | 28,7 / 60,5 / 74,3 | 124,4 / **431,6** / 431,6 | 89,0 / 127,3 / 142,2 |
+| Thêm 10 khóa, 10 lệnh                  | 40,4 / **315,8** / 359,4 | 27,0 / 51,6 / 68,9 | 129,3 / **460,8** / 485,7 | 82,3 / 117,5 / 145,7 |
+| Thêm 10 khóa, 1 lệnh                   | 40,7 / **337,8** / 365,3 | 27,6 / 55,4 / 68,4 | 133,4 / **447,4** / 462,2 | 83,8 / 121,5 / 168,2 |
+| Bỏ 10 khóa (bốn lần)                   | p95 293,7-**336,4**      | p95 53,0-67,2      | p95 **434,2-455,5**       | p95 111,2-135,2      |
+| Thêm 10 khóa, tách nhiệm theo câu lệnh | p95 **307,6-342,1**      | p95 55,9-58,2      | p95 **411,6-491,9**       | p95 117,4-121,4      |
+| Thêm 5 quyền object                    | 37,9 / **303,7** / 468,6 | 27,4 / 53,2 / 79,3 | 123,6 / **471,6** / 517,5 | 83,0 / 122,6 / 140,1 |
+| Gán 1.000 người, harness `gc.freeze()` | 44,7 / 70,0 / 101,0      | 25,9 / 40,9 / 50,1 | 145,6 / 213,4 / 266,9     | 77,0 / 97,7 / 126,0  |
+
+Sau ticket, mọi ô `/me` của `q1` và `q2` đạt P95 ≤ 300 ms và P99 ≤ 1 s (lớn nhất P95 135,2 ms, P99 283,9 ms, không cache
+cạnh một lần bỏ 10 khóa); trước ticket, trong lần đo này, 23 trên 33 ô trượt P95 (in đậm; P99 dưới 1 s ở cả hai lần). Lần ghi cũng ngắn lại, vì `/me` chạy
+chung event loop với lần ghi: gán 1.000 người cạnh `/me` 80,9 → 40,5 giây, một mình 34,0 → 26,1 giây (phần một mình là cơ
+sở dữ liệu và độ nhiễu của máy; ticket 08 nhắm vào nó).
+
+**Worker** (cùng cách: một tiến trình dựng `build_registry`, rồi bảy lần `gc.collect()`, trung vị): API sau khi dựng
+container và app giữ 419.529 đối tượng được theo dõi, một lần thu gom đầy đủ 213,1 ms (tối đa 315,1), 0,0 ms sau
+`gc.freeze()`; worker 209.435 đối tượng, 101,4 ms (tối đa 106,0), 0,0 ms sau `gc.freeze()`. Worker không phục vụ request
+nào có ngân sách độ trễ, nên ticket này không sửa nó (lý do ở Comments của ticket 07).
+
 ## Chưa đo, và vì sao
 
 - **Máy tham chiếu.** Mọi số là của máy dev ở trên, PostgreSQL của compose không giới hạn và dùng chung với một làn khác.
@@ -262,4 +334,4 @@ Mỗi mục là đề xuất, chưa đo sau khi sửa; người điều phối m
 - **Ngưỡng riêng cho `effective_grants`** do Đạt chốt; ở đây chỉ ghi số.
 - **Lần hỏi trước của service** (`rbac_refusals` với `p_lock = false`, `_check_still_true`) và audit của mỗi lần xác nhận
   không nằm trong lần gán đo ở đây: lần gán đi thẳng vào bảng như lệnh ghi cuối của service.
-- **Bản sửa của các phát hiện** chưa đo lại.
+- **Bản sửa của phát hiện 2-4** chưa có (tenant-rbac/08); phát hiện 1 và 5 đo lại ở mục trên.
