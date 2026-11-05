@@ -228,6 +228,14 @@ approves an MCP tool definition is also the requester's D11 (2026-10-23).
    ADR-0123 decision 5 rules for tools, connector actions and MCP servers. Counsel decides who files the DPIA and the
    CTIA.
 5. **FOG-34 (research).** The exact deepagents version (0.7.23 or later) and what moves with it.
+6. **FOG-58 (research).** What `jsonschema` costs per call and per field-security narrowing. Answered 2026-11-05
+   (discovery 16, `scripts/bench_json_schema.py`, 30 properties, 10,000 calls a case, Windows 3.12.10 and
+   `python:3.12-slim-bookworm` 3.12.16): a held validator through `tool_problems` checks in 0.77 / 0.71 ms p95, so
+   `jsonschema` 4.26.0 stays; a validator built per call costs 16-23 ms p95, nearly all `check_schema`, so the door's
+   LRU is what keeps a tool call cheap, and narrowing then rebuilding misses the 5 ms line (10-17 ms p95). No cache is
+   added: the model-seen schema is narrowed (0.04 ms p95) while the executor checks the full pinned one; a narrowed
+   validator, if one is ever needed, comes from `evolve` on the full one (0.06 ms p95). How many live schemas a worker
+   holds against the LRU's 256 is not measured.
 
 ## Acceptance (2026-10-23)
 
