@@ -1,0 +1,194 @@
+# Mutation check of compliance-pdpl ticket 03: scripts/mutate.py runs this file
+# at the queue's close (.claude/rules/wave-close.md). One mutation per row of
+# the ticket's controls (CP2, CP3, CP4, CP5, R2.1, R2.8), each named after the
+# guard it removes, with the tests that must go red.
+mutations:
+  # ---- CP2, CP3: the gate at every door ---------------------------------------
+  - name: the structured gateway sends without asking the gate
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    old: "        attempts = await self.residency.admitted(run_context, every_attempt)"
+    new: "        attempts = every_attempt"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_a_vn_only_run_never_reaches_a_foreign_route
+      - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_a_studio_run_s_pinned_foreign_route_is_refused
+  - name: the structured gateway checks only the first route
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    old: "        attempts = await self.residency.admitted(run_context, every_attempt)"
+    new: "        attempts = (await self.residency.admitted(run_context, every_attempt[:1])) + every_attempt[1:]"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_a_failing_vn_route_does_not_fall_through_to_a_foreign_fallback
+  - name: a refused fallback ends the run on the vn route's error, not refused
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    old: "        if len(attempts) < len(every_attempt):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_a_failing_vn_route_does_not_fall_through_to_a_foreign_fallback
+  - name: the agent loop's middleware admits every route
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/residency_middleware.py
+    old: "        admitted = await self._gate.admitted(run_context, resolved.attempts)"
+    new: "        admitted = list(resolved.attempts)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_the_agent_loop_refuses_a_foreign_chat_route_before_the_model
+      - packages/python/dw_agent_runtime/tests/unit/test_agent_factory.py::test_the_full_stack_holds_every_property
+  - name: the platform stack carries no residency middleware
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/agent_factory.py
+    old: "        ResidencyGateMiddleware(spec.residency, spec.models, spec.profile_id),"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_the_platform_stack_puts_the_gate_after_the_freeze_and_before_the_limits
+      - packages/python/dw_agent_runtime/tests/unit/test_agent_factory.py::test_the_full_stack_holds_every_property
+  - name: a delegated turn carries no residency middleware
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/sub_agents.py
+    old: "        ResidencyGateMiddleware(parent.residency, parent.models, profile_id),"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_a_delegated_turn_asks_the_gate_at_its_own_model_call
+  - name: compaction summarises without asking the gate
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/context_compaction.py
+    old: "            await self._residency.check(run_context, summary_route)"
+    new: "            pass"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_context_compaction.py::test_a_foreign_summary_route_is_refused_before_any_summary_call
+  - name: the embedding adapter sends without asking the gate
+    file: packages/python/dw_knowledge/src/dw_knowledge/adapters/openai_embedding.py
+    old: "        await self.residency.check(scope, self.destination)"
+    new: "        pass"
+    tests:
+      - packages/python/dw_knowledge/tests/unit/test_residency_adapters.py::test_a_vn_only_tenant_s_content_never_leaves_for_abroad
+  - name: the rerank adapter sends without asking the gate
+    file: packages/python/dw_knowledge/src/dw_knowledge/adapters/cohere_rerank.py
+    old: "        await self.residency.check(scope, self.destination)"
+    new: "        pass"
+    tests:
+      - packages/python/dw_knowledge/tests/unit/test_residency_adapters.py::test_a_vn_only_tenant_s_content_never_leaves_for_abroad
+  - name: document extraction sends without asking the gate
+    file: packages/python/dw_knowledge/src/dw_knowledge/adapters/api_parsers.py
+    old: "        # Before the file is read into a request: a refused scope sends nothing.\n        await self.residency.check(scope, self.destination)"
+    new: "        pass"
+    tests:
+      - packages/python/dw_knowledge/tests/unit/test_residency_adapters.py::test_a_vn_only_tenant_s_content_never_leaves_for_abroad
+  - name: transcription sends without asking the gate
+    file: packages/python/dw_knowledge/src/dw_knowledge/adapters/api_parsers.py
+    old: "        await self.residency.check(scope, self.destination)\n        params = {"
+    new: "        params = {"
+    tests:
+      - packages/python/dw_knowledge/tests/unit/test_residency_adapters.py::test_a_vn_only_tenant_s_content_never_leaves_for_abroad
+      - apps/worker/tests/unit/test_ingest_consumer.py::test_a_recording_a_vn_only_tenant_may_not_send_abroad_fails_the_job_unsent
+  - name: a refused transcription is retried
+    file: apps/worker/src/dw_worker/consumers/ingest.py
+    old: '                job, error=f"{RESIDENCY_REFUSED}: {refused.message}", terminal=True'
+    new: '                job, error=f"{RESIDENCY_REFUSED}: {refused.message}", terminal=False'
+    tests:
+      - apps/worker/tests/unit/test_ingest_consumer.py::test_a_recording_a_vn_only_tenant_may_not_send_abroad_fails_the_job_unsent
+  # ---- CP2: the rule itself ---------------------------------------------------------
+  - name: vn_only admits a foreign destination
+    file: packages/python/dw_kernel/src/dw_kernel/residency.py
+    old: '    return location == "vn"'
+    new: "    return True"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_residency.py::test_admits
+      - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_a_vn_only_run_never_reaches_a_foreign_route
+  - name: an undeclared location is read as vn
+    file: packages/python/dw_kernel/src/dw_kernel/residency.py
+    old: '    location = data_location if data_location in DATA_LOCATIONS else "foreign"'
+    new: '    location = data_location if data_location in DATA_LOCATIONS else "vn"'
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_residency.py::test_an_undeclared_destination_is_foreign
+      - packages/python/dw_knowledge/tests/unit/test_residency_adapters.py::test_a_vn_only_tenant_s_content_never_leaves_for_abroad
+  - name: a class that cannot be read is read as the loosest
+    file: packages/python/dw_kernel/src/dw_kernel/residency.py
+    old: "            raise ResidencyRefusedError(\n                \"the data route class could not be read\", details={\"reason\": \"unreadable\"}\n            ) from exc"
+    new: '            return "cross_border_full"'
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_residency.py::test_an_unreadable_row_refuses
+      - packages/python/dw_knowledge/tests/unit/test_residency_adapters.py::test_a_class_that_cannot_be_known_refuses
+      - packages/python/dw_platform/tests/integration/test_residency_db.py::test_another_tenant_s_workspace_is_never_read_and_the_gate_refuses
+      - packages/python/dw_platform/tests/integration/test_residency_db.py::test_a_strange_value_in_the_tenant_row_refuses
+  - name: the loosest class wins
+    file: packages/python/dw_kernel/src/dw_kernel/residency.py
+    old: "    return min(classes, key=_STRICTNESS.__getitem__)"
+    new: "    return max(classes, key=_STRICTNESS.__getitem__)"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_residency.py::test_the_strictest_of_the_three_wins
+      - packages/python/dw_agent_runtime/tests/integration/test_residency_runs_db.py::test_admission_pins_the_strictest_class_on_the_row_and_the_context
+  # ---- CP4, CP5, R2.8: changing a class ------------------------------------------
+  - name: one person loosens the tenant
+    file: packages/python/dw_kernel/src/dw_kernel/residency.py
+    old: '        raise _second_person("tenant", before, after)'
+    new: '        return "tightened"'
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_residency.py::test_loosening_a_tenant_needs_a_second_person
+      - packages/python/dw_platform/tests/integration/test_residency_db.py::test_one_person_cannot_loosen_the_tenant
+      - apps/api/tests/unit/test_admin_route_class_endpoint.py::test_loosening_the_tenant_is_409_and_keeps_the_class
+  - name: a workspace goes back to inheriting with one person
+    file: packages/python/dw_kernel/src/dw_kernel/residency.py
+    old: "    if after is None or (before is not None and is_looser(after, before)):"
+    new: "    if after is not None and before is not None and is_looser(after, before):"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_residency.py::test_loosening_a_workspace_or_going_back_to_null_needs_a_second_person
+      - packages/python/dw_platform/tests/integration/test_residency_db.py::test_a_workspace_going_back_to_inheriting_needs_a_second_person
+      - apps/api/tests/unit/test_admin_route_class_endpoint.py::test_null_sent_on_purpose_is_a_loosening_of_the_workspace
+  - name: a workspace may be looser than its tenant
+    file: packages/python/dw_kernel/src/dw_kernel/residency.py
+    old: "    if after is not None and is_looser(after, tenant):"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_residency.py::test_a_workspace_looser_than_its_tenant_is_invalid_before_any_loosening_check
+      - packages/python/dw_platform/tests/integration/test_residency_db.py::test_a_workspace_looser_than_its_tenant_is_invalid
+  - name: a workspace's class is set under the rename key
+    file: packages/python/dw_platform/src/dw_platform/application/admin_console.py
+    old: "                context=context, action=TENANT_SETTINGS_WRITE, resource_type=_RES_WORKSPACE"
+    new: "                context=context, action=WORKSPACES_WRITE, resource_type=_RES_WORKSPACE"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_residency_db.py::test_a_caller_without_the_settings_key_cannot_set_a_workspace_s_class
+      - apps/api/tests/unit/test_admin_route_class_endpoint.py::test_without_the_settings_key_it_is_403
+  - name: a tightening of the tenant is not audited
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/admin_console_repo.py
+    old: "                await SqlAuditRepository(session).append(route_class.audit)"
+    new: "                pass"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_residency_db.py::test_one_person_tightens_the_tenant_and_it_is_audited_once
+  - name: the operator's rename takes a data route class
+    file: apps/api/src/dw_api/routes/v1/platform.py
+    old: "    name: str = Field(min_length=1, max_length=200)\n\n\nclass UserRefView(BaseModel):"
+    new: "    name: str = Field(min_length=1, max_length=200)\n    data_route_class: str | None = None\n\n\nclass UserRefView(BaseModel):"
+    tests:
+      - apps/api/tests/contract/test_route_class_routes.py::test_only_the_two_admin_routes_take_a_data_route_class
+  # ---- R2.1: pinned at admission, read on resume ----------------------------------
+  - name: a code graph's run is admitted at the caller's class
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_store.py
+    old: '            pinned = run_context.model_copy(update={"route_class": route_class})'
+    new: "            pinned = run_context"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_residency_runs_db.py::test_admission_pins_the_strictest_class_on_the_row_and_the_context
+  - name: a resume recomputes nothing and reads nothing
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_store.py
+    old: "        route_class=record.data_route_class,"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_residency_runs_db.py::test_a_resume_reads_the_row_and_never_recomputes_the_class
+  - name: a Studio run's row carries no class
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/run_intake.py
+    old: "            data_route_class=route_class,"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_request.py::test_the_door_pins_the_strictest_data_route_class_on_the_row
+  - name: a Studio take ignores the row's class
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/studio_runs.py
+    old: '                data_route_class=parse_route_class(row.data_route_class or "vn_only"),'
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_the_take_reads_the_data_route_class_the_door_pinned
+  - name: a residency refusal is a step's error
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "            except (GraphBubbleUp, RunHaltedError, ResidencyRefusedError):"
+    new: "            except (GraphBubbleUp, RunHaltedError):"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_runner.py::test_a_residency_refusal_fails_the_run_and_is_never_retried_or_routed
+  - name: the call's usage names no class, location or processor
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    old: "                data_route_class=run_context.route_class,\n                data_location=route.data_location,\n                processor=route.processor,"
+    new: ""
+    tests:
+      - packages/python/dw_usage/tests/unit/test_recording.py::test_one_chat_call_writes_one_attributed_record
+      - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_the_ledger_and_the_span_carry_the_class_location_and_processor

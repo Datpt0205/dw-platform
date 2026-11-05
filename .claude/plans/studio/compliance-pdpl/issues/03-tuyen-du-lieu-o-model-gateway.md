@@ -1,6 +1,6 @@
 # 03 — Lớp lộ trình dữ liệu ở model gateway, mọi lời gọi qua cùng cổng
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: .claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md, .claude/plans/studio/usage-and-limits/issues/02-bang-gia-so-su-dung-va-man-hinh.md, .claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md
 Area: studio
 Yêu cầu: R2.1, R2.2, R2.3, R2.4, R2.7, R2.8, CP2, CP3, CP4, CP5
@@ -93,34 +93,34 @@ kiểm định của loại `agent`.
 
 ## Tiêu chí chấp nhận
 
-- [ ] R2.1: một lời gọi model ghi `data_route_class`, `data_location` và `processor` lên span và Sổ sử dụng, và
+- [x] R2.1: một lời gọi model ghi `data_route_class`, `data_location` và `processor` lên span và Sổ sử dụng, và
       `data_route_class` lên dòng `platform.worker_runs` của lượt; lượt resume sau khi lớp của workspace bị siết vẫn
       đọc lớp ở dòng lượt, không tính lại.
-- [ ] R2.2 (CP2): agent `vn_only` với tuyến `foreign` hay không khai → `ResidencyRefusedError` trước khi
+- [x] R2.2 (CP2): agent `vn_only` với tuyến `foreign` hay không khai → `ResidencyRefusedError` trước khi
       gửi, adapter giả ghi 0 lời gọi, lượt `failed` với `residency_refused`, không dòng `platform.usage_events`; gỡ
       cổng → test đỏ.
-- [ ] R2.2 (CP2): hồ sơ có tuyến `vn` đầu và tuyến `foreign` dự phòng, tuyến `vn` trả 503 → adapter giả của tuyến
+- [x] R2.2 (CP2): hồ sơ có tuyến `vn` đầu và tuyến `foreign` dự phòng, tuyến `vn` trả 503 → adapter giả của tuyến
       `foreign` ghi 0 lời gọi, `ResidencyRefusedError`; cổng chỉ kiểm tuyến đầu → test đỏ. `cross_border_minimised`
       với tuyến `vn` → gửi; với tuyến `foreign` → từ chối.
-- [ ] R2.2 (CP2): ở vòng agent, cùng hồ sơ `vn` đầu và `foreign` dự phòng, tuyến `vn` trả 503 → tuyến `foreign` 0
+- [x] R2.2 (CP2): ở vòng agent, cùng hồ sơ `vn` đầu và `foreign` dự phòng, tuyến `vn` trả 503 → tuyến `foreign` 0
       lời gọi; `ResidencyGateMiddleware` chỉ kiểm tuyến được chọn → test đỏ.
-- [ ] R2.2 (CP2): phạm vi job có `workspace_id` không đọc được dưới RLS, hay dòng công ty mang giá trị lạ (bảng thử
+- [x] R2.2 (CP2): phạm vi job có `workspace_id` không đọc được dưới RLS, hay dòng công ty mang giá trị lạ (bảng thử
       bỏ CHECK) → từ chối, 0 lời gọi; một job truyền lớp `cross_border_full` vào adapter cho công ty `vn_only` → vẫn
       từ chối, vì cổng không nhận lớp từ bên gọi.
-- [ ] R2.3 (CP3): chép lời khi `vn_only` tới URL `foreign` (settings không khai `data_location`) → job `failed` lý
+- [x] R2.3 (CP3): chép lời khi `vn_only` tới URL `foreign` (settings không khai `data_location`) → job `failed` lý
       do `residency_refused`, 0 request. Mỗi adapter của bước 4 (gateway có cấu trúc, `ResidencyGateMiddleware`,
       embedding, rerank, trích xuất tài liệu, chép lời, nén ngữ cảnh) có một test riêng: đích `foreign` dưới `vn_only`
       → 0 request; gỡ cổng ở adapter đó → test của nó đỏ (ADR-0123 (Accepted) Consequences).
-- [ ] R2.4 (CP4): đặt `cross_border_full` ở workspace khi công ty `vn_only` → 422, không đổi dòng.
-- [ ] R2.7 (CP5): `PATCH` nới công ty từ `vn_only` sang `cross_border_full` → 409 `second_person_required`,
+- [x] R2.4 (CP4): đặt `cross_border_full` ở workspace khi công ty `vn_only` → 422, không đổi dòng.
+- [x] R2.7 (CP5): `PATCH` nới công ty từ `vn_only` sang `cross_border_full` → 409 `second_person_required`,
       lộ trình giữ nguyên, không audit; đưa workspace từ `vn_only` về NULL → 409, dòng giữ nguyên; gỡ chặn → test đỏ.
-- [ ] R2.8: một người siết workspace từ NULL sang `vn_only` → áp ngay, audit `residency.class_changed` trong
+- [x] R2.8: một người siết workspace từ NULL sang `vn_only` → áp ngay, audit `residency.class_changed` trong
       cùng giao dịch; gửi lại `vn_only` → 200, không audit thứ hai; lỗi ghi audit → không đổi dòng.
-- [ ] CP4: người thiếu `platform.tenant.settings.write` đặt lớp cho công ty hay workspace → 403, dòng giữ nguyên;
+- [x] CP4: người thiếu `platform.tenant.settings.write` đặt lớp cho công ty hay workspace → 403, dòng giữ nguyên;
       quản trị viên công ty B gửi `PATCH /api/v1/admin/workspaces/{id}` với id workspace của công ty A → 404, dòng
       của A giữ nguyên; thêm `data_route_class` vào thân `RenameTenantRequest` của route người vận hành → test hợp
       đồng đỏ.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 
@@ -197,3 +197,61 @@ kiểm định của loại `agent`.
   workflow-nodes trước khi chọn; (d) chưa có test âm cho người giữ `platform.tenant.settings.write` neo ở một
   workspace khác (ở W1 chỉ siết được, tác hại thấp).
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+
+- 2026-11-05 (agent): dựng xong. Một chủ cho mỗi điều: `dw_kernel.residency` giữ ba lớp (chặt trước), luật nhận
+  đích `admits`, `effective_route_class`, luật đổi lớp (`tenant_class_change`, `workspace_class_change`) và
+  `ResidencyGate` (`check`, `admitted`); `dw_platform.adapters.persistence.residency.read_route_classes` là phép đọc
+  duy nhất của hai cột dưới RLS, cổng (`SqlRouteClasses`), hai cửa nhận lượt và kho quản trị cùng gọi nó. Migration
+  `f97fd77ce9a0` chỉ thêm ba cột cùng CHECK (CHECK của `worker_runs` thêm `NOT VALID` rồi `VALIDATE`), không trigger,
+  không đổi RLS hay grant. Cổng ở: `RoutingModelGateway` (lọc mọi tuyến thử trước lần gửi đầu, sau cửa công tắc, trước
+  ngân sách), `ResidencyGateMiddleware` trong `platform_middleware` và ngăn xếp agent con (sau `RunControlMiddleware`,
+  trước `RunBudgetMiddleware`), nén ngữ cảnh (trước mỗi lời gọi tóm tắt, ngoài khối fail-open), embedding, rerank,
+  trích xuất tài liệu, chép lời. Ghi lớp, nơi xử lý và bên xử lý lên `ModelUsage` → dòng `platform.usage_events` (gateway
+  và bộ đếm LangChain) và span `chat`; mỗi lần kiểm thêm span `dw.residency.check` (tên ghim ở semconv). Lượt `failed`
+  với `reason_code` `residency_refused` ở runner (`_fail`) và ở `run_studio`; job nạp tài liệu `failed` hẳn, không thử
+  lại. Test: kernel 35, cửa runtime 14, adapter tri thức 33, runner Studio 2, nén 1, consumer nạp 1, route HTTP 10, hợp
+  đồng 2; integration: `test_residency_db.py` 16, `test_residency_runs_db.py` 6, một ca ở `test_run_request.py` và
+  `test_studio_runs.py`. `mutations/03.yaml` 28 đột biến, chưa chạy `scripts/mutate.py`; 11 đột biến bẻ tay đều đỏ.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): cổng nằm ở kernel (thuần stdlib) vì tri thức không phụ thuộc runtime;
+  phạm vi lượt là bất kỳ đối tượng có `route_class` (`RunContext`), phạm vi ngoài lượt là `TenantRouteScope`, và port
+  của tri thức chỉ nhận `TenantRouteScope` nên không bên gọi nào truyền lớp. Nếu sai thì: cổng sang `dw_platform` và
+  phạm vi lượt thành một kiểu dữ liệu của kernel mà `RunContext` dựng ra.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): nhận lượt đọc lớp trong chính giao dịch ghi dòng lượt:
+  `SqlWorkerRunStore.create` trả `RunContext` đã ghim (lượt của graph mã, phiên bản `None`), `insert_queued_run` ghim
+  lượt Studio với `route_class` của tài liệu phiên bản (`None` tới khi agent-builder R1.6 thêm mục đó). W1 không có chỗ
+  dựng lượt con nên luật lượt con chỉ ghi ở docstring `effective_route_class(parent, None, version)`, không thêm hàm
+  không ai gọi. Nếu sai thì: một bộ giải lớp tiêm vào runner, đọc trước khi ghi dòng.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): tuyến `vn` trả 503 với tuyến `foreign` dự phòng bị cổng bỏ → lượt kết
+  thúc `ResidencyRefusedError` (`reason` `fallback_refused`, nối từ lỗi 503) như tiêu chí CP2 ghi, không phải lỗi 503.
+  Nếu sai thì: ném lại lỗi 503 và chỉ span ghi tuyến bị bỏ.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): vòng agent không có đổi tuyến (`ModelRetryMiddleware` cố ý chỉ thử lại
+  tuyến đã gắn), nên `ResidencyGateMiddleware` hỏi `admitted` cho mọi tuyến của câu trả lời và từ chối khi tuyến gắn vào
+  chat model không được nhận; test 503 khẳng định tuyến `vn` được thử 3 lần và span ghi tuyến `foreign` không được nhận.
+  Đột biến "chỉ kiểm tuyến được chọn" không đỏ được ở vòng agent hôm nay (không có đổi tuyến), xem MEDIUM. Nếu sai thì:
+  `StudioModelSelection` (agent-builder/03) chỉ đổi sang tuyến trong `admitted` và thêm test đỏ đó.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): `ResidencyRefusedError` là `PermissionDeniedError` (403 ở lời gọi đồng
+  bộ của API; không `InfrastructureError` nên gateway không thử lại, không `status_code` nên thử lại model không thử).
+  Ở bước Studio nó không đi cổng lỗi (MEDIUM (c)): `node_wrapper` ném lại như `RunHaltedError`, `run_studio` ghi
+  `residency_refused`. Rerank bị từ chối thì tìm kiếm bị từ chối, không lặng lẽ giữ thứ tự vector. Nếu sai thì: rerank
+  bị từ chối giữ thứ tự vector như lúc nhà cung cấp sập, có metric bỏ qua.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): xóa `metered_invoke` (cửa model không qua cổng, không bên gọi nào ngoài
+  test); hai probe của người vận hành (`make check-model`, `make check-rerank`) chạy dưới `cross_border_full` ghi rõ vì
+  chỉ gửi token và đoạn văn tổng hợp; eval của nền tảng chạy `vn_only` (MEDIUM (b)). `RunContext` dựng ngoài runner (lời
+  gọi đồng bộ của API) giữ mặc định `vn_only`, trùng lớp của mọi công ty ở W1. Nếu sai thì: probe chạy `vn_only` và chỉ
+  đo tuyến `vn`; các chỗ dựng đó đọc `AccessContext` qua `SqlRouteClasses` khi W2 mở đường nới.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): settings của rerank, trích xuất, chép lời (`DW_API_RERANK_*`,
+  `DW_WORKER_EXTRACTION_*`, `DW_WORKER_TRANSCRIPTION_*` với `_DATA_LOCATION`, `_PROCESSOR`) không mặc định; dòng trống
+  ở compose đọc là chưa khai, tức `foreign`. Đổi lớp dùng so-và-đặt trên lớp đã đọc (`ConflictError`
+  `route_class_changed` khi bị đổi đồng thời). Thân `PATCH /admin/workspaces/{id}` có `name` tùy chọn; gửi
+  `data_route_class: null` là nới (409), không gửi là giữ nguyên. MEDIUM (d) không còn: `platform.tenant.settings.write`
+  có `scope_kind` `tenant`, chỉ cấp được ở độ sâu công ty. Nếu sai thì: một route riêng cho lớp của workspace.
+- 2026-11-05 (agent): MEDIUM: (1) đột biến "chỉ kiểm tuyến được chọn" ở vòng agent không có test đỏ tới khi có đổi
+  tuyến; (2) eval sống và `make eval-*` trên hồ sơ `foreign` bị từ chối tới khi có tuyến `vn` (FOG-10, FOG-18);
+  (3) `semconv-snapshot-check` không chạy (tải upstream từ GitHub), phần `dw` của snapshot sinh từ `dw_names()`, phần
+  upstream không đổi; (4) cổng nhận mọi đối tượng có `route_class` làm phạm vi lượt, chỉ kiểu tĩnh giữ port tri thức ở
+  `TenantRouteScope`; (5) mỗi lời gọi ngoài lượt (embedding câu hỏi, rerank, nạp) thêm một truy vấn đọc lớp.
+- 2026-11-05 (agent): cho lúc đóng hàng đợi: `scripts/mutate.py` với `mutations/03.yaml`; integration đầy đủ; P50/P95/P99
+  so với `a54db8eb` của một lời gọi gateway có cấu trúc, một tìm kiếm tri thức (embedding và rerank), bắt đầu một lượt
+  (`create` thêm một phép đọc), `PATCH /api/v1/admin/tenant`, `PATCH /api/v1/admin/workspaces/{id}`;
+  `/code-review`; `reviewing-deployment-security` đã đọc (hai route đổi thân, bốn biến môi trường, không image hay URL
+  mới).
