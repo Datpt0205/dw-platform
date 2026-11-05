@@ -1,0 +1,178 @@
+# Mutation check of agent-lifecycle ticket 04: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the
+# ticket's "Kiểm soát" rows (AL4, AL5, AL6, AL11, AL19, AL20, AL25, AL36) and
+# per rule of the submit's gateless branch, the `.decided` settler, the
+# candidate route and the two composition roots, each test calling the door
+# where the effect happens: the approval flow's decide over HTTP, the service
+# and the settler directly, the worker's register as it is built (failure-modes
+# #5). The trigger's own rules (R5.6) are ticket 03's mutations. A sample was
+# run by hand while writing the tests (5/11/2026), each red for its reason.
+mutations:
+  - name: AL5 R5.2 no guard registered for the publish types in the API
+    file: apps/api/src/dw_api/bootstrap/studio.py
+    old: "            **publish_decision_guards(registry.kinds),
+
+      "
+    new: ""
+    tests:
+      - apps/api/tests/integration/test_studio_publish.py::test_r5_2_the_submitter_needs_a_second_person_and_an_author_is_refused
+      - apps/api/tests/integration/test_studio_publish.py::test_the_api_decides_every_kind_under_the_guard_and_the_strict_prefix
+  - name: AL5 R5.2 the publish prefix not strict in the API
+    file: apps/api/src/dw_api/bootstrap/wiring.py
+    old: "    wiring.approval_flow.strict_approval_prefixes |= {PUBLISH_PREFIX}
+
+      "
+    new: ""
+    tests:
+      - apps/api/tests/integration/test_studio_publish.py::test_r5_2_the_submitter_needs_a_second_person_and_an_author_is_refused
+  - name: AL5 R5.2 the publish prefix not strict on the worker's chat door
+    file: apps/worker/src/dw_worker/main.py
+    old: "    flow.strict_approval_prefixes |= {PUBLISH_PREFIX}
+
+      "
+    new: ""
+    tests:
+      - apps/worker/tests/unit/test_studio_publish_wiring.py
+  - name: AL5 R5.2 an author passes the guard
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/publish.py
+    old: "    if str(context.principal_id) in authors:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_publish_rules.py
+      - apps/api/tests/integration/test_studio_publish.py::test_r5_2_the_submitter_needs_a_second_person_and_an_author_is_refused
+  - name: AL5 R5.3 a payload without its authors passes the guard
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/publish.py
+    old: "    if authors is None:\n        raise ConflictError(\n            \"this publish request does not name its authors\","
+    new: "    if authors is None:\n        return\n    if authors is None:\n        raise ConflictError(\n            \"this publish request does not name its authors\","
+    tests:
+      - packages/python/dw_studio/tests/unit/test_publish_rules.py
+      - apps/api/tests/integration/test_studio_publish.py::test_r5_3_a_request_without_its_authors_is_not_decided
+  - name: AL5 R5.1 the submitter left out of author_ids
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/publish.py
+    old: dict.fromkeys([*contributors, submitted_by])
+    new: dict.fromkeys([*contributors])
+    tests:
+      - packages/python/dw_studio/tests/unit/test_publish_rules.py
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r5_1_a_submit_that_does_not_only_tighten_opens_its_request
+  - name: AL5 R5.1 the request stamped with nothing
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/service.py
+    old: "                required_scope=PUBLISH_APPROVE_SCOPE,"
+    new: "                required_scope=None,"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r5_1_a_submit_that_does_not_only_tighten_opens_its_request
+      - apps/api/tests/integration/test_studio_publish.py::test_r5_4_platform_admin_without_the_stamp_neither_reads_nor_decides
+  - name: AL5 R5.5 the publish hook not called
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/service.py
+    old: "        await entry.publish_hook(tx.envelope, moved.id)
+
+      "
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r5_5_approved_goes_live_once_in_the_deciders_name
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r2_8_r2_9_r2_10_a_tighten_only_submit_goes_live_in_its_own_transaction
+  - name: AL5 R5.5 a version that left awaiting_approval settled again
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/review.py
+    old:
+      "            if version is None or version.stage is not Stage.AWAITING_APPROVAL:
+
+      "
+    new: "            if version is None:
+
+      "
+    # A version sent back to its draft no longer names the request, so only a
+    # redelivery after `live` reaches this check (found surviving by hand with
+    # the two send-back tests alone, 5/11/2026).
+    tests:
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r5_5_approved_goes_live_once_in_the_deciders_name
+  - name: AL19 R5.9 the base not compared by the handler
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/review.py
+    old: "        if version.compared_live_hash != (None if live is None else live.definition_hash):"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r5_9_the_live_version_retired_meanwhile_sends_it_back_base_changed
+  - name: AL20 R5.10 the bindings not asked by the handler
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/review.py
+    old: "        if not verdict.satisfied:
+
+      "
+    new: "        if False:
+
+      "
+    tests:
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r5_10_an_unset_binding_sends_it_back_once
+  - name: AL11 R7.12 the freeze not asked by the handler
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/review.py
+    old: "        if state is not None and str(state) in _FROZEN:"
+    new: "        if False:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r7_12_a_freeze_sends_an_approved_version_back
+  - name: AL20 R2.11 the tighten-only branch publishes with an unset binding
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/service.py
+    old: "                if unset:\n                    raise _binding_unset(unset)"
+    new: "                if False:\n                    raise _binding_unset(unset)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r2_11_tighten_only_with_an_unset_binding_is_refused_409
+  - name: AL11 R7.13 no tighten-only exception to a company's freeze
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/service.py
+    old: '        if refused is None or (tighten_only and str(refused) == "tenant_frozen"):'
+    new: "        if refused is None:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r7_13_a_companys_freeze_lets_a_tighten_only_submit_through
+  - name: AL11 R7.9 the freeze not asked for a kind without a gate
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/service.py
+    old: "            if not gated:\n                await self._admit(context, tighten_only=tighten_only)"
+    new: "            if False:\n                await self._admit(context, tighten_only=tighten_only)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r7_9_a_freeze_refuses_the_submit_and_keeps_the_draft
+  - name: AL4 R2.8 a kind without a comparator tightening only
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/service.py
+    old: "    if live is None or entry.compare is None:"
+    new: "    if live is None or entry.compare is None and False:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r2_8_a_kind_without_a_comparator_always_waits_for_approval
+  - name: AL4 R2.12 the draft's own row_version in place of If-Match on the gateless branch
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/service.py
+    old: "        expected_version = _NO_VERSION if expected.version is None else expected.version"
+    new: "        expected_version = next(\n            v.row_version for v in await envelope.versions(artifact_id) if v.id == version_id\n        )"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_publish_flow.py::test_r2_12_a_stale_if_match_on_the_tighten_only_branch_is_412
+  - name: AL25 R5.11 the candidate read not audited
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/review.py
+    old: "            await tx.envelope.audit(\n                lifecycle.artifacts.event(\n                    context,\n                    CANDIDATE_READ,"
+    new: "            (\n                lifecycle.artifacts.event(\n                    context,\n                    CANDIDATE_READ,"
+    tests:
+      - apps/api/tests/integration/test_studio_publish.py::test_r5_11_the_decider_reads_the_candidate_and_what_it_changes
+  - name: AL25 R5.12 a decided request read
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/review.py
+    old: "        or request.status is not ApprovalStatus.PENDING
+
+      "
+    new: ""
+    tests:
+      - apps/api/tests/integration/test_studio_publish.py::test_r5_12_a_decided_request_is_not_read
+  - name: AL25 R5.12 another kind of request read
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/review.py
+    old: "        or not request.approval_type.startswith(PUBLISH_PREFIX)
+
+      "
+    new: ""
+    tests:
+      - apps/api/tests/integration/test_studio_publish.py::test_r5_12_another_kind_of_request_is_not_read
+  - name: AL5 R5.3 an author with the stamp reads the candidate
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/review.py
+    old: "    if authors is None or str(context.principal_id) in authors:"
+    new: "    if authors is None:"
+    tests:
+      - apps/api/tests/integration/test_studio_publish.py::test_r5_3_a_contributor_with_the_stamp_does_not_read_the_candidate
+  - name: AL5 R5.5 the worker registers no handler for a kind
+    file: apps/worker/src/dw_worker/main.py
+    old: "    for kind in registry.kinds:"
+    new: "    for kind in sorted(registry.kinds)[1:]:"
+    tests:
+      - apps/worker/tests/unit/test_studio_publish_wiring.py
+  - name: AL36 R2.8 the objects segment unmapped
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/service.py
+    old: '"objects": "object", '
+    new: '"objects": "fixture_gateless", '
+    tests:
+      - apps/api/tests/integration/test_studio_publish.py::test_r2_8_objects_names_one_kind_and_data_sources_none_yet

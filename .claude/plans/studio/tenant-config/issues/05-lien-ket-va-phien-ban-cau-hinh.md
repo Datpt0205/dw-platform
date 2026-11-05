@@ -196,7 +196,7 @@ connection_id, workspace_id, principal_id, run_requested_at)`, đọc dòng `pla
 - [x] R7.2 (TC22): gọi `PublishBindingsCheck` cho phiên bản khai `zalo_oa` bắt buộc chưa có giá trị đã duyệt →
       `binding_unset` nêu `zalo_oa`; có giá trị đã duyệt → đạt; biến `required` có `default` mà chưa có giá trị → đạt; gỡ
       kiểm `required` → test đỏ.
-- [ ] R7.2 (TC22): thành phần mới, bản Nháp khai `email_sender` bắt buộc: lệnh gửi thành công kèm `binding_unset`
+- [x] R7.2 (TC22): thành phần mới, bản Nháp khai `email_sender` bắt buộc: lệnh gửi thành công kèm `binding_unset`
       `email_sender`; đề xuất theo phiên bản vừa niêm phong → duyệt → phát hành đạt; trước lần gửi đầu, đề xuất → 409
       `no_sealed_version`.
 - [x] R7.6 (TC33): Bộ giá trị gắn được duyệt theo Bản ứng viên v2 thiếu điểm gắn bắt buộc `zalo_oa` mà bản `live` v1 khai
@@ -427,3 +427,4 @@ connection_id, workspace_id, principal_id, run_requested_at)`, đọc dòng `pla
     - Owed ở lúc đóng hàng: `mutate.py` cho `mutations/05.yaml`; `make test-integration` toàn bộ; P50/P95/P99 của ba route mới,
       của cửa nhận lượt (thêm một đọc Bộ giá trị gắn, đọc tài liệu bao đóng, một `connection_usable` mỗi kết nối) và của
       lệnh niêm phong (quét id kết nối); `/code-review`, `reviewing-deployment-security` (route mới).
+- 2026-11-05 (agent): R7.2 thứ hai đã tick ở agent-lifecycle/04: lệnh gửi của phiên bản đầu trả `binding_unset` trong 202, đề xuất theo phiên bản vừa niêm phong, duyệt, rồi phát hành đạt (`test_publish_flow.py::test_r2_11_r5_10_a_real_principal_binding_unset_then_approved`, Điểm gắn `principal` thay `email_sender`; 409 `no_sealed_version` trước lần gửi đầu đã có ở `test_bindings.py`); MEDIUM (M11) đóng: `BindingStatus.satisfied_in` chạy trong giao dịch gửi và giao dịch của handler, `satisfied` giữ giao dịch riêng.

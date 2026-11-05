@@ -1,6 +1,6 @@
 # 04 — Phát hành hai người cho mọi loại: phê duyệt, handler, nhánh loại không cổng và route đọc Bản ứng viên
 
-Status: ready-for-agent
+Status: resolved (2026-11-05, main)
 Blocked by: 03, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R2.8, R2.9, R2.10, R2.11, R2.12, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.8, R5.9, R5.10, R5.11, R5.12, R7.9, R7.12, R7.13, AL4, AL5, AL6, AL11, AL19, AL20, AL25, AL36
@@ -130,78 +130,78 @@ của ticket 06.
 
 ## Tiêu chí chấp nhận
 
-- [ ] R5.1 (AL5): gửi một phiên bản `object` không chỉ siết → yêu cầu `studio.publish.object` mở trong giao dịch gửi,
+- [x] R5.1 (AL5): gửi một phiên bản `object` không chỉ siết → yêu cầu `studio.publish.object` mở trong giao dịch gửi,
       `requested_by` bằng `submitted_by`, payload chỉ id và mã; `author_ids` bằng đúng `contributor_ids` cộng
       `submitted_by` của dòng phiên bản; dựng thiếu một người → test khớp đỏ.
-- [ ] R5.2 (AL5): người đóng góp không phải người xin, có scope duyệt → 409 `author_cannot_approve`; người gửi tự duyệt
+- [x] R5.2 (AL5): người đóng góp không phải người xin, có scope duyệt → 409 `author_cannot_approve`; người gửi tự duyệt
       → 409 `conflict` với `details.reason_code` `second_person_required`, vì kiểm tiền tố nghiêm chạy trước guard; bỏ
       `studio.publish.` khỏi tiền tố nghiêm → người gửi nhận `author_cannot_approve`, test đỏ.
-- [ ] R5.3 (AL5): payload thiếu `author_ids` → 409 `author_ids_missing`; gỡ guard → test đỏ; người đóng góp giữ tem
+- [x] R5.3 (AL5): payload thiếu `author_ids` → 409 `author_ids_missing`; gỡ guard → test đỏ; người đóng góp giữ tem
       gọi route `/candidate` → 404, không audit.
-- [ ] R5.4 (AL6): `platform_admin` không giữ tem `studio.publish.approve` và không phải người xin → 404 khi đọc và khi
+- [x] R5.4 (AL6): `platform_admin` không giữ tem `studio.publish.approve` và không phải người xin → 404 khi đọc và khi
       quyết định.
-- [ ] R5.8 (AL6): người gửi không giữ tem mở yêu cầu phê duyệt phát hành của mình → 200 với `can_decide` false; gỡ luật
+- [x] R5.8 (AL6): người gửi không giữ tem mở yêu cầu phê duyệt phát hành của mình → 200 với `can_decide` false; gỡ luật
       người xin → 404, test đỏ.
-- [ ] R5.5: duyệt → bản mới Đang dùng qua `LifecycleService`, bản cũ Đã gỡ (`superseded`) trong một vòng outbox, audit
+- [x] R5.5: duyệt → bản mới Đang dùng qua `LifecycleService`, bản cũ Đã gỡ (`superseded`) trong một vòng outbox, audit
       có `details.path` `approved`; với loại `object` móc phát hành trên mục `ArtifactKindRegistry` của loại chạy trong
       cùng giao dịch và có đúng một dòng `studio.version.published`; bỏ lời gọi móc khỏi handler → móc giả không được
       gọi, test đỏ; giao hai lần cùng sự kiện → một kết quả; từ chối → `draft`.
-- [ ] R5.9 (AL19): với loại không cổng đăng ký trong test, gỡ (`explicit`, gọi thẳng `LifecycleService`, vì route gỡ
+- [x] R5.9 (AL19): với loại không cổng đăng ký trong test, gỡ (`explicit`, gọi thẳng `LifecycleService`, vì route gỡ
       của ticket 03 chỉ gắn `agents`, `workflows`) phiên bản Đang dùng
       trong lúc một Bản ứng viên của cùng thành phần chờ duyệt, rồi duyệt Bản ứng viên → nó về `draft` với
       `details.reason_code` `base_changed` và một audit `studio.version.returned_to_draft` đứng tên người quyết định,
       không phiên bản nào lên `live`; gỡ kiểm khỏi handler → handler hỏng ở 23514 của trigger, phiên bản không về
       `draft`, test đỏ.
-- [ ] R5.10 (AL20): `PublishBindingsCheck` giả trả `binding_unset` khi giao `studio.publish.<kind>.decided` của một
+- [x] R5.10 (AL20): `PublishBindingsCheck` giả trả `binding_unset` khi giao `studio.publish.<kind>.decided` của một
       quyết định duyệt cho loại không cổng của test → phiên bản về `draft` với `details.reason_code` `binding_unset` và
       một audit `studio.version.returned_to_draft` đứng tên người quyết định, không lên `live`, không còn ở
       `awaiting_approval`; giao lại cùng sự kiện → không audit thứ hai; gỡ kiểm trong handler → test đỏ.
-- [ ] R5.5: quyết định từ chối → phiên bản về `draft` với `rejected` và audit đứng tên người quyết định; sự kiện `.decided`
+- [x] R5.5: quyết định từ chối → phiên bản về `draft` với `rejected` và audit đứng tên người quyết định; sự kiện `.decided`
       của một yêu cầu mà phiên bản đã rút → không đổi gì, không audit; `PublishBindingsCheck` giả ném lỗi → giao dịch
       lùi, phiên bản vẫn `awaiting_approval`, lần giao sau áp được; một loại đăng ký trong test thiếu guard hay handler →
       test khởi động đỏ; mọi lần duyệt trong test gửi `comment` không rỗng, vì loại nghiêm đòi nó (`approval_flow.py:153-157`).
-- [ ] R5.11 (AL25): người giữ `approvals.decide` và tem `studio.publish.approve`, không giữ khóa tác giả của loại, gọi
+- [x] R5.11 (AL25): người giữ `approvals.decide` và tem `studio.publish.approve`, không giữ khóa tác giả của loại, gọi
       `GET /api/v1/studio/publish-approvals/{approval_id}/candidate` khi yêu cầu `pending` → 200 với `document` niêm
       phong và `changes[]` so với bản Đang dùng (khi chưa có bản Đang dùng, mọi trường là thêm), đúng một audit
       `studio.version.candidate_read`; gỡ ghi audit → test đỏ.
-- [ ] R5.12 (AL25): người xin không giữ tem, người chỉ giữ khóa tác giả và `platform_admin` không giữ tem → 404, không
+- [x] R5.12 (AL25): người xin không giữ tem, người chỉ giữ khóa tác giả và `platform_admin` không giữ tem → 404, không
       audit; cùng người giữ tem sau khi yêu cầu đã duyệt hay bị từ chối → 404; id của một yêu cầu
       `studio.lifecycle.unfreeze` còn `pending`, gọi bởi người được quyết định nó (`approvals.decide` cùng tem
       `studio.lifecycle.freeze`) → 404; người của tenant B dùng id của tenant A → 404; gỡ kiểm `pending` hay kiểm tem khỏi
       route → test đỏ.
-- [ ] R5.6 (AL4): chuyển `live` khi approval còn `pending` → 23514; `draft → live` của `object` với `tighten_only` false,
+- [x] R5.6 (AL4): chuyển `live` khi approval còn `pending` → 23514; `draft → live` của `object` với `tighten_only` false,
       hay với `compared_live_hash` cũ sau khi bản `live` đổi → 23514; gỡ luật nhánh khỏi trigger → test đỏ.
-- [ ] R2.8 (AL4): phiên bản `object` mà bộ so sánh giả báo chỉ siết → `live` trong giao dịch gửi với `tighten_only` và
+- [x] R2.8 (AL4): phiên bản `object` mà bộ so sánh giả báo chỉ siết → `live` trong giao dịch gửi với `tighten_only` và
       `compared_live_hash` đã ghi; báo không chỉ siết, hay chưa có bản `live` → `awaiting_approval` kèm yêu cầu phê
       duyệt; loại không cổng không có bộ so sánh (hình của `endpoint`), kể cả thay đổi chỉ siết → luôn
       `awaiting_approval` kèm yêu cầu phê duyệt.
-- [ ] R2.9: nhánh chỉ siết → bản cũ Đã gỡ (`superseded`), móc phát hành của loại được gọi, đúng một dòng
+- [x] R2.9: nhánh chỉ siết → bản cũ Đã gỡ (`superseded`), móc phát hành của loại được gọi, đúng một dòng
       `studio.version.published` với actor là người gửi và `details.path` `tighten_only`, outbox `studio.version.live`,
       cùng giao dịch; rollback → không audit.
-- [ ] R2.10: gửi một phiên bản `object` khi đã có bản `live` → `compared_live_hash` bằng `definition_hash` của bản đó ở cả
+- [x] R2.10: gửi một phiên bản `object` khi đã có bản `live` → `compared_live_hash` bằng `definition_hash` của bản đó ở cả
       nhánh chỉ siết lẫn nhánh Chờ duyệt; phiên bản đầu → NULL, sang `awaiting_approval`.
-- [ ] R2.12: gửi một phiên bản `object` chỉ siết với `If-Match` cũ → 412 `precondition_failed` với `stale_version`,
+- [x] R2.12: gửi một phiên bản `object` chỉ siết với `If-Match` cũ → 412 `precondition_failed` với `stale_version`,
       phiên bản vẫn `draft`, không `version_no` nào được cấp, không audit; đưa `row_version` hiện có của nháp thay giá trị
       `If-Match` cho `seal` ở nhánh này → test đỏ.
-- [ ] R2.11 (AL20): phiên bản `object` chỉ siết khai Điểm gắn `principal` bắt buộc chưa có giá trị đã duyệt → gửi 409
+- [x] R2.11 (AL20): phiên bản `object` chỉ siết khai Điểm gắn `principal` bắt buộc chưa có giá trị đã duyệt → gửi 409
       `binding_unset` nêu `principal`, phiên bản vẫn `draft`, không audit; phiên bản đầu của loại không cổng không bộ so
       sánh với cùng khai báo → 202, `awaiting_approval`, `binding_unset` nêu `principal` trong câu trả lời, rồi handler
       nhận quyết định duyệt khi giá trị vẫn chưa duyệt → về `draft` với `binding_unset` (R5.10); có giá trị đã duyệt →
       `binding_unset` rỗng; gỡ kiểm ở nhánh chỉ siết → test đỏ.
-- [ ] R2.8 (AL36): người của tenant B gọi `POST /objects/{id của A}/…/submit` hay `…/withdraw` → 404 giống id ngẫu
+- [x] R2.8 (AL36): người của tenant B gọi `POST /objects/{id của A}/…/submit` hay `…/withdraw` → 404 giống id ngẫu
       nhiên, 0 audit ở A; người không giữ `studio.objects.manage` → 404 (khóa đọc của `object` cũng là khóa gửi,
       `kinds.py:43-45`); `objects` với id của một thành phần `fixture_gateless` → 404; đoạn `data-sources` khi chưa có
       loại `endpoint` đăng ký (workflow-triggers/02 đăng ký nó cùng khóa `studio.datahub.manage`) → 404 cho mọi id; bỏ
       ánh xạ đoạn hay lọc độ sâu → test đỏ.
-- [ ] R7.9 (AL11): Đóng băng của công ty rồi gửi một phiên bản `object` không chỉ siết → 409 `tenant_frozen`, phiên bản
+- [x] R7.9 (AL11): Đóng băng của công ty rồi gửi một phiên bản `object` không chỉ siết → 409 `tenant_frozen`, phiên bản
       vẫn `draft`; Đóng băng của nền tảng rồi gửi một phiên bản `object` chỉ siết → 409 `platform_frozen`.
-- [ ] R7.13 (AL11): chỉ Đóng băng của công ty đang mở, gửi một phiên bản `object` chỉ siết → `live` theo nhánh chỉ siết,
+- [x] R7.13 (AL11): chỉ Đóng băng của công ty đang mở, gửi một phiên bản `object` chỉ siết → `live` theo nhánh chỉ siết,
       audit `details.path` `tighten_only`; gỡ ngoại lệ chỉ siết khỏi kiểm Đóng băng → 409, test đỏ.
-- [ ] R7.12 (AL11): Đóng băng công ty rồi giao `studio.publish.<kind>.decided` của một quyết định duyệt cho loại không
+- [x] R7.12 (AL11): Đóng băng công ty rồi giao `studio.publish.<kind>.decided` của một quyết định duyệt cho loại không
       cổng của test → phiên bản về `draft` với `details.reason_code` `tenant_frozen` và một audit
       `studio.version.returned_to_draft` đứng tên người quyết định, không lên `live`, không còn ở `awaiting_approval`;
       Đóng băng của nền tảng → như trên với `platform_frozen`; gỡ kiểm trong handler → test đỏ.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_studio/tests apps/api/tests apps/worker/tests -k "publish or lifecycle or candidate"` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_studio/tests apps/api/tests apps/worker/tests -k "publish or lifecycle or candidate"` xanh.
 
 ## Nguồn
 
@@ -312,3 +312,58 @@ của ticket 06.
 - 2026-11-04 (agent): MEDIUM để lại: (a) outbox `studio.version.live` không có bên đọc ở W1 (failure-modes #1; ADR-0120 (Accepted) quyết 2 đòi phát nó, các spec khác chọn móc phát hành thay cho nó): bên đọc đầu tiên đến ở W2 hay ADR bỏ nó; (b) mảng trong `changes[]` so nguyên giá trị; (c) cảnh báo collision của script với ticket 05 (`details.reason_code`, `platform.permissions`): hai ticket chỉ thêm dòng mới vào danh mục và mã mới, không sửa dòng của nhau.
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): lượt xác nhận (một subagent ngữ cảnh mới, mở đúng các tệp đã dẫn), 7 HIGH và 4 dẫn sai, đã sửa: (11) worker chưa có `dw_studio`: bước 0 khai gói, Dockerfile, `IMPORT_TO_DIST` và registry từ `platform_kinds`; (12) các cột lúc gửi đi vào chính lệnh chuyển giai đoạn, vì trigger của ticket 03 (cùng câu ở ticket 03 bước 6); (13) bộ so sánh là trường bắt buộc mới `compare` của `ArtifactKindEntry`, `None` tới custom-objects/06 cho `object`; (14) `control_state_unavailable` ở handler là lỗi đọc, giao lại; (15) đoạn `data-sources` trả 404 tới khi workflow-triggers/02 đăng ký `endpoint`, và ca 403 của `object` không dựng được vì khóa đọc là khóa gửi; (16) thứ tự kiểm trong lần gửi không cổng; (17) guard trên mọi flow quyết, `author_ids_missing`, người đóng góp không đọc `/candidate`. Dẫn sai: mục registry không có bộ so sánh; worker không có registry; `second_person_required` đã có; `fixture_gateless` đã có. Nếu sai thì: (13) bộ so sánh là một bảng riêng ở composition root; (15) ticket này đăng ký loại `endpoint` giả trong test; (17) người đóng góp giữ tem đọc được Bản ứng viên.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): dựng xong trên `main` (lane 1), khác ticket ở mấy chỗ sau.
+    - Bước 0 phần lớn đã có: `dw-studio` đã khai ở `apps/worker/pyproject.toml`, Dockerfile của worker đã COPY nó và
+      `IMPORT_TO_DIST` đã có (custom-objects/03). Phần còn thiếu là registry: `dw_worker.composition.build_studio_kinds`
+      dựng đúng `platform_kinds(...)` như `build_studio` của API, cửa `kinds=` chỉ cho test; `build_studio_lifecycle` dựng
+      `LifecycleService` với `SqlRunControl` của tiến trình và `BindingStatus` qua cùng luật kết nối (`NoConnectorCatalog`).
+    - Bước 1: revision `0353c313569f` chỉ thêm khóa `studio.publish.approve` (`workspace`, `standard`, `tenant_grantable`,
+      `owner_package` `dw_studio`); khóa đã nằm trong `platform.owner_permission_keys()` từ `b5677d345bc1`, không đổi mẫu vai.
+    - Bước 2: guard `require_not_author` và hằng ở `dw_studio.lifecycle.application.publish`; `publish_decision_guards`
+      đăng ký một guard mỗi loại của registry ở `build_studio` (API) và ở `build_channel_decision_command` (cửa quyết qua
+      kênh của worker, nay nhận `studio_kinds=` cho test); dòng `|= {PUBLISH_PREFIX}` ở `wiring.py` và ở
+      `build_channel_decision_command`. Handler: `dw_worker.consumers.studio_publish` dưới mọi
+      `studio.publish.<kind>.decided` qua `register_studio_publish` (vòng trên registry), gọi `review.PublishSettler`; bên ghi
+      `live` là `LifecycleService.publish` (`go_live`, móc của loại, một `studio.version.published`, outbox
+      `studio.version.live`), dùng chung với nhánh chỉ siết. `admission_state` khác `tenant_frozen`, `platform_frozen` (kể
+      cả `tenant_locked`, `tenant_offboarding`) được coi như lỗi đọc: ném, giao lại, không về `draft`.
+    - Bước 3: `ArtifactKindEntry.compare` bắt buộc, `None` ở `object`, `workflow`, `fixture`, `fixture_gateless`. Lệnh gửi trả
+      `Submitted(version, binding_unset)`; route trả `SubmitView` (= `VersionView` + `binding_unset[]`), lần đọc lại của khóa
+      idempotent hỏi lại `PublishBindingsCheck` qua `LifecycleService.submitted`. Route gỡ chỉ gắn dưới `RETIRE_SEGMENTS`
+      (`agents`, `workflows`). Payload yêu cầu: `artifact_id`, `version_id`, `author_ids`.
+    - Bước 5: `review.CandidateReader`; `changes[]` mỗi phần tử có thêm `op` (`add`, `remove`, `replace`, từ vựng RFC 6902) để
+      `before`/`after` null không mơ hồ giữa "vắng" và "giá trị null"; bản đã so là bản có `definition_hash` bằng
+      `compared_live_hash`, ưu tiên bản `live` rồi bản số lớn nhất khi hai bản cùng mã.
+    - Bước 6: `configs/copy/audit_actions.d/agent-lifecycle.yaml` (ba nhãn); nhãn bốn loại `studio.publish.*` ở
+      `APPROVAL_TITLE` của `tool-approval.tsx`.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): (a) `PublishBindingsCheck` đổi thành `satisfied_in(tx, tenant_id,
+version_id)`, chạy trong giao dịch của lệnh gửi và của handler: giao dịch riêng của tenant-config/05 không thấy chỉ mục
+      Nơi đang dùng mà `seal` vừa ghi và chờ khóa thành phần mà chính lệnh gửi đang giữ; `BindingStatus.satisfied` giữ giao
+      dịch riêng cho bên gọi khác. Nếu sai thì: tách đọc khai báo khỏi khóa `FOR SHARE` của `root_version` và hỏi sau commit.
+      (b) Audit `studio.version.submitted` vẫn ghi ở mọi nhánh, kể cả nhánh chỉ siết (R2.1), cạnh đúng một
+      `studio.version.published`. Nếu sai thì: nhánh chỉ siết chỉ ghi `published`. (c) `changes[]` thêm `op`. Nếu sai thì: bỏ
+      `op`, `before`/`after` null nghĩa là vắng.
+    - Test: `test_publish_rules.py` 14 ca unit (tác giả, guard, `changes[]`); `test_publish_flow.py` 28 ca trên PostgreSQL
+      (R5.1, R2.8 ×3, R2.9 ×2 gồm móc ném lỗi, R2.10, R2.11 ×3 gồm `BindingStatus` thật với Bộ giá trị gắn đề xuất, duyệt và
+      phát hành, R2.12, R7.9 ×6, R7.13, R5.5 ×4, R5.9, R5.10 ×2, R7.12 ×3, B gọi settler của A, R5.6 qua `go_live`);
+      `test_studio_publish.py` 24 ca qua HTTP (khởi động API, R5.1, R5.2, R5.3 ×2, R5.4, R5.8, R5.5, R2.8 chỉ siết, R5.11 ×2,
+      R5.12 ×8, AL36 ×5); `test_studio_publish_wiring.py` 6 ca unit của worker (handler và guard cho mọi loại, tiền tố
+      nghiêm, tenant từ phong bì); bộ test của ticket 03 chỉnh theo kiểu trả mới và bỏ ca "chờ ticket 04".
+    - `mutations/04.yaml` 23 đột biến, chưa chạy bằng `mutate.py`; bộ test mới xanh ngay lần đầu nên đã chạy tay cả 23 (bản
+      sao lưu ở scratchpad), mỗi cái đỏ đúng lý do sau hai sửa: đột biến "giao lại sau khi đã rời `awaiting_approval`" sống với hai ca đưa về `draft` (bản về `draft` không còn trỏ tới yêu cầu) nên trỏ sang ca duyệt giao hai lần; đột biến "loại khác" sống vì yêu cầu `studio.lifecycle.unfreeze` không có phiên bản nào trỏ tới, nên thêm ca đổi loại của một yêu cầu phát hành thật. Tem trong `_decidable_by` của route `/candidate` được giữ hai lớp
+      (`visible_to` của repository và `audience.may_decide`), lớp repository có test của `test_approval_visibility.py`.
+    - `reviewing-feature-security` (đọc): tenant từ phong bì sự kiện và access context; quyết ở cửa `decide` (HTTP), tem đọc từ
+      dòng; audit cùng giao dịch; không nội dung không tin cậy nào vào prompt; mặc định đóng (trạng thái điều khiển không đọc
+      được → 409 hay giao lại, kiểm Điểm gắn ném lỗi → giao lại, không bộ so sánh → không chỉ siết).
+      `reviewing-deployment-security` (đọc): route mới không có biến thể mock hay dev, mọi từ chối là cùng 404 như id ngẫu
+      nhiên, không bí mật, CORS, URL ra ngoài hay image mới.
+    - MEDIUM: (a) của gate giữ nguyên: `studio.version.live` không có bên đọc ở W1 và outbox không nhận sự kiện không có handler,
+      nên các dòng đó nằm lại tới khi retention của outbox dọn (failure-modes #1, #6); (d) mỗi lệnh gửi thêm một lần
+      `PublishBindingsCheck` (đọc khai báo của bao đóng, Bộ giá trị gắn và một `connection_usable` mỗi kết nối) trong giao dịch
+      giữ khóa thành phần; (e) worker dựng `platform_kinds` hai lần (handler và cửa quyết qua kênh), đọc `configs/tools` mỗi lần
+      lúc khởi động; (f) workflow-engine/04 M2 (`gate_run_id` của lần thử `eval`) không đóng ở đây: Lượt kiểm định và lane
+      `studio_gate` nay là của ticket 06.
+    - Còn ở lúc đóng hàng đợi: `mutate.py` cho `mutations/04.yaml`; `make test-integration` toàn bộ; P50/P95/P99 so với
+      `0c7febff` của `POST /studio/{agents|workflows|objects}/.../submit` (thêm `PublishBindingsCheck`, nhánh không cổng),
+      `POST .../withdraw`, `POST /approvals/{id}/decisions` (guard), `GET /studio/publish-approvals/{id}/candidate` (mới) và
+      handler `studio.publish.<kind>.decided`; `/code-review`; `reviewing-deployment-security` (route mới).
