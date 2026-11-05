@@ -28,7 +28,8 @@ A write, in ADR-0107's order (decision 3):
    `field_not_editable` per field (R6.6);
 7. the write, which the record policies decide (ADR-0105): a row the caller
    cannot read is 404 like a missing one (R5.7), one it reads and may not
-   change is 403 (R5.8), a stale `If-Match` is 412 (R6.8);
+   change is 403 (R5.8), a write that changes nothing included, a stale
+   `If-Match` is 412 (R6.8);
 8. the outbox event and the audit, in the same transaction (R5.2).
 
 In `simulate`, and `test` (DO-26.1 (A)), every check runs and nothing is
@@ -665,17 +666,26 @@ class RecordService:
     ) -> WriteResult:
         """A merge patch of ``values`` onto ``current``, conditional on
         ``expected`` or the version read. Nothing changed writes nothing:
-        no version, no event, no audit (gate (s))."""
+        no version, no event, no audit (gate (s)).
+
+        Where no UPDATE runs for the policy to decide (nothing changed, or a
+        simulation), the row's `may_update`, the policy's own text, decides
+        instead: a record the caller reads and may not change is 403 (R5.8,
+        app-standards R3.16), which the upsert answers as 409 (R7.4), and no
+        `wf:` key is kept for it (custom-objects ticket 11)."""
         changes = {k: v for k, v in values.items() if _kept(current, k) != v}
         version = current.version if expected is None else expected
+        may_change = call.holds("update") and current.may_update
         if not changes:
             if version != current.version:
                 raise _stale()
+            if not may_change:
+                raise _refused("change")
             if write_key is not None and call.ctx.live:
                 await self._keep_key(call, write_key, current.id, op, current.version)
             return WriteResult(await self._view(call, obj, current), False, current.version)
         if not call.ctx.live:
-            if not (call.holds("update") and current.may_update):
+            if not may_change:
                 raise _refused("change")
             if version != current.version:
                 raise _stale()
