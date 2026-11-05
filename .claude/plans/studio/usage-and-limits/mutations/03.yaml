@@ -1,0 +1,255 @@
+# Mutation check of usage-and-limits ticket 03: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the ticket
+# (R4.1-R4.16, R5.1-R5.11, R6.5; UL2, UL3, UL6, UL8, UL9, UL10, UL11, UL13, UL15,
+# UL17, UL19, UL20), and one per layer where a rule is held twice (the pair in
+# the domain and its CHECK; the runner's door and the gateway's).
+#
+# The migration mutations edit cbf2ba4fb6e9 in place; each integration suite
+# recreates and migrates its database per session, so the mutated text is what
+# the tests run against.
+mutations:
+  # ---- admission (R4.1, R4.4, R4.10, R5.1, R5.8) -----------------------------
+  - name: UL2 R5.8 a lease holds the whole run ceiling whatever a scope has left
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "            hold = min(hold, left)\n"
+    new: "            hold = hold\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_month_with_one_dollar_left_admits_a_two_dollar_run_holding_one
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_ten_runs_at_once_never_reserve_more_than_the_month_has
+  - name: UL2 R4.10 a spent period is let through
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "        if (left >= need) if need else (left > 0):\n"
+    new: "        if True:\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_spent_period_refuses_with_its_numbers_and_changes_nothing
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_ten_runs_at_once_with_three_left_admit_exactly_three
+  - name: UL2 R5.1 the counters are read without their lock
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "    \" AND window_kind = :wk AND window_start = :ws FOR UPDATE\"\n"
+    new: "    \" AND window_kind = :wk AND window_start = :ws\"\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_ten_runs_at_once_with_three_left_admit_exactly_three
+  - name: UL8 R4.4 the company's limits leave the chain
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "    \" WHERE scope_type = 'tenant'\"\n"
+    new: "    \" WHERE scope_type = 'none'\"\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_workspace_above_its_spent_company_is_still_held_by_the_company
+  - name: R5.1 a test run counts as a run
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "            counts_run=counts_run and run_context.run_mode == \"live\",\n"
+    new: "            counts_run=counts_run,\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_test_run_or_a_call_outside_a_run_spends_money_but_counts_no_run
+  - name: R5.1 a root taken again opens a second lease and counts again
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "                if (await session.execute(_OPEN_LEASE, {\"t\": tenant_id, \"r\": root})).first():\n"
+    new: "                if False:\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_root_taken_again_joins_its_open_lease_and_is_not_counted_twice
+  - name: DO-29.2 a platform-paid gate reaches the company's counters
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "                limits = [] if payer == \"platform\" else chain.limits\n"
+    new: "                limits = chain.limits\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_gate_the_platform_pays_for_moves_no_counter_of_the_company
+
+  # ---- calls (R5.2, R5.5, R5.6, R5.10, R2.5) ---------------------------------
+  - name: UL3 R5.2 the output is not clamped by the lease's money
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "            allowed = min(allowed, math.floor((avail_usd - input_usd) / price))\n"
+    new: "            allowed = allowed\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_lease_with_room_for_a_hundred_output_tokens_permits_no_more
+  - name: UL3 R5.10 an input the lease cannot pay is sent anyway
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "        if avail_usd <= input_usd:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_an_input_neither_the_lease_nor_the_period_can_pay_is_refused_before_the_call
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_spent_run_ceiling_stops_the_next_call_and_names_the_run
+  - name: R5.6 an attempt's own ceiling is not read
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "            if ceiling_left <= input_usd:\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_an_attempts_own_ceiling_stops_it_though_its_gate_lease_has_money
+  - name: R2.5 an unpriced call does not stop the run
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "        if lease.unpriced:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_an_unpriced_call_stops_the_runs_next_call
+  - name: UL3 the gateway sends what the caller asked, not the permit
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    old: "                    max_output_tokens=permit.max_output_tokens,\n"
+    new: "                    max_output_tokens=request.max_output_tokens,\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_single_call_gateway.py::test_every_attempt_is_sent_with_the_permits_max_tokens_and_settled_by_it
+  - name: UL3 the agent loop sends what the caller asked, not the permit
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/limits_middleware.py
+    old: "            response = await handler(bounded)\n"
+    new: "            response = await handler(request)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_limits_middleware.py::test_the_call_carries_the_permits_max_tokens_and_is_recorded_once
+  - name: R5.11 the agent loop's call is recorded twice, by itself and the meter
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/limits_middleware.py
+    old: "                    claim_usage(name, spent_in, spent_out)\n"
+    new: "                    pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_limits_middleware.py::test_the_call_carries_the_permits_max_tokens_and_is_recorded_once
+
+  # ---- settlement, waits, heartbeat, the reaper (R5.3, R5.4, R5.9, R5.11) -----
+  - name: R5.11 a late settlement is written a second time
+    file: packages/python/dw_usage/src/dw_usage/adapters/ledger_rows.py
+    old: "    \" ON CONFLICT (id, occurred_at) DO NOTHING RETURNING id\"\n"
+    new: "    \" RETURNING id\"\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_late_settlement_after_the_reaper_is_not_counted_twice
+  - name: UL11 R5.3 a wait keeps its hold
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            await waits.waiting(run_context, run_id, kind=\"approval\")\n            await self._release(run_context, run_id, \"paused\")\n"
+    new: "            await waits.waiting(run_context, run_id, kind=\"approval\")\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/integration/test_run_settlement.py::test_a_paused_run_gives_its_hold_back
+  - name: UL11 a close gives nothing back to the counters
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "            given_back = before\n"
+    new: "            given_back = _ZERO\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_wait_gives_the_hold_back_and_the_resume_keeps_what_was_spent
+  - name: R5.9 a beat rolls nothing
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "            await _roll(session, lease, \"beat\")\n"
+    new: "            pass\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_beat_rolls_what_was_settled_once_however_many_beat_at_once
+  - name: UL6 R5.4 the reaper closes nothing
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "            if lease.state != \"open\" or lease.expires_at >= now:\n"
+    new: "            if True:\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_dead_process_lease_is_closed_its_call_estimated_and_audited_as_the_reaper
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_the_reaper_closes_the_expired_leases_of_two_companies
+  - name: UL6 the reaper target is not registered
+    file: apps/worker/src/dw_worker/main.py
+    old: "        reap_targets.append(\n"
+    new: "        (lambda target: None)(\n"
+    tests:
+      - apps/worker/tests/unit/test_worker.py::test_only_the_platform_lanes_are_wired
+  - name: R5.4 the leases' drain policy is gone
+    file: db/migrations/versions/cbf2ba4fb6e9_limit_policies_budget_counters_and_leases.py
+    old: "        \"CREATE POLICY worker_drain_budget_leases ON platform.budget_leases\"\n        f\" FOR SELECT USING ({_DRAIN})\"\n"
+    new: "        \"CREATE POLICY worker_drain_budget_leases ON platform.budget_leases\"\n        \" FOR SELECT USING (false)\"\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limits_db.py::test_the_reaper_closes_the_expired_leases_of_two_companies
+
+  # ---- the runner's door (R4.1, R5.6; failure-modes #5) ------------------------
+  - name: R4.1 the runner admits nobody
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            return await self.limits.admit(run_context)\n        except LimitExceededError as refused:\n            await self._audit(\n"
+    new: "            return self.limits.lease(run_context)\n        except LimitExceededError as refused:\n            await self._audit(\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_runner_limits.py::test_a_root_over_its_limit_is_refused_before_its_row_and_audited
+  - name: R5.6 a child run is admitted again
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "        if run_context.lease_root != run_context.run_id:\n            return self.limits.lease(run_context)\n        try:\n            return await self.limits.admit(run_context)\n"
+    new: "        try:\n            return await self.limits.admit(run_context)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_runner_limits.py::test_a_child_or_a_gate_attempt_is_never_admitted_again
+  - name: R6.5 the gateway asks the lease before the residency gate
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    old: "        attempts = await self.residency.admitted(run_context, every_attempt)\n"
+    new: "        await self.limits.lease(run_context).before_call(run_context, estimate_call(self.pricing, resolved.route, tenant_id=run_context.tenant_id, input_tokens=1, max_output_tokens=1, at=self.clock.now()))\n        attempts = await self.residency.admitted(run_context, every_attempt)\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_a_vn_only_run_never_reaches_a_foreign_route
+
+  # ---- the policies (R4.5, R4.6, R4.8, R4.9, R4.12-R4.16) ----------------------
+  - name: UL9 R4.5 a limit above the plan is accepted
+    file: packages/python/dw_usage/src/dw_usage/adapters/limit_policies_sql.py
+    old: "            if cap is not None and command.limit_value > Decimal(cap):\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_a_limit_above_the_plans_cap_is_refused
+      - apps/api/tests/integration/test_limits_api.py::test_a_limit_above_the_plans_cap_is_refused
+  - name: UL15 R4.9 a raise is applied by one person
+    file: packages/python/dw_usage/src/dw_usage/adapters/limit_policies_sql.py
+    old: "                if command.limit_value > current:\n"
+    new: "                if False:\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_a_raise_or_a_removal_takes_a_second_person_and_changes_nothing
+  - name: UL20 R4.15 a stale version is written over
+    file: packages/python/dw_usage/src/dw_usage/adapters/limit_policies_sql.py
+    old: "                if not expected.matches(int(row.version)):\n                    raise PreconditionFailedError(\n                        \"Hạn mức đã đổi kể từ lúc được đọc\",\n                        details={\"header\": \"If-Match\", \"reason\": \"stale\"},\n                    )\n                current"
+    new: "                current"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_an_existing_policy_needs_its_version
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_two_lowerings_at_one_version_are_one_write_and_one_412
+  - name: UL20 R4.15 the row is read without its lock
+    file: packages/python/dw_usage/src/dw_usage/adapters/limit_policies_sql.py
+    old: "    \" WHERE scope_type = :st AND metric = :m AND window_kind = :wk AND {where} FOR UPDATE\"\n"
+    new: "    \" WHERE scope_type = :st AND metric = :m AND window_kind = :wk AND {where}\"\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_two_lowerings_at_one_version_are_one_write_and_one_412
+  - name: R4.6 a component of another kind is accepted
+    file: packages/python/dw_usage/src/dw_usage/adapters/limit_policies_sql.py
+    old: "        if kind != ref.scope_type:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_another_companys_workspace_or_a_component_of_the_wrong_kind
+  - name: UL10 R4.6 the write asks no key
+    file: packages/python/dw_usage/src/dw_usage/application/limits.py
+    old: "            action=LIMITS_MANAGE,\n"
+    new: "            action=\"approvals.read\",\n"
+    tests:
+      - apps/api/tests/integration/test_limits_api.py::test_without_the_key_the_caller_is_refused_and_nothing_changes
+  - name: R4.8 a new policy's counter is born at zero
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "        await session.execute(\n            _NEW_COUNTER, {**params, \"used\": await _seed(session, tenant_id, key)}\n        )\n"
+    new: "        await session.execute(_NEW_COUNTER, {**params, \"used\": _ZERO})\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_a_limit_set_mid_month_counts_what_the_month_already_spent
+  - name: UL19 R4.14 the service takes any pair
+    file: packages/python/dw_usage/src/dw_usage/application/limits.py
+    old: "    if (metric, window_kind) in PLAN_COLUMNS:\n        return None\n"
+    new: "    return None\n"
+    tests:
+      - apps/api/tests/integration/test_limits_api.py::test_a_pair_or_a_kind_outside_w1_is_a_validation_failure
+  - name: UL19 R4.16 the pair CHECK takes any pair
+    file: db/migrations/versions/cbf2ba4fb6e9_limit_policies_budget_counters_and_leases.py
+    old: "        CONSTRAINT ck_limit_policies_pair CHECK ((metric, window_kind) IN {_PAIRS}),\n"
+    new: "        CONSTRAINT ck_limit_policies_pair CHECK (true),\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_the_checks_refuse_a_row_outside_w1_from_dw_app
+  - name: R4.8 the kind CHECK takes soft
+    file: db/migrations/versions/cbf2ba4fb6e9_limit_policies_budget_counters_and_leases.py
+    old: "        CONSTRAINT ck_limit_policies_kind CHECK (kind IN ('hard')),\n"
+    new: "        CONSTRAINT ck_limit_policies_kind CHECK (kind IN ('hard', 'soft')),\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_the_checks_refuse_a_row_outside_w1_from_dw_app
+  - name: UL17 R4.13 the workspace key is one column, not composite
+    file: db/migrations/versions/cbf2ba4fb6e9_limit_policies_budget_counters_and_leases.py
+    old: "            FOREIGN KEY (tenant_id, scope_workspace_id)\n            REFERENCES platform.workspaces (tenant_id, id) ON DELETE CASCADE,\n"
+    new: "            FOREIGN KEY (scope_workspace_id)\n            REFERENCES platform.workspaces (id) ON DELETE CASCADE,\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_a_scope_of_another_company_is_refused_even_by_the_migrator
+  - name: R4.12 a deleted workspace leaves its policy behind
+    file: db/migrations/versions/cbf2ba4fb6e9_limit_policies_budget_counters_and_leases.py
+    old: "            REFERENCES studio.artifacts (tenant_id, id) ON DELETE CASCADE,\n"
+    new: "            REFERENCES studio.artifacts (tenant_id, id) ON DELETE SET NULL (scope_artifact_id),\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_a_deleted_workspace_or_component_takes_its_policies_with_it
+
+  # ---- retention (R5.7) --------------------------------------------------------
+  - name: R5.7 a missing fragment purges on a guess
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_retention.py
+    old: "        if self.policy.term(store) is None:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_the_lane_prunes_on_the_fragments_terms_and_only_them
+  - name: R5.7 a waiting run's closed lease is pruned
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_retention.py
+    old: "    \" WHERE l.state = 'closed' AND l.closed_at < :cutoff\"\n"
+    new: "    \" WHERE l.closed_at < :cutoff\"\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_limit_policies_db.py::test_the_lane_prunes_on_the_fragments_terms_and_only_them

@@ -190,7 +190,7 @@ model, at)` trả chi phí `Decimal`, phiên bản, id mục giá. `tenant_id` l
 ## Nguồn
 
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py:54-55`; spec: R2.1 (giá trên route).
-- `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/budget.py:46-56`; spec: R2.1 (`route_cost`, bên đọc
+- `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/pricing.py:105-125`; spec: R2.1 (`route_cost`, bên đọc
   duy nhất của giá trên route).
 - `db/migrations/versions/0013_drop_model_usage_ledger.py:1-3`; spec: R3.1 (sổ đã bị gỡ, nay đảo lại).
 - `db/migrations/sql/0013_partition_maintenance.sql:123`; spec: R3.4 (mảng một cha hôm nay);

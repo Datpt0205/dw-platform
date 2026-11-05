@@ -1,6 +1,6 @@
 # 03 — Hạn mức theo chuỗi phạm vi: giữ trước lúc nhận run, quyết toán từng lượt gọi, thu hồi lease mồ côi
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01, 02, .claude/plans/studio/workflow-engine/issues/02-cot-run-va-cua-nhan-run.md, .claude/plans/studio/org-and-principals/issues/02-thanh-vien-cap-tenant.md, .claude/plans/studio/compliance-pdpl/issues/03-tuyen-du-lieu-o-model-gateway.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R3.8, R4.1, R4.4, R4.5, R4.6, R4.8, R4.9, R4.10, R4.12, R4.13, R4.14, R4.15, R4.16, R5.1, R5.2, R5.3, R5.4, R5.5, R5.6, R5.7, R5.8, R5.9, R5.10, R5.11, R6.5, UL2, UL3, UL6, UL8, UL9, UL10, UL11, UL13, UL15, UL17, UL19, UL20
@@ -138,92 +138,92 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
 
 ## Tiêu chí chấp nhận
 
-- [ ] R4.1: một lượt chạy có chính sách ở gói, tenant và workspace cha → qua chỉ khi cả ba còn đủ.
-- [ ] R4.10: trần kỳ của tenant cạn → `LimitsPort.admit` trả `limit_exceeded` kèm `metric`, `scope_type`,
+- [x] R4.1: một lượt chạy có chính sách ở gói, tenant và workspace cha → qua chỉ khi cả ba còn đủ.
+- [x] R4.10: trần kỳ của tenant cạn → `LimitsPort.admit` trả `limit_exceeded` kèm `metric`, `scope_type`,
       `window`, `limit`, `used`, `resets_at`, không dòng `budget_leases` mới, `budget_counters` không đổi, không
       phản hồi 429 nào.
-- [ ] R4.12: xóa workspace mà một chính sách hạn mức nhắm tới → chính sách đó biến mất cùng lệnh xóa; xóa thành phần
+- [x] R4.12: xóa workspace mà một chính sách hạn mức nhắm tới → chính sách đó biến mất cùng lệnh xóa; xóa thành phần
       agent mà một chính sách nhắm tới → như trên; dòng đặt cả hai cột phạm vi, `scope_type` `workspace` mà cột
       workspace NULL, hay `scope_type` `user` → CHECK từ chối.
-- [ ] R4.13 (UL17): bằng vai migrator, INSERT dòng `platform.limit_policies` của tenant A có `scope_workspace_id` là
+- [x] R4.13 (UL17): bằng vai migrator, INSERT dòng `platform.limit_policies` của tenant A có `scope_workspace_id` là
       workspace của tenant B, hay `scope_artifact_id` là thành phần của B → FK ghép từ chối, không ghi; cùng id của
       tenant A → nhận; đổi một FK ghép sang FK một cột → test đỏ.
-- [ ] R3.8: công ty `offboarding` có dòng trong `limit_policies`, `budget_counters`, `budget_leases` → lane
+- [x] R3.8: công ty `offboarding` có dòng trong `limit_policies`, `budget_counters`, `budget_leases` → lane
       `offboarding` xuất mỗi dòng một lần rồi xóa hết; test phủ offboarding (studio-skeleton:R4.3) xanh không cần
       dòng `STUDIO_EXCLUSIONS` cho ba bảng.
-- [ ] R4.4 (UL8): cha cap USD 10 đã hết, con cap USD 50 → lượt chạy ở con bị chặn; gỡ vòng tổ tiên → test đỏ.
-- [ ] R4.5 (UL9): `PUT` hạn mức tenant cao hơn gói → 422 `limit_above_plan`, không dòng nào đổi.
-- [ ] R4.6 (UL10): thiếu `platform.limits.manage` → 403; workspace tenant khác → 404.
-- [ ] R4.8: một người hạ trần tenant từ USD 50 xuống USD 10 → áp ngay, audit `limits.policy.set` có `before`,
+- [x] R4.4 (UL8): cha cap USD 10 đã hết, con cap USD 50 → lượt chạy ở con bị chặn; gỡ vòng tổ tiên → test đỏ.
+- [x] R4.5 (UL9): `PUT` hạn mức tenant cao hơn gói → 422 `limit_above_plan`, không dòng nào đổi.
+- [x] R4.6 (UL10): thiếu `platform.limits.manage` → 403; workspace tenant khác → 404.
+- [x] R4.8: một người hạ trần tenant từ USD 50 xuống USD 10 → áp ngay, audit `limits.policy.set` có `before`,
       `after` trong cùng giao dịch; `PUT` mang `kind` `soft` → 422 `validation_failed`, không dòng nào đổi; `dw_app`
       INSERT một chính sách `kind` `soft` → CHECK từ chối; nới CHECK thành (`hard`, `soft`) → test đỏ.
-- [ ] R4.9 (UL15): một người nâng trần từ USD 10 lên USD 50 → 409 `second_person_required`, Hạn mức hiệu lực
+- [x] R4.9 (UL15): một người nâng trần từ USD 10 lên USD 50 → 409 `second_person_required`, Hạn mức hiệu lực
       vẫn USD 10; `DELETE` chính sách → 409; gỡ kiểm → test đỏ.
-- [ ] R5.1 (UL2): `runs_per_day` của tenant còn đúng 3 lượt, 10 lượt chạy gốc nhận song song → đúng 3 được nhận và
+- [x] R5.1 (UL2): `runs_per_day` của tenant còn đúng 3 lượt, 10 lượt chạy gốc nhận song song → đúng 3 được nhận và
       mở lease, 7 lượt nhận `limit_exceeded`, bộ đếm không vượt trần; gỡ khóa bộ đếm theo thứ tự → test đỏ.
-- [ ] R5.2 (UL3): lease còn đủ cho 100 token output → lời gọi mang `max_tokens <= 100`; gỡ kẹp → test đỏ.
-- [ ] R5.3 (UL11): lượt chạy chờ duyệt → `reserved` của lượt về 0; resume → giữ lại số đã tiêu qua các
+- [x] R5.2 (UL3): lease còn đủ cho 100 token output → lời gọi mang `max_tokens <= 100`; gỡ kẹp → test đỏ.
+- [x] R5.3 (UL11): lượt chạy chờ duyệt → `reserved` của lượt về 0; resume → giữ lại số đã tiêu qua các
       lease; gỡ nhả → test đỏ.
-- [ ] R5.4 (UL6): tiến trình chết giữa lời gọi → sau `expires_at` lease đóng, phần đang bay tính, audit
+- [x] R5.4 (UL6): tiến trình chết giữa lời gọi → sau `expires_at` lease đóng, phần đang bay tính, audit
       `system:reaper`; gỡ `ReapTarget` → test đỏ.
-- [ ] R5.5 (UL13): trần mỗi lượt cạn giữa lượt chạy → dừng ở ranh giới lời gọi kế tiếp `limit_exceeded`,
+- [x] R5.5 (UL13): trần mỗi lượt cạn giữa lượt chạy → dừng ở ranh giới lời gọi kế tiếp `limit_exceeded`,
       không hạ ngầm xuống model rẻ hơn; gỡ kiểm ranh giới → test đỏ.
-- [ ] R5.6: lượt chạy con của một lượt gốc chạy trên lease của lượt gốc, không có dòng `budget_leases` thứ
+- [x] R5.6: lượt chạy con của một lượt gốc chạy trên lease của lượt gốc, không có dòng `budget_leases` thứ
       hai và không gọi `admit`.
-- [ ] R5.7: với thời hạn 395 và 30 ngày trong hai mảnh retention, lane `retention_limits` xóa bộ đếm có
+- [x] R5.7: với thời hạn 395 và 30 ngày trong hai mảnh retention, lane `retention_limits` xóa bộ đếm có
       `window_end` 396 ngày trước và lease đóng 31 ngày trước; giữ bộ đếm 394 ngày và lease còn mở; đổi số trong
       mảnh thử → lane theo số mới, không sửa mã; gỡ mảnh `platform.budget_leases` khỏi tập thử → lane không xóa lease
       nào và báo lỗi cấu hình.
-- [ ] R6.5: `ResidencyGate` giả từ chối một lời gọi → `reserved` của lease không đổi, 0 dòng
+- [x] R6.5: `ResidencyGate` giả từ chối một lời gọi → `reserved` của lease không đổi, 0 dòng
       `usage_events` cho lời gọi đó.
-- [ ] R4.14 (UL19): `PUT` với metric `cost_usd_per_week` hay cặp (`tokens`, `day`) → 422 `validation_failed`, không dòng
+- [x] R4.14 (UL19): `PUT` với metric `cost_usd_per_week` hay cặp (`tokens`, `day`) → 422 `validation_failed`, không dòng
       nào; `dw_app` INSERT cặp ngoài bốn cặp → CHECK từ chối; `PUT` (`tokens`, `month`) cao hơn `tokens_per_month` của gói
       → 422 `limit_above_plan`; cột gói NULL → nhận.
-- [ ] R4.16 (UL19): `dw_app` INSERT cặp (`tokens`, `day`) thẳng vào `platform.limit_policies` → CHECK từ chối; nới CHECK →
+- [x] R4.16 (UL19): `dw_app` INSERT cặp (`tokens`, `day`) thẳng vào `platform.limit_policies` → CHECK từ chối; nới CHECK →
       test đỏ.
-- [ ] R4.15 (UL20): hai `PUT` hạ cùng một trần từ 50, một về 30 một về 40, cùng `If-Match` của version 1 → một nhận, một
+- [x] R4.15 (UL20): hai `PUT` hạ cùng một trần từ 50, một về 30 một về 40, cùng `If-Match` của version 1 → một nhận, một
       412, trần cuối là giá trị của lần nhận; `PUT` không `If-Match` lên chính sách đã có → 428; gỡ khóa `FOR UPDATE` và
       kiểm `If-Match` → lần sau ghi 40 lên 30, test đỏ.
-- [ ] R4.8: API hạ trần từ 50 xuống 10, rồi `admit` ở một tiến trình khác (subprocess, kết nối mới) → dùng 10; thêm cache
+- [x] R4.8: API hạ trần từ 50 xuống 10, rồi `admit` ở một tiến trình khác (subprocess, kết nối mới) → dùng 10; thêm cache
       trong tiến trình vào `EffectiveLimits` → test đỏ.
-- [ ] R4.6: `PUT /api/v1/limits/tenant/{id công ty khác}` → 404, không dòng nào; `PUT /api/v1/limits/agent/{id quy trình}`
+- [x] R4.6: `PUT /api/v1/limits/tenant/{id công ty khác}` → 404, không dòng nào; `PUT /api/v1/limits/agent/{id quy trình}`
       → 422 `scope_kind_mismatch`.
-- [ ] R5.8 (UL2): tháng còn USD 1, trần mỗi lượt USD 2 → nhận, lease giữ USD 1; còn USD 0 → `limit_exceeded`; 10 lượt
+- [x] R5.8 (UL2): tháng còn USD 1, trần mỗi lượt USD 2 → nhận, lease giữ USD 1; còn USD 0 → `limit_exceeded`; 10 lượt
       gốc song song khi tháng còn USD 3 và trần mỗi lượt USD 1 → tổng `reserved` không vượt 3; lời gọi có chi phí đầu vào
       ước tính USD 0.4 khi lease còn 0.3 và kỳ còn → nạp thêm rồi chạy.
-- [ ] R5.10 (UL3): lời gọi có chi phí đầu vào ước tính USD 0.4 khi lease còn 0.3 và kỳ đã cạn → `limit_exceeded` trước lời
+- [x] R5.10 (UL3): lời gọi có chi phí đầu vào ước tính USD 0.4 khi lease còn 0.3 và kỳ đã cạn → `limit_exceeded` trước lời
       gọi, 0 dòng `usage_events`; gỡ kiểm chi phí đầu vào → lời gọi chạy, test đỏ.
-- [ ] R5.9 (UL6): lease có nhịp → `expires_at` dời mỗi 60 giây, reaper không đóng nó dù lời gọi kéo 6 phút (đồng hồ
+- [x] R5.9 (UL6): lease có nhịp → `expires_at` dời mỗi 60 giây, reaper không đóng nó dù lời gọi kéo 6 phút (đồng hồ
       giả); nhịp dừng 5 phút → reaper đóng `expired`, dòng `unsettled_estimate` mang `(id, occurred_at)` của lời gọi đang
       bay; lượt cũ gọi tiếp → `limit_exceeded` `lease_expired`.
-- [ ] R5.11 (UL6): `after_call` muộn của lời gọi mà reaper đã ghi `unsettled_estimate` → `False`, metric
+- [x] R5.11 (UL6): `after_call` muộn của lời gọi mà reaper đã ghi `unsettled_estimate` → `False`, metric
       `dw_limit_late_settlements_total` tăng, lời gọi đó có đúng một dòng trong `usage_events`; cho `after_call` ghi dòng
       thứ hai → test đỏ.
-- [ ] R5.3: lượt con chờ người khi lượt anh em còn chạy → lease không nhả; cả cây chờ → nhả; người duyệt → runner gọi
+- [x] R5.3: lượt con chờ người khi lượt anh em còn chạy → lease không nhả; cả cây chờ → nhả; người duyệt → runner gọi
       `resume` lúc nhận lại, không trong giao dịch quyết định; kỳ cạn lúc tiếp tục → cùng `limit_exceeded` như `admit`,
       `runs` không tăng.
-- [ ] R4.10: đọc `platform.limit_policies` lỗi (bản giả ném) → `limits_unavailable`, không lease, bộ đếm không đổi.
-- [ ] R5.1 (UL2): lượt gốc ở `run_mode` `test`, lease `builder_assist` hay `eval_offline` → `runs` không tăng, trần tiền
+- [x] R4.10: đọc `platform.limit_policies` lỗi (bản giả ném) → `limits_unavailable`, không lease, bộ đếm không đổi.
+- [x] R5.1 (UL2): lượt gốc ở `run_mode` `test`, lease `builder_assist` hay `eval_offline` → `runs` không tăng, trần tiền
       tăng; lần kiểm định lại do nền tảng gây ra → không bộ đếm nào của công ty đổi; token BYOM → chỉ chính sách của công ty
       tính, Trần của gói không; tiến trình chết, lượt được nhận lại khi lease cũ còn mở → gắn vào lease đó, `runs` không
       tăng; đếm lượt `test` vào `runs` → test đỏ.
-- [ ] R5.6: `admit_gate` với `ceiling_usd` USD 2 khi tháng còn USD 5 → lease `eval_offline` giữ USD 2, `runs` không tăng;
+- [x] R5.6: `admit_gate` với `ceiling_usd` USD 2 khi tháng còn USD 5 → lease `eval_offline` giữ USD 2, `runs` không tăng;
       tháng còn USD 0 → `limit_exceeded`, không lease; một lượt mang `gate_run_id` gắn vào lease đó, không gọi `admit`,
       không lease thứ hai; `cost_ceiling_usd` USD 0,10 của lượt cạn → lời gọi kế tiếp `limit_exceeded` trước lời gọi dù
       lease còn tiền; bỏ kẹp theo `cost_ceiling_usd` hay cho lượt mang `gate_run_id` gọi `admit` → test đỏ.
-- [ ] R5.9: hai tiến trình của cùng một cây nhịp cùng lúc → `used` tăng đúng phần đã quyết toán một lần; lượt gốc chờ
+- [x] R5.9: hai tiến trình của cùng một cây nhịp cùng lúc → `used` tăng đúng phần đã quyết toán một lần; lượt gốc chờ
       một `child_run` chạy ở worker khác hơn 5 phút → lease không bị reaper đóng.
-- [ ] R4.8: tháng đã tiêu USD 40 ở workspace W, đặt chính sách USD 10 cho W → lượt kế tiếp ở W bị `limit_exceeded`; đặt
+- [x] R4.8: tháng đã tiêu USD 40 ở workspace W, đặt chính sách USD 10 cho W → lượt kế tiếp ở W bị `limit_exceeded`; đặt
       `used` về 0 khi tạo → test đỏ.
-- [ ] R5.4: reaper dưới `app.worker_drain` thấy lease quá hạn của hai công ty và đóng cả hai; gỡ policy drain của
+- [x] R5.4: reaper dưới `app.worker_drain` thấy lease quá hạn của hai công ty và đóng cả hai; gỡ policy drain của
       `platform.budget_leases` trong migration thử → reaper không thấy lease nào, test đỏ.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] Xong: `make ci && make test-integration` xanh.
 
 ## Nguồn
 
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/ports.py:80-106`; spec: R4.1 (`RunAllowancePort`
   tiền lệ hình port).
-- `packages/python/dw_agent_runtime/src/dw_agent_runtime/model/budget.py:60-68`; spec: R5.3 (RunBudgetLedger
+- `docs/adr/0121-usage-ledger-returns-and-limits-are-postgres-leases.md:24-28`; spec: R5.3 (RunBudgetLedger
   trong tiến trình, thay bằng lease).
 - `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py:246-264`; spec:
   R5.1 (nhận run ở start và stream, nay thêm lease); ADR-0121 (Accepted) quyết 3-4.
@@ -306,3 +306,51 @@ chạy chết được thu hồi (spec R4, R5). Thay `RunBudgetLedger` và `tena
   lượt mang `gate_run_id` gắn vào lease của Lượt thay `admit`, `before_call` kẹp theo `RunContext.cost_ceiling_usd`;
   tiêu chí R5.6 mới. Nếu sai thì: `admit_operation` của ticket 04 nhận `eval_offline` với trần của bên gọi, và
   agent-lifecycle/06 chờ ticket 04.
+- 2026-11-05 (agent): dựng xong. Revision `cbf2ba4fb6e9` (ba bảng, RLS FORCE, policy drain đọc của
+  `budget_leases` và đọc, xóa của `budget_counters`, FK ghép `ON DELETE CASCADE` có index, CHECK cặp và `kind`, seed
+  `max_tokens_per_run` 200000, khóa `platform.limits.manage`, bỏ `tenant_daily_spend_guard`); `SqlLimits`,
+  `SqlRunLease`, `SqlBudgetLeaseReaper`, `SqlLimitsRetention`, `SqlLimitPolicies` ở `dw_usage`; `LimitsPort`,
+  `RunLease`, `CallEstimate`, `CallPermit` ở runtime; `LimitsMiddleware` thay `RunBudgetMiddleware` ở vòng agent, agent
+  con và nén ngữ cảnh; runner nhận lượt, nhả lúc kết thúc và lúc chờ, `resume`, nhịp 60 giây; `GET`, `PUT`, `DELETE
+/api/v1/limits`; màn `/usage/limits` và Progress trên `/usage`. Gỡ `RunAllowancePort`, `RunBudgetLedger`, `RunSpend`,
+  `ModelBudgets` (khối `budgets:` của sáu profile; băm nội dung chỉ phủ tuyến nên ghim không đổi), `DailyAllowance`,
+  `SqlSpendGuard*`, lane `spend_guard_retention`. Đột biến viết ở `mutations/03.yaml`, chưa chạy (lúc đóng hàng).
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): các điểm ticket để ngỏ, mỗi điểm một dòng.
+  (a) W1 không có cây workspace (org-and-principals: cây là W2), nên tổ tiên của workspace trong chuỗi chỉ là công ty;
+  UL8 thử với công ty làm cha. Nếu sai thì: cây workspace thêm vòng tổ tiên ở `_POLICIES`.
+  (b) `after_call` là việc Sổ sử dụng ghi bản ghi mang permit (`ModelUsage.permit`): dòng `usage_events` và việc quyết
+  toán lease một giao dịch (`settle_into_lease`), khóa trùng của reaper thì không ghi lần hai (R5.11). Thêm
+  `RunLease.abandon(permit)` cho lời gọi không được trả lời (nhà cung cấp lỗi trước khi đáp): phần giữ trả về, không
+  tính tiền. Nếu sai thì: lời gọi lỗi quyết toán bằng ước tính.
+  (c) `budget_leases` thêm cột ngoài danh sách của spec: `payer`, `counted_run`, `artifact_id`, `cap_usd`,
+  `cap_tokens`, `unpriced`; `in_flight_*` là một cột `in_flight jsonb` theo `call_id`. Nếu sai thì: tách cột ở revision
+  sau, không đổi hành vi.
+  (d) Token BYOM theo từng lời gọi chưa tách: W1 không tuyến nào mang `payer` ở runtime (bản ghi luôn `platform`);
+  `payer` có ở lease của `admit_gate` (nền tảng trả thì không chạm bộ đếm nào của công ty). Nếu sai thì: ticket BYOM
+  của model-connections thêm `payer` vào `ModelUsage` và một bộ đếm riêng cho Trần của gói.
+  (e) Gói đọc từ `platform.entitlements` trong giao dịch nhận lượt, không từ `run_context.plan_id`; công ty không có
+  dòng → `limits_unavailable`. Nếu sai thì: đọc `plan_id` của lượt.
+  (f) Bộ đếm sinh ra lúc nào cũng mang phần đã dùng của kỳ (tiền, token từ `usage_events`, `runs` từ lease đã đếm),
+  không chỉ lúc `PUT`. Nếu sai thì: chỉ `PUT` gieo.
+  (g) Lane `retention_limits` theo ticket, và hai bộ xóa cũng đăng ký ở `build_retention_purgers` vì
+  `test_every_purged_fragment_has_its_purger`; hai mảnh `enforced: true` (dòng vận hành). Nếu sai thì: `enforced: false`
+  tới khi luật sư xác nhận.
+  (h) Gỡ cả danh mục gói trong mã (`PlanCatalogPort`, `SqlPlanCatalog`, `CachingPlanCatalog`, `PlanLimits`) vì không
+  còn bên đọc; `test_plan_catalogue_owner.py` nay giữ `PlanCaps` ở `limits_sql.py`. Nếu sai thì: ticket 04 dựng lại cổng
+  đọc cho `RunLimits`.
+  (i) Copy tiếng Việt của từ chối ở mảnh `configs/copy/run_reason_codes.d/usage-and-limits.yaml` và hành động audit ở
+  `audit_actions.d/usage-and-limits.yaml`, không bản `runtime@1.7.0`; câu từ chối của server viết tiếng Việt.
+  (j) `run_studio` bị từ chối thì kết thúc `failed` với chi tiết `limit_exceeded`, audit `limits.refused` đứng tên
+  `system:studio_runs`; workflow-engine/04 thay bằng hình theo `trigger_kind`.
+  (k) Lời gọi ngoài lượt (`one_call`) nhận lease không đếm `runs`. Ước tính token vào là số ký tự chia bốn; giá một
+  token ra đọc bằng hiệu giá của cùng lời gọi.
+  (l) Màn cấu hình ở `/usage/limits`, nối từ `/usage`, không thêm mục điều hướng.
+- 2026-11-05 (agent): MEDIUM, chưa sửa. (M9) Cửa chưa đi qua lease (embedding, rerank, nạp tri thức, ticket 04) ghi
+  `usage_events` mà không vào bộ đếm đã có của kỳ. (M10) Lease mở trước khi chính sách được đặt không giữ trên bộ đếm
+  của phạm vi mới. (M11) `limits.refused` một lần mỗi (lượt, kỳ) nay đúng vì lượt bị từ chối kết thúc; khi
+  workflow-engine/04 giữ `queued` thì cần khử trùng. (M12) Mỗi lời gọi model thêm một giao dịch `before_call` và một cập
+  nhật lease trong giao dịch ghi Sổ, cộng nhịp 60 giây: đo lúc đóng hàng. (M13) Điều kiện "gốc đã ở trạng thái cuối"
+  của lane `retention_limits` đọc `platform.worker_runs` bằng SQL từ `dw_usage`.
+- 2026-11-05 (agent): ticket `resolved`. Nợ lúc đóng hàng: `mutate.py` của `mutations/03.yaml`, P50/P95/P99 của nhận
+  lượt, một lời gọi qua gateway, `GET` và `PUT /api/v1/limits` so với `934d28bf`, ảnh Playwright của `/usage` và
+  `/usage/limits`, `/code-review`, `reviewing-deployment-security` (route mới).

@@ -2778,3 +2778,36 @@ async def test_dw_app_calls_the_boundary_writer_and_readers_and_no_one_the_trigg
     finally:
         await migrator.dispose()
     assert {k for k, v in calls.items() if v} == {("dw_app", f) for f in _BOUNDARY_DOORS}
+
+
+# usage-and-limits ticket 03 (migration cbf2ba4fb6e9): the three limit tables are
+# the application's to read and write, offboarding's and `retention_limits`'s to
+# delete (R3.8, R5.7); `dw_agent_ro` holds nothing on any of them.
+
+
+@pytest.mark.parametrize(
+    "table", ["platform.limit_policies", "platform.budget_counters", "platform.budget_leases"]
+)
+async def test_the_limit_tables_are_the_applications_and_nobody_elses(
+    db_urls: DatabaseUrls, table: str
+) -> None:
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {(r.rolname, r.verb) for r in await conn.execute(_HELD_VERBS, {"t": table})}
+    finally:
+        await migrator.dispose()
+    assert held == {("dw_app", verb) for verb in ("SELECT", "INSERT", "UPDATE", "DELETE")}
+
+
+async def test_the_daily_spend_guard_is_gone(db_urls: DatabaseUrls) -> None:
+    """ADR-0121 decision 7: the leases replace it, in the same slice."""
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            found = await conn.scalar(
+                sa.text("SELECT to_regclass('platform.tenant_daily_spend_guard')")
+            )
+    finally:
+        await migrator.dispose()
+    assert found is None

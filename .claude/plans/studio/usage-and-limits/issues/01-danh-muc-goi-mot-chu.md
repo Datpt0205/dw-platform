@@ -64,8 +64,8 @@ Số giới hạn của một Gói dịch vụ về một chủ trong database, 
 
 ## Nguồn
 
-- `packages/python/dw_platform/src/dw_platform/application/entitlement.py:13-36`; spec: R1.1 (DEFAULT_PLANS).
-- `packages/python/dw_platform/src/dw_platform/application/entitlement.py:45-49`; spec: R1.1
+- `packages/python/dw_platform/src/dw_platform/application/entitlement.py:12-31`; spec: R1.1 (DEFAULT_PLANS).
+- `packages/python/dw_platform/src/dw_platform/application/entitlement.py:22-23`; spec: R1.1
   (`has_feature` đọc hai nguồn).
 - `db/migrations/sql/0001_platform_baseline.sql:332-337`; spec: R1.1, R1.3 (`platform.plans`);
   ADR-0121 (Accepted) quyết 6.

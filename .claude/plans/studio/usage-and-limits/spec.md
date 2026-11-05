@@ -18,15 +18,15 @@ thuộc W2.
 ## Hiện trạng (đã kiểm ở `ab33703` ngày 23/10/2026)
 
 - Danh mục gói là một dict trong mã: `DEFAULT_PLANS` với `runs_per_day` 20, 200, 2000
-  (`packages/python/dw_platform/src/dw_platform/application/entitlement.py:13-36`), và một bản sao trong
+  (`packages/python/dw_platform/src/dw_platform/application/entitlement.py:12-31`), và một bản sao trong
   database `platform.plans (plan_id, name, features, quotas)`
   (`db/migrations/sql/0001_platform_baseline.sql:332-337`); `has_feature` đọc cả hai
-  (`packages/python/dw_platform/src/dw_platform/application/entitlement.py:45-49`). Ràng buộc: đây là
+  (`packages/python/dw_platform/src/dw_platform/application/entitlement.py:22-23`). Ràng buộc: đây là
   drift `failure-modes.md` #2; W1 dời số về một chủ.
 - `RunAllowancePort` do runtime khai, platform đáp
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/ports.py:80-106`); `DailyAllowance` đếm run và
   chi theo ngày UTC, không giao dịch, chỉ ở `start` và `stream` chứ không ở `resume`
-  (`packages/python/dw_agent_runtime/src/dw_agent_runtime/allowance.py:10-15`,
+  (`dw_agent_runtime/allowance.py`, gỡ ở usage-and-limits/03;
   `packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py:246-264`). Thiếu:
   không giữ trước tiền; `resume` không kiểm.
 - Cửa vòng: `RuntimeSeam.gateway` lộ `RoutingModelGateway` thô và `chat_models` là factory trần
@@ -35,7 +35,7 @@ thuộc W2.
   Thiếu: mọi cửa chạm model phải là kiểu có đo.
 - `RunBudgetLedger` là dict trong tiến trình, chỉ chặn input token và tiền, giải phóng chỉ ở trạng thái
   cuối, không ở lúc tạm dừng
-  (`packages/python/dw_agent_runtime/src/dw_agent_runtime/model/budget.py:60-68`). Ràng buộc: thay bằng
+  (`docs/adr/0121-usage-ledger-returns-and-limits-are-postgres-leases.md:24-28`; `model/budget.py` gỡ ở usage-and-limits/03). Ràng buộc: thay bằng
   lease liên tiến trình trong cùng lát.
 - Giá nằm trên route: `price_per_million_input/output` và `ModelBudgets(max_cost_usd_per_run=2.0)`
   (`packages/python/dw_agent_runtime/src/dw_agent_runtime/model/profiles.py:54-55`), không cache, reasoning,
