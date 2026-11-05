@@ -37,7 +37,7 @@ _SEPARATORS = re.compile(r"[\s.\-()]")
 # A Vietnamese subscriber number after the country code: a mobile (3, 5, 7, 8 or
 # 9, then eight digits) or a landline (2, then nine digits).
 _SUBSCRIBER = re.compile(r"[35789]\d{8}|2\d{9}")
-# Quyết định 798/QĐ-BTTTT (25/5/2018), II.2.1: 21 mobile codes moved to two
+# Decision `798/QĐ-BTTTT` (25/5/2018), II.2.1: 21 mobile codes moved to two
 # digits, the last seven kept. The oracle's own copy, not an import of the
 # platform's (R1.2, MP17); `dw_studio`'s test_phone_rule.py holds the two to
 # one set of vectors (custom-objects ticket 10).

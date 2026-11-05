@@ -12,8 +12,8 @@ bare `84` followed by nine or ten digits is read as Vietnam's code. Another
 country's number is kept as written, 8 to 15 digits.
 
 A Vietnamese number is kept only in the current numbering plan, after the
-mobile codes renumbered in 2018 are mapped to their new ones: Quyết định số
-798/QĐ-BTTTT of 25/5/2018 (Ministry of Information and Communications, section
+mobile codes renumbered in 2018 are mapped to their new ones: decision
+`798/QĐ-BTTTT` of 25/5/2018 (Ministry of Information and Communications, section
 II.2.1) moved 21 three-digit codes to two-digit ones and kept the last seven
 digits, so "0168 456 7890" is "+84384567890". What follows `84` must then be a
 mobile (3, 5, 7, 8 or 9 and eight digits) or a landline (2 and nine digits).
@@ -33,7 +33,7 @@ from typing import Final
 
 __all__ = ["PRE_2018_MOBILE_CODES", "is_vietnamese_phone", "normalize_phone"]
 
-# Quyết định 798/QĐ-BTTTT, II.2.1: the old code after the leading 0, and its
+# Decision `798/QĐ-BTTTT`, II.2.1: the old code after the leading 0, and its
 # new one.
 PRE_2018_MOBILE_CODES: Final[Mapping[str, str]] = MappingProxyType(
     {
