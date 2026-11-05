@@ -224,16 +224,13 @@ async def test_r1_1_r1_2_fs1_one_mode_per_field_and_personal_data_starts_secured
                     "m": asked,
                 },
             )
-        modes = dict(
-            (
-                await conn.execute(
-                    sa.text(
-                        "SELECT api_name, access_mode FROM studio.field_defs WHERE object_id = :o"
-                    ),
-                    {"o": company.lead.object_id},
-                )
-            ).all()
-        )
+        rows = (
+            await conn.execute(
+                sa.text("SELECT api_name, access_mode FROM studio.field_defs WHERE object_id = :o"),
+                {"o": company.lead.object_id},
+            )
+        ).all()
+        modes: dict[str, str] = {row[0]: row[1] for row in rows}
     assert modes == {
         "phone": "secured",
         "email": "secured",
@@ -407,8 +404,9 @@ async def test_a_service_account_never_reads_a_sensitive_field(
         bot = await member(conn, company.tenant, company.lead, writes, kind="service")
     found = await as_user(app_engine, company, person)
     assert found["so_cccd"] == "read"
-    for action in ("update", "create"):
-        assert (await as_user(app_engine, company, bot, action))["so_cccd"] == "hidden"  # type: ignore[arg-type]
+    writing: tuple[FieldAction, ...] = ("update", "create")
+    for action in writing:
+        assert (await as_user(app_engine, company, bot, action))["so_cccd"] == "hidden"
     async with app_engine.begin() as conn:
         await act_as_user(conn, company.t, person)
         assert (await SERVICE.for_person(conn, bot, company.lead.object_id)).level_of(
