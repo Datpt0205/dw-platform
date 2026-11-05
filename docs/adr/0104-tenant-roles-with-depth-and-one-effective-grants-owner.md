@@ -403,3 +403,16 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   2026-10-31 at the readiness gate of tenant-rbac ticket 08 (`.claude/plans/studio/tenant-rbac/issues/08-chi-phi-trigger-quyen-o-co-d12.md`),
   recorded in that spec's "Quyết định" line of 5/11/2026 on R3.12 and RB40; the status stays Accepted. If wrong: the
   statement-level triggers stay and only `platform.check_owner_coverage` gets cheaper (ticket 08's fallback).
+- Decision 9, concurrent writes: "refuse a change leaving any holder in breach" holds today for each write judged
+  alone, not for two concurrent ones. The separation-of-duties trigger fires before `trg_z_bump_access_version` locks
+  the tenant's version row, so two transactions each giving one person one side of a rule (two assignments, an
+  assignment beside a key being added to a role the person holds, or a restored role and an assignment) can both pass, each judged
+  before the other commits; and a `dw_migrator` update of `platform.memberships.user_id` moves a membership's
+  assignments to another person past every separation-of-duties trigger. Recorded by the agent under Đạt's delegation
+  of 2026-10-31 when cutting tenant-rbac ticket 11
+  (`.claude/plans/studio/tenant-rbac/issues/11-tach-nhiem-duoi-ghi-dong-thoi.md`), which measures the race as
+  discovery 08's question 3 did, takes the version row (`FOR NO KEY UPDATE`, the lock the bump already takes later in
+  the same statement) before the trigger reads, and adds the trigger on a membership's change of person; the status
+  stays Accepted. If wrong: the earlier lock costs more than the budget, the reason is
+  written beside the numbers, and the lock still runs at every firing, never behind a per-transaction setting a
+  `dw_app` connection could preset.

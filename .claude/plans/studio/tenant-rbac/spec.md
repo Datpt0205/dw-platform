@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08, 09, 10)
+Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08, 09, 10, 11)
 
 Quản trị viên công ty cần tự dựng vai trò cho các workspace của mình (vai Marketing và vai Sales của lát Marketing, D4) với
 quyền trên đối tượng do công ty định nghĩa (`obj.lead.read`, D3), điều mà danh mục vai toàn cục chỉ migration ghi không
@@ -470,6 +470,14 @@ Không còn câu hỏi mở.
   không dựng cạnh ticket 08 (cùng `db/bench/rbac/RESULTS.md` và database đo). Ticket 09 `Yêu cầu: R5.1, RB14`, ticket 10
   `Yêu cầu: không (...)`; `Mục tiêu` không đổi. Nếu sai thì: (09) trigger tách nhiệm trên hai bảng quyền thay cho ràng
   buộc, và cắt ticket chủ cuộc đua trước 09; (10) gộp vào một ticket đo chung với ticket 08.
+- 5/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 11. Ticket 11 là chủ của rủi ro nhận ở gate ticket 09 và
+  MEDIUM (b) của gate ticket 08: đo cuộc đua của hai lần ghi đồng thời như Câu 3 của discovery/08, rồi
+  `platform.enforce_role_separation_of_duties` khóa dòng version của công ty (`FOR NO KEY UPDATE`, khóa mà
+  `trg_z_bump_access_version` đã lấy muộn hơn trong cùng lệnh) trước khi đọc, và một trigger tách nhiệm cho lần
+  `dw_migrator` đổi `memberships.user_id`; cảnh báo dưới hai người dưới hai lần gỡ đồng thời đo và giữ bằng test. Chờ
+  ticket 08, 09 vì cùng thay thân hàm đó. `Yêu cầu: R5.1, RB14, R3.12`; `Mục tiêu` không đổi: R5.1 nay đúng cho cả hai
+  lần ghi đồng thời, như ADR-0104 (Accepted) Amendments 2026-11-05 mục 9 ghi. Nếu sai thì: số đo `q2` trượt thì lý do
+  ghi cạnh số đo (không dấu theo giao dịch, vì GUC bỏ được khóa), và K4 tách thành ticket riêng của R3.12.
 
 ## Danh sách ticket
 
@@ -485,3 +493,4 @@ Không còn câu hỏi mở.
 | 08  | [Chi phí trigger quyền ở cỡ D12](issues/08-chi-phi-trigger-quyen-o-co-d12.md)                                                             |
 | 09  | [Tách nhiệm khi khôi phục vai trò đã xóa mềm, và luật tách nhiệm không nêu khóa sinh](issues/09-tach-nhiem-khi-khoi-phuc-vai-tro.md)      |
 | 10  | [`scopes_in` của `_STANDING` và `_HOLDERS` ở cỡ D12](issues/10-scopes-in-cua-standing-va-holders.md)                                      |
+| 11  | [Tách nhiệm dưới hai lần ghi đồng thời, và lần đổi người của membership](issues/11-tach-nhiem-duoi-ghi-dong-thoi.md)                      |
