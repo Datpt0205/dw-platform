@@ -57,6 +57,7 @@ _FIELD_COLUMNS = (
     "pd_category",
     "sensitive_type",
     "subject_identifier",
+    "access_mode",
 )
 
 

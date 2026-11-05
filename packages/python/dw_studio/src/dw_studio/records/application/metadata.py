@@ -58,6 +58,8 @@ _MUTABLE: Final = (
     "pd_category",
     "sensitive_type",
     "subject_identifier",
+    # field-security R1.8: opened or secured by a later version.
+    "access_mode",
 )
 
 
@@ -77,6 +79,8 @@ def _system_row(api_name: str, type_: str, label: str) -> FieldDefinition:
         pd_category="none",
         sensitive_type=None,
         subject_identifier=None,
+        # Open: a system column every reader of the record sees (ADR-0105).
+        access_mode="open",
     )
 
 

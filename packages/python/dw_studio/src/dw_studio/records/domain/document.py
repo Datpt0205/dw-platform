@@ -23,6 +23,7 @@ from pydantic import BaseModel, ConfigDict, StrictBool, StrictInt, StrictStr, Va
 
 from dw_kernel.personal_data import PdCategory, SensitiveType, SubjectIdentifierKind
 from dw_studio.core.domain.artifacts import DocumentInvalidError, DocumentProblem
+from dw_studio.core.domain.field_access import AccessMode
 from dw_studio.records.domain.field_types import TEXT_LIKE
 
 OBJECT_KIND: Final = "object"
@@ -41,7 +42,6 @@ CompanyFieldType = Literal[
     "url",
 ]
 NumberMode = Literal["exact", "float"]
-AccessMode = Literal["open", "secured"]
 DefaultAccess = Literal["private", "public_read", "public_read_write"]
 
 # Narrower first (R1.8): a later entry opens more.
@@ -103,7 +103,7 @@ class FieldDocument(_Model):
     sensitive_type: SensitiveType | None = None
     subject_identifier: SubjectIdentifierKind | None = None
     # Filled by the parse: `secured` unless the field holds no personal data
-    # (ADR-0106 decision 2). field-security/01 adds its column.
+    # (ADR-0106 decision 2); `studio.field_defs.access_mode` (field-security/01).
     access_mode: AccessMode | None = None
     options: tuple[OptionDocument, ...] = ()
 
@@ -187,7 +187,7 @@ class OptionDefinition:
 @dataclass(frozen=True, slots=True)
 class FieldDefinition:
     """Every attribute of a field the document decides and `studio.field_defs`
-    has a column for (`access_mode` joins with field-security/01's column)."""
+    has a column for."""
 
     api_name: str
     type: str
@@ -203,6 +203,7 @@ class FieldDefinition:
     pd_category: str
     sensitive_type: str | None
     subject_identifier: str | None
+    access_mode: AccessMode
     options: tuple[OptionDefinition, ...] = ()
 
 
@@ -226,7 +227,12 @@ SYSTEM_FIELDS: Final = frozenset({NAME, OWNER, WORKSPACE})
 
 def name_definition(name_field: NameField) -> FieldDefinition:
     """The `name` system row the document decides, from its `name_field`; the
-    one owner of that shape, which the hook writes and `definition_of` reads."""
+    one owner of that shape, which the hook writes and `definition_of` reads.
+
+    `name_field` carries no `access_mode`: `name` is secured exactly when it
+    holds personal data, so raising its category from `none` secures it
+    (field-security R1.8)."""
+    category = _category(name_field.pd_category)
     return FieldDefinition(
         api_name=NAME,
         type="text",
@@ -239,9 +245,10 @@ def name_definition(name_field: NameField) -> FieldDefinition:
         required=True,
         is_unique=False,
         indexed=False,
-        pd_category=_category(name_field.pd_category),
+        pd_category=category,
         sensitive_type=_value(name_field.sensitive_type),
         subject_identifier=_value(name_field.subject_identifier),
+        access_mode="open" if category == PdCategory.NONE.value else "secured",
     )
 
 
@@ -261,6 +268,8 @@ def field_definition(field: FieldDocument) -> FieldDefinition:
         pd_category=_category(field.pd_category),
         sensitive_type=_value(field.sensitive_type),
         subject_identifier=_value(field.subject_identifier),
+        # The parse fills it; a field that somehow lacks one is secured.
+        access_mode=field.access_mode or "secured",
         options=tuple(
             OptionDefinition(o.key, o.labels.as_json(), o.position, o.active)
             for o in sorted(field.options, key=lambda option: option.key)

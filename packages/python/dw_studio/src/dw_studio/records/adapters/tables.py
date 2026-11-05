@@ -91,6 +91,9 @@ field_defs = sa.Table(
     sa.Column("slot", sa.Text, nullable=True),
     sa.Column("field_no", sa.Integer, nullable=True),
     *_stamps(),
+    # field-security/01 (revision 2f177d264a27): `open` or `secured`, added
+    # last, so it sits after the stamps in the catalog too.
+    sa.Column("access_mode", sa.Text, nullable=False, server_default=sa.text("'open'")),
     sa.PrimaryKeyConstraint("tenant_id", "id"),
     sa.UniqueConstraint("tenant_id", "object_id", "api_name"),
     sa.UniqueConstraint("tenant_id", "object_id", "field_no"),
