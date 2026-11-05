@@ -1,0 +1,44 @@
+# Mutation check of workflow-builder-ui ticket 04. scripts/mutate.py runs pytest
+# only, so the entries below are the two pytest controls the ticket adds: the
+# catalogue carries the three flags the canvas draws by, and F10 is a document
+# of the one model. Every other control is guarded by vitest and is listed here
+# as it was planted by hand (backed up by copy, mutated in place, the guarding
+# file run with `vitest run <file>`, restored by copy); all fifteen hand
+# mutations went red on 5/11/2026 (lane2-wbu04-mutate-by-hand.log in the
+# session scratchpad), the last of them the first pytest entry below.
+#
+#   R1.5      a switch's join drawn as the parallel bar              -> workflow-grammar.test.ts snapshot f2, "meets its lanes at exactly one point"  red 5/11/2026
+#   R1.5      a lane ending in flow.stop / logic.break joined back   -> workflow-grammar.test.ts F5 "a lane ending the run", F9 "never reaches the join"  red 5/11/2026
+#   R1.5      the shape chosen by the type's name, not block         -> workflow-grammar.test.ts "draws the same when the parallel type has another name"  red 5/11/2026
+#   R1.5      Thoát vòng lặp pointing at the join, not the exit      -> workflow-grammar.test.ts F9 "points every exit at its loop's exit"  red 5/11/2026
+#   R1.5      the Khi lỗi lane never meeting the flow again          -> workflow-grammar.test.ts F4 "meets the flow again under the step"  red 5/11/2026
+#   R1.5      "Chờ Quy trình con xong" left off the card             -> workflow-grammar-canvas.test.tsx F10, builder-model.test.ts  red 5/11/2026
+#   R1.5      "Cần cả N người duyệt" for one named person            -> builder-model.test.ts "Cần cả N only for N ≥ 2"  red 5/11/2026
+#   R1.5 BU14 a lane head with a colour and no words                 -> workflow-grammar-canvas.test.tsx "every Tag, lane head and bar has words"  red 5/11/2026
+#   R1.5 BU14 a literal colour in a grammar component                -> canvas-colours.test.ts "holds for the real canvas" (ticket 02's, covers the new nodes)
+#   R1.7 BU8  the fold key without the viewer's id                   -> builder-grammar.test.tsx "folds from the menu", "stays folded for the same viewer"  red 5/11/2026
+#   R1.7 BU8  a fold written into the document                       -> builder-grammar.test.tsx "folds from the menu: ... nothing is saved"  red 5/11/2026
+#   R1.7      ↑/↓ walking into a folded frame                        -> workflow-graph.test.ts "↑/↓ skip the steps of a folded frame", builder-grammar.test.tsx  red 5/11/2026
+#   R1.7      Ctrl+K not opening the frames around its step          -> builder-grammar.test.tsx "Ctrl+K to a step inside a folded frame"  red 5/11/2026
+#   R1.7      the outline reopening a folded frame on mount          -> builder-grammar.test.tsx "one fold, two views"  red 5/11/2026
+#   R2.6 BU11 aria-setsize dropped from a lane node                  -> builder-outline.test.tsx F2, F4 "counts the Khi lỗi lane last"  red 5/11/2026
+#   R2.5 BU7  the keyboard path into lanes and frames                -> e2e/workflow-builder.spec.ts "builds F5's lanes and frames" (owed at the queue's close)
+mutations:
+  - name: the catalogue entry leaves out block
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/registry.py
+    old: "        \"block\": spec.block,\n"
+    new: ""
+    tests:
+      - apps/api/tests/unit/test_studio_node_types.py::test_each_type_carries_the_shape_the_lowering_reads
+  - name: the catalogue entry says no type leaves its loop
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/registry.py
+    old: "        \"exits_loop\": spec.exits_loop,\n"
+    new: "        \"exits_loop\": False,\n"
+    tests:
+      - apps/api/tests/unit/test_studio_node_types.py::test_each_type_carries_the_shape_the_lowering_reads
+  - name: F10 with a key the document model refuses
+    file: apps/web/lib/__fixtures__/workflows/f10-subworkflow-root-and-loop.json
+    old: '  "schema": "dw.workflow/v1",'
+    new: "  \"schema\": \"dw.workflow/v1\",\n  \"positions\": {},"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_builder_fixtures.py::test_fixture_is_a_workflow_document

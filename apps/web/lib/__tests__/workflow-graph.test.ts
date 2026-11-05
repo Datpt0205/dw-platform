@@ -7,6 +7,7 @@ import {
   commit,
   deleteStep,
   emptyLaneStop,
+  framesAround,
   fromTree,
   history,
   insertStep,
@@ -16,6 +17,7 @@ import {
   newStep,
   removeLane,
   setOnError,
+  stepAtPointer,
   stepName,
   stopsInOrder,
   toStepNode,
@@ -427,6 +429,86 @@ describe("the keyboard follows the structure (R2.5)", () => {
     expect(navigate(next, raw.id as string, "down")).toBe(slot);
     expect(navigate(next, slot, "down")).toBe(t.steps[0]!.id);
     expect(navigate(next, slot, "up")).toBe(raw.id);
+  });
+});
+
+describe("lanes and frames on the keyboard (R2.5, R1.7; ticket 04)", () => {
+  it("F5: ↓ enters the loop frame and its approval's first lane, → to Từ chối, out past the block", () => {
+    const t = tree("f5");
+    expect(navigate(t, "soan_lai", "down")).toBe("soan_bao_gia");
+    expect(navigate(t, "soan_bao_gia", "up")).toBe("soan_lai");
+    expect(navigate(t, "duyet_bao_gia", "down")).toBe("da_duyet");
+    expect(navigate(t, "da_duyet", "right")).toBe("can_sua_lai");
+    expect(navigate(t, "can_sua_lai", "left")).toBe("da_duyet");
+    expect(navigate(t, "can_sua_lai", "up")).toBe("duyet_bao_gia");
+    // From the body's last lane out of the frame, past Đã đủ N lần's lane.
+    expect(navigate(t, "can_sua_lai", "down")).toBe("duyet_hoi_dong");
+    // The body and Đã đủ N lần are lanes of the loop: → between them.
+    expect(navigate(t, "soan_bao_gia", "right")).toBe("bao_quan_ly");
+  });
+
+  it("↑/↓ skip the steps of a folded frame, and Tab's order leaves them out", () => {
+    const t = tree("f5");
+    const folded = new Set(["soan_lai"]);
+    expect(navigate(t, "soan_lai", "down", folded)).toBe("duyet_hoi_dong");
+    expect(navigate(t, "duyet_hoi_dong", "up", folded)).toBe("soan_lai");
+    const stops = stopsInOrder(t, folded);
+    expect(stops).not.toContain("soan_bao_gia");
+    expect(stops).not.toContain("bao_quan_ly");
+    expect(stops.slice(0, 2)).toEqual(["soan_lai", "duyet_hoi_dong"]);
+    // A step that is no frame is never folded.
+    expect(stopsInOrder(t, new Set(["duyet_hoi_dong"]))).toEqual(
+      stopsInOrder(t),
+    );
+  });
+
+  it("F4: the Khi lỗi lane is the last lane of its step for ←/→", () => {
+    const t = tree("f4");
+    const approval = locate(t, "duyet_uu_dai")!.node;
+    expect(approval.lanes.map((l) => l.port)).toEqual([
+      "approved",
+      "rejected",
+      "error_lane",
+    ]);
+    expect(navigate(t, "tao_viec_goi", "right")).toBe("bao_loi_duyet_uu_dai");
+    expect(navigate(t, "bao_loi_duyet_uu_dai", "right")).toBeNull();
+    expect(navigate(t, "bao_loi_duyet_uu_dai", "left")).toBe("tao_viec_goi");
+  });
+
+  it("names the frames around a step, outermost first", () => {
+    const t = tree("f3");
+    expect(framesAround(t, "tra_cong_ty")).toEqual(["lam_giau", "tra_cuu"]);
+    expect(framesAround(t, "luu_tru")).toEqual([]);
+  });
+});
+
+describe("a server's pointer reaches its step (R3.4)", () => {
+  it("is the deepest step on the pointer's path", () => {
+    const doc = loadFixture("f3");
+    expect(stepAtPointer(doc, "/steps/1/config/on")).toBe("phan_loai");
+    expect(
+      stepAtPointer(
+        doc,
+        "/steps/1/config/cases/hot/0/config/body/0/config/branches/cong_ty/1/config",
+      ),
+    ).toBe("tom_cong_ty");
+    expect(stepAtPointer(doc, "/steps/1/config/cases/hot/0")).toBe("lam_giau");
+    expect(stepAtPointer(doc, "/triggers/0/config")).toBeNull();
+    expect(stepAtPointer(doc, "/steps/9")).toBeNull();
+    expect(stepAtPointer(doc, "")).toBeNull();
+  });
+
+  it("reads ~1 and ~0 in a token", () => {
+    const doc = {
+      steps: [
+        {
+          id: "re",
+          type: "logic.switch@1",
+          config: { cases: { "a/b": [{ id: "trong", type: "x@1" }] } },
+        },
+      ],
+    };
+    expect(stepAtPointer(doc, "/steps/0/config/cases/a~1b/0")).toBe("trong");
   });
 });
 

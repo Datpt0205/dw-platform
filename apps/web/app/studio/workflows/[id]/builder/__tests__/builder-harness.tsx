@@ -32,6 +32,8 @@ export class FakeServer {
   stale = false;
   /** Refuse a route the way the server's authorization would. */
   refuse: { types?: number; save?: number } = {};
+  /** What the kind's check answers each save with (`warnings`). */
+  warnings: { pointer: string; code: string; detail: string }[] = [];
   calls: Call[] = [];
 
   constructor(fixture = "f1") {
@@ -106,7 +108,7 @@ export class FakeServer {
             body as { document: Record<string, unknown> }
           ).document;
           this.version += 1;
-          return json(200, { ...this.draft(), warnings: [] });
+          return json(200, { ...this.draft(), warnings: this.warnings });
         }
         return refusal(404, "not_found");
       },
@@ -164,13 +166,15 @@ export async function renderBuilder(
   Builder: (props: {
     artifactId: string;
     saveDelayMs?: number;
+    viewerId?: string | null;
   }) => React.ReactNode,
   ready: () => HTMLElement | null,
+  viewerId: string | null = null,
 ) {
   const view = render(
     <App>
       <div style={{ width: 1280, height: 800 }}>
-        <Builder artifactId={ARTIFACT} saveDelayMs={0} />
+        <Builder artifactId={ARTIFACT} saveDelayMs={0} viewerId={viewerId} />
       </div>
     </App>,
   );

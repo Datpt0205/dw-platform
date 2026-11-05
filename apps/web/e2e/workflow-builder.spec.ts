@@ -3,13 +3,13 @@ import { join } from "node:path";
 import { expect, test, type Page, type Route } from "@playwright/test";
 
 /**
- * The workflow builder in a browser (workflow-builder-ui R2.2, R2.5, R2.6):
- * built only with the keyboard on the canvas, and through the outline at a
- * 320 px phone without sideways scroll. The artifact, the catalogue and the
- * draft are answered by `page.route` with F1 and the fake catalogue in the
- * route's shape, so the spec needs the running stack for the sign-in only
- * (the API on `E2E_API_URL` with the seed). Every PUT is kept to check
- * `If-Match`.
+ * The workflow builder in a browser (workflow-builder-ui R2.2, R2.5, R2.6,
+ * R1.7): built only with the keyboard on the canvas (F1, and F5's lanes and
+ * frames, ticket 04), and through the outline at a 320 px phone without
+ * sideways scroll. The artifact, the catalogue and the draft are answered by
+ * `page.route` with a fixture and the fake catalogue in the route's shape, so
+ * the spec needs the running stack for the sign-in only (the API on
+ * `E2E_API_URL` with the seed). Every PUT is kept to check `If-Match`.
  */
 
 const API_URL = process.env.E2E_API_URL ?? "http://127.0.0.1:8000";
@@ -20,6 +20,9 @@ const FIXTURES = join(__dirname, "../lib/__fixtures__/workflows");
 type FakeType = {
   type: string;
   label_vi: string;
+  block: "none" | "choice" | "parallel" | "loop";
+  ends_run: boolean;
+  exits_loop: boolean;
   ports:
     | { kind: "none" }
     | {
@@ -65,6 +68,9 @@ function nodeTypes() {
       output: { kind: "fixed", schema: {} },
       error: { on_error: ["continue", "route"], schema: {} },
       ports,
+      block: t.block,
+      ends_run: t.ends_run,
+      exits_loop: t.exits_loop,
       side_effect_level: "none",
     };
   });
@@ -85,11 +91,9 @@ async function login(page: Page): Promise<void> {
   await page.waitForURL("**/");
 }
 
-async function serve(page: Page) {
+async function serve(page: Page, fixture = "f1-lead-intake.json") {
   let version = 1;
-  let document = JSON.parse(
-    readFileSync(join(FIXTURES, "f1-lead-intake.json"), "utf8"),
-  );
+  let document = JSON.parse(readFileSync(join(FIXTURES, fixture), "utf8"));
   const puts: { ifMatch: string | null; document: unknown }[] = [];
   const draft = () => ({
     artifact_id: ARTIFACT,
@@ -212,4 +216,110 @@ test("builds through the outline at 320 px without sideways scroll", async ({
     overflow,
     `the builder scrolls sideways by ${overflow}px`,
   ).toBeLessThanOrEqual(0);
+});
+
+/** A step's stop on the canvas, by the start of its name. */
+const stop = (page: Page, name: string) =>
+  page.getByRole("button", { name: new RegExp(`^${name},`) });
+
+async function menu(page: Page, item: string) {
+  await page.keyboard.press("Shift+F10");
+  await page.getByRole("menuitem", { name: item }).press("Enter");
+}
+
+test("builds F5's lanes and frames with the keyboard only", async ({
+  page,
+}, info) => {
+  test.skip(
+    info.project.name !== "chromium",
+    "the canvas is the desktop editor",
+  );
+  const server = await serve(page, "f5-rework-loop-approval.json");
+  await login(page);
+  await page.goto(`/studio/workflows/${ARTIFACT}/builder`);
+  const loop = stop(page, "Soạn lại báo giá tới khi được duyệt");
+  await loop.waitFor();
+  await loop.focus();
+  // Into the frame: ↓ from the loop's card to the first step of its body.
+  await page.keyboard.press("ArrowDown");
+  await expect(stop(page, "Soạn báo giá")).toBeFocused();
+  // A step into the body, before its first step.
+  await menu(page, "Thêm trước");
+  await page.getByRole("button", { name: "Hỏi AI" }).first().press("Enter");
+  await expect.poll(() => server.puts.length).toBeGreaterThan(0);
+  const body = () =>
+    (server.current().steps[0].config.body as { type: string }[]).map(
+      (s) => s.type,
+    );
+  await expect.poll(body).toEqual(["ai.llm@2", "ai.llm@2", "human.approval@2"]);
+  // Into the approval's lanes, → to Từ chối, and a step there.
+  await stop(page, "Trưởng nhóm duyệt báo giá").focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(stop(page, "Ghi nhận đã duyệt")).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(stop(page, "Ghi nhận cần sửa")).toBeFocused();
+  await menu(page, "Thêm sau");
+  await page
+    .getByRole("button", { name: "Biến đổi dữ liệu" })
+    .first()
+    .press("Enter");
+  const rejected = () =>
+    (
+      server.current().steps[0].config.body[2].config.rejected as {
+        id: string;
+      }[]
+    ).length;
+  await expect.poll(rejected).toBe(2);
+  // Arrow keys never move a step: the document is the same after them.
+  const before = JSON.stringify(server.current());
+  const puts = server.puts.length;
+  for (const key of ["ArrowUp", "ArrowLeft", "ArrowRight", "ArrowDown"]) {
+    await page.keyboard.press(key);
+  }
+  await page.waitForTimeout(2500);
+  expect(server.puts.length).toBe(puts);
+  expect(JSON.stringify(server.current())).toBe(before);
+  // Dời a step to the next lane: Ghi nhận đã duyệt after Ghi nhận cần sửa.
+  await stop(page, "Ghi nhận đã duyệt").focus();
+  await menu(page, "Di chuyển…");
+  const target = page.getByRole("combobox", { name: "Chuyển tới" });
+  await target.focus();
+  await page.keyboard.type("Sau «Ghi nhận cần sửa»");
+  await page.keyboard.press("Enter");
+  await page.getByRole("button", { name: "Di chuyển" }).press("Enter");
+  await expect
+    .poll(() =>
+      (
+        server.current().steps[0].config.body[2].config.rejected as {
+          id: string;
+        }[]
+      ).map((s) => s.id),
+    )
+    .toContain("da_duyet");
+  // Out of the frame: ↓ from the body's last lane leaves the loop.
+  await stop(page, "Ghi nhận cần sửa").focus();
+  for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowDown");
+  await expect(stop(page, "Hội đồng duyệt báo giá lớn")).toBeFocused();
+  // Fold the loop, ↓ skips it, open it again.
+  await loop.focus();
+  await menu(page, "Thu gọn khung");
+  await expect(loop).toHaveAccessibleName(/khung đang thu gọn/);
+  await page.keyboard.press("ArrowDown");
+  await expect(stop(page, "Hội đồng duyệt báo giá lớn")).toBeFocused();
+  await loop.focus();
+  await menu(page, "Mở khung");
+  await expect(stop(page, "Soạn báo giá")).toBeVisible();
+  // Delete the Lặp lại khi … frame, then undo.
+  await loop.focus();
+  await page.keyboard.press("Delete");
+  await expect(
+    page.getByText(/^Đã xóa «Soạn lại báo giá tới khi được duyệt»/),
+  ).toBeVisible();
+  await expect
+    .poll(() => server.current().steps.map((s: { id: string }) => s.id))
+    .toEqual(["duyet_hoi_dong"]);
+  await page.keyboard.press("Control+z");
+  await expect
+    .poll(() => server.current().steps.map((s: { id: string }) => s.id))
+    .toEqual(["soan_lai", "duyet_hoi_dong"]);
 });

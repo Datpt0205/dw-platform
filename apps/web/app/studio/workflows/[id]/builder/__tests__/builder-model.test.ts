@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   catalogueOf,
   locate,
+  toStepNode,
   toTree,
 } from "../../../../../../lib/workflow-graph";
 import {
@@ -9,6 +10,8 @@ import {
   loadFixture,
 } from "../../../../../../lib/__tests__/workflow-catalogue";
 import {
+  cardView,
+  laneMenu,
   moveTargets,
   parseSlotValue,
   stepMenu,
@@ -95,5 +98,129 @@ describe("Di chuyển… (R1.4)", () => {
       parseSlotValue,
     );
     expect(other.some((s) => s.lane.parent === sw.id)).toBe(true);
+  });
+});
+
+describe("what a card of each W1 type says (R1.5, R1.8; ticket 04)", () => {
+  const approval = (config: Record<string, unknown>) =>
+    cardView(
+      toStepNode(
+        {
+          id: "duyet",
+          type: "human.approval@2",
+          config: { approved: [], rejected: [], ...config },
+        },
+        catalogue,
+      ),
+      catalogue,
+    );
+  const rule = (config: Record<string, unknown>) =>
+    approval(config).marks.map((m) => m.text);
+
+  it("names who approves and the scope", () => {
+    const view = approval({
+      required_scope: "studio.leads.approve",
+      assignees: ["u_a", "u_b"],
+    });
+    expect(view.summary).toBe("Phạm vi: studio.leads.approve");
+    expect(view.detail?.text).toBe("Người duyệt: u_a, u_b");
+    expect(approval({ assignees: "record.owner" }).detail?.text).toBe(
+      "Người duyệt theo Biểu thức: record.owner",
+    );
+    expect(approval({}).detail?.text).toBe("Người duyệt: người giữ quyền");
+  });
+
+  it("says Cần cả N only for N ≥ 2 named people, Cần mọi người when known at run time, nothing otherwise", () => {
+    expect(rule({ approval_rule: "all", assignees: ["a", "b", "c"] })).toEqual([
+      "Cần cả 3 người duyệt",
+    ]);
+    expect(rule({ approval_rule: "all", assignees: "record.team" })).toEqual([
+      "Cần mọi người được giao duyệt",
+    ]);
+    expect(rule({ approval_rule: "all" })).toEqual([
+      "Cần mọi người được giao duyệt",
+    ]);
+    expect(rule({ approval_rule: "all", assignees: ["a"] })).toEqual([]);
+    expect(rule({ approval_rule: "any", assignees: ["a", "b"] })).toEqual([]);
+    expect(rule({ assignees: ["a", "b"] })).toEqual([]);
+  });
+
+  it("shows a switch's on as stored, no CEL shortened", () => {
+    const on = "steps.cham_diem.response.tier  ==  'hot' && true";
+    const view = cardView(
+      toStepNode(
+        { id: "re", type: "logic.switch@1", config: { on, cases: {} } },
+        catalogue,
+      ),
+      catalogue,
+    );
+    expect(view.summary).toBe(on);
+  });
+
+  it("titles a loop by its condition and cap, verbatim", () => {
+    const tree = toTree(loadFixture("f3"), catalogue);
+    const view = cardView(locate(tree, "lam_giau")!.node, catalogue);
+    expect(view.title).toBe(
+      "Lặp lại khi !steps.gop.response.complete (tối đa 5 lần)",
+    );
+    expect(view.frame).toBe(true);
+  });
+
+  it("marks a sub-workflow, names what it calls and its wait", () => {
+    const tree = toTree(loadFixture("f10"), catalogue);
+    const view = cardView(locate(tree, "kiem_trung")!.node, catalogue);
+    expect(view.marks).toEqual([{ key: "subworkflow", text: "Quy trình con" }]);
+    expect(view.summary).toBe("kiem_lead_trung");
+    expect(view.detail).toEqual({ text: "Chờ Quy trình con xong", wait: true });
+    expect(view.frame).toBe(false);
+  });
+
+  it("draws a type with a known block and an unknown name as the plain card", () => {
+    const types = NODE_TYPES.map((t) =>
+      t.type === "logic.parallel@1" ? { ...t, type: "x.par@1" } : t,
+    );
+    const renamed = catalogueOf(types);
+    const node = toStepNode(
+      { id: "ss", type: "x.par@1", config: { branches: { a: [], b: [] } } },
+      renamed,
+    );
+    const view = cardView(node, renamed);
+    expect(view.frame).toBe(true);
+    expect(view.title).toBeNull();
+    expect(view.marks).toEqual([]);
+  });
+});
+
+describe("the menus of frames and lanes (R1.7, R2.5; ticket 04)", () => {
+  it("folds or opens a frame, and adds or removes the loop's optional lane by name", () => {
+    const tree = toTree(loadFixture("f10"), catalogue);
+    const loop = locate(tree, "lam_giau")!.node;
+    const labels = (folded: boolean) =>
+      stepMenu(loop, catalogue, folded).map((e) => e.label);
+    expect(labels(false)).toContain("Thu gọn khung");
+    expect(labels(true)).toContain("Mở khung");
+    expect(labels(false)).toContain("Thêm làn «Đã đủ N lần»");
+    expect(labels(false)).not.toContain("Thêm nhánh");
+    const f5 = toTree(loadFixture("f5"), catalogue);
+    const withLane = locate(f5, "soan_lai")!.node;
+    expect(stepMenu(withLane, catalogue).map((e) => e.key)).toEqual(
+      expect.arrayContaining(["fold", "removePort:max_reached"]),
+    );
+    expect(stepMenu(withLane, catalogue).map((e) => e.key)).not.toContain(
+      "addPort:max_reached",
+    );
+  });
+
+  it("offers Bỏ nhánh on a keyed lane's head only", () => {
+    const tree = toTree(loadFixture("f3"), catalogue);
+    const sw = locate(tree, "phan_loai")!.node;
+    expect(sw.lanes.map((l) => laneMenu(l).map((e) => e.label))).toEqual([
+      ["Bỏ nhánh"],
+      [],
+    ]);
+    const approval = toTree(loadFixture("f5"), catalogue);
+    for (const lane of locate(approval, "duyet_hoi_dong")!.node.lanes) {
+      expect(laneMenu(lane)).toEqual([]);
+    }
   });
 });

@@ -1,5 +1,6 @@
-"""Unit: the builder's fixtures F1-F9 are documents of wf-lite's one model
-(workflow-builder-ui ticket 02 step 2; ADR-0112 Amendments 2026-11-03).
+"""Unit: the builder's fixtures F1-F10 are documents of wf-lite's one model
+(workflow-builder-ui ticket 02 step 2, F10 of ticket 04; ADR-0112 Amendments
+2026-11-03).
 
 `apps/web/lib/__fixtures__/workflows/f*.json` are what the web's tree
 operations and layout are tested on. Each must load through
@@ -24,7 +25,10 @@ from dw_agent_runtime.wflite.document import Step, WorkflowDocument
 pytestmark = pytest.mark.unit
 
 _FIXTURES = Path(__file__).resolve().parents[5] / "apps/web/lib/__fixtures__/workflows"
-_FILES = sorted(_FIXTURES.glob("f[0-9]-*.json"))
+_FILES = sorted(
+    (path for path in _FIXTURES.glob("f*-*.json") if path.name.split("-")[0][1:].isdigit()),
+    key=lambda path: int(path.name.split("-")[0][1:]),
+)
 
 
 def _lane_items(value: Any) -> Iterator[dict[str, Any]]:
@@ -42,8 +46,8 @@ def _lane_items(value: Any) -> Iterator[dict[str, Any]]:
             yield from _lane_items(item)
 
 
-def test_there_are_nine_fixtures() -> None:
-    assert [path.name[:2] for path in _FILES] == [f"f{n}" for n in range(1, 10)]
+def test_there_are_ten_fixtures() -> None:
+    assert [path.name.split("-")[0] for path in _FILES] == [f"f{n}" for n in range(1, 11)]
 
 
 @pytest.mark.parametrize("path", _FILES, ids=lambda path: path.name)

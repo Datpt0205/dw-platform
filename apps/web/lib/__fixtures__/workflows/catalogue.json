@@ -35,7 +35,10 @@
       "on_error": [],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "data.transform@1",
@@ -45,7 +48,10 @@
       "on_error": ["fail", "continue", "route"],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "data.object.query@1",
@@ -55,7 +61,10 @@
       "on_error": ["fail", "continue", "route"],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "data.object.create@1",
@@ -65,7 +74,10 @@
       "on_error": ["fail", "continue", "route"],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "data.object.update@1",
@@ -75,7 +87,10 @@
       "on_error": ["fail", "continue", "route"],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "data.object.upsert@1",
@@ -85,7 +100,10 @@
       "on_error": ["fail", "continue", "route"],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "data.object.assign@1",
@@ -95,7 +113,10 @@
       "on_error": ["fail", "continue", "route"],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "ai.llm@2",
@@ -105,7 +126,10 @@
       "on_error": ["fail", "continue", "route"],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "tool.call@2",
@@ -115,7 +139,10 @@
       "on_error": ["fail", "continue", "route"],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "human.approval@2",
@@ -137,7 +164,10 @@
             "required": true
           }
         ]
-      }
+      },
+      "block": "choice",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "logic.switch@1",
@@ -152,7 +182,10 @@
           "name": "default",
           "label_vi": "Khác"
         }
-      }
+      },
+      "block": "choice",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "logic.parallel@1",
@@ -163,7 +196,10 @@
       "ports": {
         "kind": "map",
         "key": "branches"
-      }
+      },
+      "block": "parallel",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "logic.loop@1",
@@ -185,7 +221,10 @@
             "required": false
           }
         ]
-      }
+      },
+      "block": "loop",
+      "ends_run": false,
+      "exits_loop": false
     },
     {
       "type": "logic.break@1",
@@ -195,7 +234,10 @@
       "on_error": ["fail"],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": false,
+      "exits_loop": true
     },
     {
       "type": "flow.stop@1",
@@ -205,7 +247,10 @@
       "on_error": ["fail"],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": true,
+      "exits_loop": false
     },
     {
       "type": "flow.subworkflow@1",
@@ -215,7 +260,10 @@
       "on_error": ["fail", "continue", "route"],
       "ports": {
         "kind": "none"
-      }
+      },
+      "block": "none",
+      "ends_run": false,
+      "exits_loop": false
     }
   ]
 }

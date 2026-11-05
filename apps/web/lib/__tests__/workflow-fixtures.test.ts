@@ -87,8 +87,12 @@ function walk(
 }
 
 const FILES = readdirSync(DIR)
-  .filter((name) => /^f\d-.*\.json$/.test(name))
-  .sort();
+  .filter((name) => /^f\d+-.*\.json$/.test(name))
+  .sort((a, b) => fixtureNumber(a) - fixtureNumber(b));
+
+function fixtureNumber(name: string): number {
+  return Number(name.split("-")[0]!.slice(1));
+}
 
 function load(name: string) {
   return JSON.parse(readFileSync(join(DIR, name), "utf8")) as Record<
@@ -107,9 +111,9 @@ function measure(name: string): { count: number; depth: number } {
   return { count, depth };
 }
 
-describe("F1-F9 are dw.workflow/v1 documents in wf-lite's shape", () => {
-  it("are nine, F1 to F9", () => {
-    expect(FILES.map((name) => name.slice(0, 2))).toEqual([
+describe("F1-F10 are dw.workflow/v1 documents in wf-lite's shape", () => {
+  it("are ten, F1 to F9 of ticket 01 and F10 of ticket 04", () => {
+    expect(FILES.map((name) => name.split("-")[0])).toEqual([
       "f1",
       "f2",
       "f3",
@@ -119,6 +123,7 @@ describe("F1-F9 are dw.workflow/v1 documents in wf-lite's shape", () => {
       "f7",
       "f8",
       "f9",
+      "f10",
     ]);
   });
 
@@ -216,7 +221,7 @@ describe("F1-F9 are dw.workflow/v1 documents in wf-lite's shape", () => {
 
   it("count and depth as workflow-engine/01 counts them, at the platform caps", () => {
     const measured = Object.fromEntries(
-      FILES.map((name) => [name.slice(0, 2), measure(name)]),
+      FILES.map((name) => [name.split("-")[0]!, measure(name)]),
     );
     expect(measured.f1!.count).toBe(15);
     expect(measured.f6!.count).toBe(300);

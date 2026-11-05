@@ -1,6 +1,6 @@
 # 04 — Ngữ pháp sơ đồ: nhánh, song song, vòng lặp, nhánh lỗi, quy trình con
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02
 Area: studio
 Yêu cầu: R1.5, R1.7, R2.5, R2.6, BU7, BU8, BU11, BU14
@@ -139,3 +139,73 @@ các Loại bước của bậc B; bảng Loại bước chỉ đưa chúng khi 
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): checking-plan-readiness trên `f884268` (builder check trong một subagent, không boundary walk: ticket không thêm migration hay route; lượt xác nhận ngữ cảnh mới sau các sửa), 0 CRITICAL, 17 HIGH đã sửa theo khuyến nghị (quyết định ở dòng gate ticket 04 của spec). Lượt đầu: (1) làn kết thúc bằng `flow.stop` hay "Thoát vòng lặp" không nối về điểm gộp; (2) hình theo cờ `block`, `ends_run`, `exits_loop` của danh mục, danh mục giả mang chúng; (3) Tag làn là khóa của `cases`, không rút gọn CEL ở trình duyệt; (4) chỗ của làn "Đã đủ N lần" và lối ra mà "Thoát vòng lặp" chỉ tới; (5) làn lỗi là làn cuối với ←/→ và `aria-setsize`; (6) Nháp chưa hợp lệ vẽ đúng tài liệu; (7) "Cần cả N người duyệt" chỉ khi N người cụ thể; (8) Bước khung có thẻ R1.8 riêng, thu gọn vẽ thẻ đó; (9) khóa thu gọn có người xem, Sơ đồ chỉ đọc mở mọi khung; mô hình phím từ lượt đầu đã theo ticket 02. Lượt xác nhận: (10) làn không bắt buộc (`max_reached`) không tạo sẵn, có "Thêm/Bỏ làn 'Đã đủ N lần'"; (11) bàn phím theo cấu trúc, có đường ra khỏi khung (ticket 02 sửa); (12) phần nào được theo tên loại; (13) đầu làn có "Bỏ nhánh", nhãn làn song song là khóa của `branches`; (14) tiêu đề vòng lặp là điều kiện nguyên văn; (15) Bước sau Bước kết thúc và khối không điểm gộp; (16) thu gọn với bàn phím, `Tree` và huy hiệu lỗi; (17) làn lỗi của một khung. Nếu sai thì: như `Nếu sai thì:` của dòng gate ticket 04 trong spec.
 - 2026-11-04 (agent): MEDIUM để lại: (a) Ctrl+K hay bấm một lỗi trỏ vào khung thu gọn thì mở khung và lưu như mở tay; (b) ví dụ NVDA đổi thành "nhánh 2 trên 3: hot" theo khóa của `cases`; (c) thẻ phê duyệt với quy tắc khác `all` không có dòng quy tắc; (d) ngữ pháp vẽ khung song song cho mọi loại có `block: parallel`, nên khi workflow-nodes đăng ký `logic.parallel@1` với cờ khác danh mục giả, danh mục giả sửa cùng thay đổi đăng ký (spec "Kiểm lại khi").
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent): resolved, làn dựng 2, hai commit (mã, rồi test và ticket). Dựng: danh mục `GET /api/v1/studio/node-types`
+  trả thêm `block`, `ends_run`, `exits_loop` (`_catalogue_entry` của wf-lite, `NodeTypeView`, OpenAPI và kiểu TS sinh lại);
+  `lib/workflow-layout.ts` viết lại theo năm khối (chuỗi, làn, khung, mũi tên quay lại, làn lỗi) chọn theo cờ, làn kết thúc
+  không về điểm gộp, Bước sau Bước kết thúc không đường vào, khối không làn nào ra thì không điểm gộp, "Thoát vòng lặp" chỉ
+  tới `exit:<vòng lặp>`, làn lỗi gặp lại dưới cả khối (`rejoin:`), khung thu gọn đo như thẻ; `lib/workflow-shapes.ts` thêm
+  khung, thanh Điểm nối, lối ra, mũi tên và nhãn; Sơ đồ vẽ khung, thanh "Chờ tất cả nhánh xong", nhãn "Lặp lại", đầu làn có
+  "Bỏ nhánh", thẻ người duyệt, dấu "Quy trình con", huy hiệu "N lỗi"; `use-folded-frames.ts` giữ trạng thái thu gọn dưới
+  `wbui.collapsed.<user_id>.<artifact_id>`; `navigate`, `stopsInOrder` bỏ qua khung thu gọn; Ctrl+K mở các khung bao Bước;
+  `Tree` đọc cùng trạng thái; `CANVAS_MARKS` trong `@dw/ui`; fixture F10; danh mục giả mang ba cờ. Khác với ticket:
+    - Quyết định (agent, theo ủy quyền 31/10/2026): route danh mục chưa trả ba cờ, nên ticket này thêm chúng vào
+      `_catalogue_entry` và `NodeTypeView` (nơi đọc đầu tiên là Sơ đồ, workflow-nodes R1.4; mã băm danh mục đổi một lần
+      cho mọi loại), có test ở `apps/api/tests/unit/test_studio_node_types.py`. Nếu sai thì: workflow-nodes thêm ba trường
+      trong một ticket của nó và trang đọc y như vậy.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): tiêu đề khung nằm trên thẻ R1.8 ở đầu khung (dòng thứ hai của thẻ vòng
+      lặp là "Lặp lại khi … (tối đa N lần)", thẻ song song mang nhãn "Song song"), khung là đường viền phía sau, không có
+      dải đầu khung riêng, để đường nối vào không cắt chữ. Nếu sai thì: một dải tiêu đề trên thẻ, lệch trái.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): thân của khối `loop` là làn đầu của loại theo thứ tự danh mục, không
+      đầu làn (khung bao nó); các làn còn lại ("Đã đủ N lần") treo dưới khung. Nếu sai thì: danh mục đánh dấu làn thân.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): làn cố định không bắt buộc có mục menu riêng "Thêm làn «Đã đủ N lần»",
+      "Bỏ làn «Đã đủ N lần»", thay "Thêm nhánh"/"Bỏ nhánh…" mà ticket 02 cho loại làn cố định; "Thêm nhánh"/"Bỏ nhánh…" nay
+      chỉ cho loại có làn theo khóa. Nếu sai thì: giữ cả hai đường.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): thu gọn và mở bằng nút ở hàng đầu của thẻ đầu khung (cả hai trạng thái)
+      và bằng "Thu gọn khung"/"Mở khung" trong menu "…" (đường bàn phím, Shift+F10); tên truy cập của điểm dừng thêm "khung
+      đang thu gọn". Nếu sai thì: một phím riêng trên thẻ.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): chỗ cho điểm gộp, thanh Điểm nối và lối ra luôn được giữ, có đường tới
+      hay không, để một làn đổi từ kết thúc sang không kết thúc không dời gì (R1.6); khung thu gọn ẩn cả làn "Đã đủ N lần",
+      làn lỗi của Bước vẫn vẽ. Nếu sai thì: khối co lại khi không có điểm gộp.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): một chủ là tập id Bước đã đóng; `Tree` ghi vào đó mọi Bước đóng ở đó,
+      Sơ đồ chỉ thu gọn Bước khung; trạng thái mở của node làn trong `Tree` là của riêng `Tree`. Khi trang chưa biết người
+      xem (`principalId` của `/me` chưa có) hay bộ nhớ không dùng được, thu gọn chỉ sống trong trang. Sơ đồ chỉ đọc không
+      truyền `onToggleFrame` và không gọi hook, nên mở mọi khung. Nếu sai thì: `Tree` chỉ đóng được Bước khung.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): huy hiệu "N lỗi" đọc `warnings` của lần lưu Nháp gần nhất, mỗi `pointer`
+      về Bước sâu nhất trên đường (`stepAtPointer` trong `workflow-graph.ts`, ticket 03 dùng lại cho 422 của R3.4); không gì
+      có trước lần lưu đầu. Nếu sai thì: ticket 03 cấp lỗi và ticket này chỉ có chỗ hiện.
+    - Quyết định (agent, theo ủy quyền 31/10/2026): danh mục giả dùng `human.approval@2` như fixture và workflow-nodes R12.1,
+      không `human.approval@1` (loại gói của wf-lite, không có `approval_rule`); thẻ người duyệt đọc `required_scope`,
+      `assignees` (danh sách hay Biểu thức), `approval_rule`. Nếu sai thì: thêm một mục `@1` vào danh mục giả.
+    - Thêm ngoài ticket: "Di chuyển…" có ô tìm trong `TreeSelect` (đường bàn phím tới một ô sâu trong khung); `Tree` đặt
+      `defaultExpandParent={false}` (rc-tree mở cha của khóa đang mở lúc gắn, mở lại khung đã thu gọn, đo bằng test); vitest
+      `testTimeout` 20 s (test đầu của tệp trang F2 tốn ~3 s nạp lạnh, chạm 5 s khi máy bận); test fixture của ticket 01
+      và pytest `test_builder_fixtures.py` nhận F10.
+    - Test: vitest 44 tệp, 438 ca xanh (mới: `workflow-grammar.test.ts` 25 với snapshot F2, F3, F4, F5, F9, F10;
+      `workflow-grammar-canvas.test.tsx` 15; `builder-grammar.test.tsx` 14; thêm ở `workflow-graph` 6, `workflow-layout` 2
+      thuộc tính thu gọn trên 200 cây ngẫu nhiên có song song, kết thúc, thoát, `builder-model` 8, `builder-outline` 2);
+      pytest `test_studio_node_types.py`, `test_node_registry.py`, unit `dw_agent_runtime` 1 109 xanh, `test_builder_fixtures.py`
+      11; `pnpm run typecheck`, `pnpm run lint` sạch; Prettier sạch trên mọi tệp của ticket; `pnpm run build` biên dịch và
+      sinh 23 trang rồi dừng ở bước standalone vì EPERM symlink (môi trường, như ticket 01, 02); JS gzip route builder 694,5
+      kB trang và layout (687,5 ở ticket 02, +7,0) cộng 68,5 kB chunk Sơ đồ (67,0, +1,5); `generate_contracts.py --check`
+      và test hợp đồng xanh. 15 đột biến tay đều đỏ (`lane2-wbu04-mutate-by-hand.log`), danh sách ở `mutations/04.yaml`.
+    - `reviewing-feature-security` (đọc): ranh giới 1: không truy vấn, cache máy chủ hay đường lưu mới; khóa `localStorage`
+      theo người xem và Quy trình, chỉ giữ id Bước của tài liệu người xem đã đọc, trong trình duyệt của họ; danh mục vẫn ở
+      tầng nền tảng, như nhau cho mọi tenant (test sẵn có). Ranh giới 2: trang không quyết quyền nào, thu gọn không là quyền;
+      403 của danh mục và của lần lưu vẫn vẽ như máy chủ gửi (test của ticket 02). Ranh giới 3: không tác động agent. Ranh
+      giới 4: `config.on`, người được giao, `detail` của cảnh báo là chữ React, không `dangerouslySetInnerHTML`; `pointer`
+      đọc phòng thủ; giá trị trong bộ nhớ qua `JSON.parse` trong `try`, lọc còn chuỗi. Ranh giới 5: không ghi mới; thu gọn
+      không gửi gì nên không thêm dòng audit `draft_saved`. Ranh giới 6: mục bộ nhớ gỡ khi không còn khung thu gọn; bộ nhớ
+      hỏng hay chặn thì mọi khung mở (hiện nhiều hơn, an toàn); ba trường mới của route là hằng của sổ nền tảng.
+- 2026-11-05 (agent): MEDIUM để lại: (a) mũi tên "Thoát vòng lặp" đi thẳng xuống rồi dọc đáy khung tới lối ra, có thể cắt
+  một thẻ khi Bước thoát nằm ở làn giữa và thân còn Bước sau khối; ảnh F9 ở lượt cuối hàng đợi; (b) nhãn "Đã đủ N lần" lấy
+  nguyên văn từ danh mục, N không thay bằng `max_iterations`; (c) "N lỗi" chỉ có sau lần lưu đầu, lúc mở trang chưa có;
+  (d) jsdom không vẽ cạnh, nên nhãn "Lặp lại" và đầu mũi tên chỉ được test ở hình (`workflow-grammar.test.ts`) và
+  `arrowHead`, mắt thường ở Playwright; (e) thẻ 256 × 120 có thêm dòng 12 px (người duyệt, "Chờ Quy trình con xong") với
+  khoảng 2 px: kiểm ở ảnh; (f) workflow-nodes/07 phải liệt kê `body` trước `max_reached` của `logic.loop@1` (quyết định thân
+  ở trên); (g) mỗi Quy trình người xem thu gọn để lại một khóa trong `localStorage`, không dọn theo thời gian. MEDIUM (c) của
+  ticket 02 (bàn phím bỏ qua khung thu gọn) xong ở đây. Còn cho lượt cuối hàng đợi: `scripts/mutate.py` cho
+  `mutations/04.yaml`; chạy `e2e/workflow-builder.spec.ts` "builds F5's lanes and frames with the keyboard only" trên stack
+  thật; ảnh Playwright sáng, tối, desktop và dưới 992 px của F2, F3, F4, F5, F9, F10 (khung, thanh, nhãn "Lặp lại", mũi tên
+  thoát, làn lỗi, thẻ người duyệt, thẻ Quy trình con, khung thu gọn có "N lỗi"); P50/P95/P99 của trang builder (tải F3,
+  F7, thu gọn và mở một khung, Ctrl+K tới Bước trong khung thu gọn) và của `GET /studio/node-types`; `/code-review`;
+  `reviewing-deployment-security` cho kiểu trả lời đổi của `node-types`.

@@ -108,6 +108,34 @@ async def test_a_caller_with_the_edit_key_reads_the_catalogue() -> None:
     assert _type(body, "ai.llm@1")["output"] == {"kind": "config", "key": "output_schema"}
 
 
+async def test_each_type_carries_the_shape_the_lowering_reads() -> None:
+    """The builder draws a step by `block`, `ends_run` and `exits_loop`
+    (workflow-builder-ui ticket 04), the registry's own values, never a type
+    name: a type that ends the run or leaves its loop says so here."""
+    nodes = dict(build_node_registry())
+    nodes["x.stop@1"] = dataclasses.replace(
+        nodes["time.wait@1"], type="x.stop@1", ends_run=True, exits_loop=False
+    )
+    nodes["x.break@1"] = dataclasses.replace(
+        nodes["time.wait@1"], type="x.break@1", ends_run=False, exits_loop=True
+    )
+    answer = await get(app_with(context(WORKFLOWS_EDIT_SCOPE), nodes=nodes))
+
+    assert answer.status_code == 200
+    body = answer.json()
+    for name, spec in nodes.items():
+        entry = _type(body, name)
+        assert (entry["block"], entry["ends_run"], entry["exits_loop"]) == (
+            spec.block,
+            spec.ends_run,
+            spec.exits_loop,
+        ), name
+    assert _type(body, "logic.switch@1")["block"] == "choice"
+    assert _type(body, "human.approval@1")["block"] == "choice"
+    assert _type(body, "x.stop@1")["ends_run"] is True
+    assert _type(body, "x.break@1")["exits_loop"] is True
+
+
 async def test_two_tenants_read_one_catalogue_at_the_platform_layer() -> None:
     """What a deployment can do does not depend on who asks (`CLAUDE.md`,
     Per-tenant artifacts): another tenant's caller reads the same bytes."""

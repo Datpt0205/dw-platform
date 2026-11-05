@@ -57,7 +57,7 @@ function randomSteps(
   for (let i = 0; i < count && budget.n > 0; i++) {
     budget.n -= 1;
     const id = `s${(serial += 1)}`;
-    const pick = depth >= 3 ? 0 : Math.floor(random() * 6);
+    const pick = depth >= 3 ? 0 : Math.floor(random() * 9);
     const nested = () => randomSteps(random, depth + 1, budget);
     const step: Record<string, unknown> = {
       id,
@@ -82,6 +82,16 @@ function randomSteps(
     } else if (pick === 4) {
       step.on_error = "route";
       step.error_lane = nested();
+    } else if (pick === 5) {
+      step.type = "logic.parallel@1";
+      const branches: Record<string, unknown> = {};
+      const n = 2 + Math.floor(random() * 2);
+      for (let c = 0; c < n; c++) branches[`b${c}`] = nested();
+      step.config = { branches };
+    } else if (pick === 6) {
+      step.type = "flow.stop@1";
+    } else if (pick === 7) {
+      step.type = "logic.break@1";
     }
     out.push(step);
   }
@@ -113,6 +123,9 @@ function noOverlap(shapes: CanvasShapes): string[] {
     ...shapes.cards.map((c) => ({ ...c, what: `card ${c.id}` })),
     ...shapes.laneHeads.map((h) => ({ ...h, what: `head ${h.id}` })),
     ...shapes.slots.map((s) => ({ ...s, what: `slot ${s.id}` })),
+    ...shapes.joins
+      .filter((j) => j.kind === "bar")
+      .map((j) => ({ ...j, what: `bar ${j.id}` })),
   ];
   const found: string[] = [];
   for (let i = 0; i < boxes.length; i++) {
@@ -138,7 +151,11 @@ function orderProblems(t: WorkflowTree, shapes: CanvasShapes): string[] {
   };
   lane(t.steps);
   walk(t, (node) => {
-    const block = node.lanes.filter((l) => l.kind !== "error");
+    // A loop's body has no head (its frame holds it): order counts the lanes
+    // that do.
+    const block = node.lanes.filter(
+      (l) => l.kind !== "error" && head.has(`head:${node.id}:${l.port}`),
+    );
     for (let i = 1; i < block.length; i++) {
       const a = head.get(`head:${node.id}:${block[i - 1]!.port}`)!;
       const b = head.get(`head:${node.id}:${block[i]!.port}`)!;
@@ -153,7 +170,9 @@ function orderProblems(t: WorkflowTree, shapes: CanvasShapes): string[] {
 }
 
 /** The ids an insert at `slot` may move: what follows it in its lane, and
- * what follows each holder in the lanes around it, with their subtrees. */
+ * what follows each holder in the lanes around it, with their subtrees. A
+ * loop's other lanes ("Đã đủ N lần") follow its body: they hang under its
+ * frame, where the flow goes once the body is done. */
 function mayMove(t: WorkflowTree, slot: Slot): Set<string> {
   const allowed = new Set<string>();
   const take = (steps: StepNode[], from: number) => {
@@ -162,11 +181,15 @@ function mayMove(t: WorkflowTree, slot: Slot): Set<string> {
     }
   };
   take(laneAt(t, slot.lane)!.steps, slot.index);
-  let holder: string | null = slot.lane.parent;
-  while (holder !== null) {
-    const at = locate(t, holder)!;
+  let lane = slot.lane;
+  while (lane.parent !== null) {
+    const at = locate(t, lane.parent)!;
+    const inner = at.node.lanes.filter((l) => l.kind !== "error");
+    if (at.node.shape.block === "loop" && inner[0]?.port === lane.port) {
+      for (const hung of inner.slice(1)) take(hung.steps, 0);
+    }
     take(laneAt(t, at.lane)!.steps, at.index + 1);
-    holder = at.lane.parent;
+    lane = at.lane;
   }
   return allowed;
 }
@@ -333,6 +356,57 @@ describe("inserting on 200 random trees (R1.6, BU13)", () => {
       }
       expect(noOverlap(after)).toEqual([]);
       expect(orderProblems(out.tree, after)).toEqual([]);
+    });
+  });
+});
+
+describe("folded frames on 200 random trees (R1.7)", () => {
+  it("are cards: nothing overlaps, nothing inside is drawn, the same each time", () => {
+    TREES.forEach((t, n) => {
+      const frames = new Set<string>();
+      walk(t, (node) => {
+        if (node.shape.block === "parallel" || node.shape.block === "loop") {
+          frames.add(node.id);
+        }
+      });
+      const random = seeded(3000 + n);
+      const folded = new Set([...frames].filter(() => random() < 0.5));
+      const shapes = layoutWorkflow(t, METRICS, folded);
+      expect(layoutWorkflow(t, METRICS, folded)).toEqual(shapes);
+      expect(noOverlap(shapes), `tree ${n}`).toEqual([]);
+      const drawn = new Set(shapes.cards.map((c) => c.id));
+      walk(t, (node) => {
+        // A frame folded inside a folded frame is not drawn at all.
+        if (!folded.has(node.id) || !drawn.has(node.id)) return;
+        expect(shapes.cards.find((c) => c.id === node.id)!.folded).toBe(true);
+        for (const lane of node.lanes.filter((l) => l.kind !== "error")) {
+          for (const step of lane.steps) {
+            expect(drawn.has(step.id), `tree ${n}, ${step.id}`).toBe(false);
+          }
+        }
+      });
+    });
+  });
+
+  it("folding a frame moves nothing before it", () => {
+    TREES.forEach((t, n) => {
+      const open = new Map(lay(t).cards.map((c) => [c.id, c]));
+      walk(t, (node) => {
+        if (node.shape.block !== "parallel" && node.shape.block !== "loop")
+          return;
+        const shapes = layoutWorkflow(t, METRICS, new Set([node.id]));
+        const at = open.get(node.id)!;
+        // The frame's own card rises by the frame's padding, with its
+        // Khi lỗi lane: what it holds is no longer around it.
+        const own = new Set<string>();
+        walk({ rest: {}, steps: [node] }, (n) => own.add(n.id));
+        for (const card of shapes.cards) {
+          const before = open.get(card.id)!;
+          if (!own.has(card.id) && before.y <= at.y) {
+            expect(card.y, `tree ${n}, ${card.id}`).toBe(before.y);
+          }
+        }
+      });
     });
   });
 });

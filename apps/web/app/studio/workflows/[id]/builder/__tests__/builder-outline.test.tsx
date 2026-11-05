@@ -88,6 +88,42 @@ describe("the outline is the document's tree (R2.6, BU11)", () => {
     }
   });
 
+  it("counts F4's Khi lỗi lane as the last lane of each step, in aria-setsize (ticket 04)", async () => {
+    await open("f4");
+    const tree = toTree(server.document, catalogueOf(NODE_TYPES));
+    const want = expected(tree.steps);
+    for (const [key, values] of want) {
+      const item = treeItem(key);
+      expect(item, key).not.toBeNull();
+      expect(
+        ["aria-level", "aria-posinset", "aria-setsize"].map((a) =>
+          Number(item!.getAttribute(a)),
+        ),
+        key,
+      ).toEqual(values);
+    }
+    const errorLane = treeItem("lane:duyet_uu_dai:error_lane")!;
+    expect(
+      ["aria-level", "aria-posinset", "aria-setsize"].map((a) =>
+        errorLane.getAttribute(a),
+      ),
+    ).toEqual(["2", "3", "3"]);
+    expect(errorLane.textContent).toContain("Khi lỗi");
+    expect(
+      treeItem("lane:chuan_hoa:error_lane")!.getAttribute("aria-setsize"),
+    ).toBe("1");
+  });
+
+  it("names a lane node with its Tag's words: F2's second case reads hai_phong, 2 of 8", async () => {
+    await open("f2");
+    const lane = treeItem("lane:theo_vung:cases.hai_phong")!;
+    expect(lane.textContent).toContain("hai_phong");
+    expect(
+      ["aria-posinset", "aria-setsize"].map((a) => lane.getAttribute(a)),
+    ).toEqual(["2", "8"]);
+    expect(treeItem("lane:theo_vung:default")!.textContent).toContain("Khác");
+  });
+
   it("a step added through a lane's Thêm Bước appears at its level and place", async () => {
     await open("f1");
     const menuOf = async (key: string, label: string) => {
