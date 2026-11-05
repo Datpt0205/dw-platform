@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07)
+Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08)
 
 Quản trị viên công ty cần tự dựng vai trò cho các workspace của mình (vai Marketing và vai Sales của lát Marketing, D4) với
 quyền trên đối tượng do công ty định nghĩa (`obj.lead.read`, D3), điều mà danh mục vai toàn cục chỉ migration ghi không
@@ -454,6 +454,11 @@ Không còn câu hỏi mở.
   luật) ở ticket 08, chờ ticket 07 vì cùng mốc đo. Cả hai `Yêu cầu: không (...)`: không đổi câu trả lời nào của spec, nên
   `Mục tiêu` không đổi. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: thêm một yêu cầu chi phí (R10)
   qua `writing-plan-specs` và hai ticket dẫn mã đó.
+- 5/11/2026 (agent, theo ủy quyền 31/10/2026): từ gate ticket 08: "một lần mỗi lần xuống" của R3.12 và RB40 đọc theo
+  trạng thái đã commit. Một giao dịch đưa số người giữ xuống dưới hai rồi lên lại trước commit (thay người quản trị)
+  không cảnh báo, vì không giao dịch nào khác từng thấy lần xuống đó; hôm nay trigger theo câu lệnh ghi một sự kiện cho
+  nó. Ticket 08 kiểm lúc commit và đây là câu trả lời duy nhất nó đổi; mọi lần từ chối giữ nguyên (ADR-0104 (Accepted)
+  mục 6, 9). Sửa: ticket 08. Nếu sai thì: ticket 08 giữ trigger theo câu lệnh và chỉ làm `check_owner_coverage` rẻ hơn.
 
 ## Danh sách ticket
 
