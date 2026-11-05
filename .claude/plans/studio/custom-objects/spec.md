@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 11)
+Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 10, 11)
 
 Công ty tự định nghĩa đối tượng và trường của mình (Lead và Campaign của Marketing trước tiên, D4) mà không
 cần nhà vận hành hay migration: định nghĩa là dữ liệu trên các bảng cố định do migration tạo, và mọi đường
@@ -846,6 +846,9 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
 - 5/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 11. Ticket 11 cắt từ discovery/10 (b), một phép kiểm
   trong nhánh không đổi gì của `_apply` cho cả upsert (R7.4) và `PATCH` (R5.8); theo `## Ủy quyền` của studio.md (Đạt,
   31/10/2026). Nếu sai thì: `PATCH` không đổi gì tách sang một ticket riêng.
+- 5/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 10. Ticket 10 cắt từ discovery/10 (a): bảng 21 mã của
+  QĐ 798/QĐ-BTTTT và một chủ cho luật số điện thoại ở `dw_kernel.phone`, oracle của marketing-pilot giữ bản riêng dưới
+  một test bốn bên; theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hai ticket, bảng trước, một chủ sau.
 
 ## Danh sách ticket
 
@@ -860,4 +863,5 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
 | 07  | [Áp kết luận đo D12 vào DDL của studio.records](issues/07-ap-so-do-d12-vao-ddl-ban-ghi.md)                                             |
 | 08  | [Đo nền lưu trữ bản ghi ở quy mô D12 trên máy tham chiếu](issues/08-do-nen-luu-tru-o-quy-mo-d12.md)                                    |
 | 09  | [Đo đường thật của bản ghi ở quy mô D12](issues/09-do-duong-that-ban-ghi-o-quy-mo-d12.md)                                              |
+| 10  | [Đầu số di động trước đợt đổi 2018 và một chủ cho luật số điện thoại](issues/10-dau-so-cu-va-mot-luat-so-dien-thoai.md)                |
 | 11  | [Tạo hoặc cập nhật không đổi gì trên bản ghi không sửa được trả 409](issues/11-upsert-khong-doi-tren-ban-ghi-khong-sua-duoc.md)        |
