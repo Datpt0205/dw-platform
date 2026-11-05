@@ -71,6 +71,7 @@ from dw_studio.records.domain.errors import (
     DuplicateThrottledError,
     DuplicateValueError,
     FieldNotEditableError,
+    RecordInvalidError,
 )
 from dw_studio.records.domain.locks import object_lock_key
 from dw_studio.testing.objects import object_document, object_field, plant_manager
@@ -785,6 +786,93 @@ async def test_r7_4_co16_a_match_the_caller_cannot_change_is_a_plain_duplicate(
     (audit,) = (await audits(world, world.lead, "studio.record.duplicate_refused"))[-1:]
     assert audit.actor_id == reader_creator.id
     assert audit.details == {"object_id": str(world.lead), "field": "phone"}
+
+
+async def _refused_upsert(
+    world: World, prober: Person, body: dict[str, Any], made: uuid.UUID, number: str
+) -> None:
+    """One upsert onto ``made``, refused as a plain duplicate: the field's
+    pointer and nothing else, no record id or number in what the caller gets,
+    one audit of keys only, and ``made`` as its owner left it."""
+    before = await records_of(world)
+    with pytest.raises(DuplicateValueError) as refused:
+        await world.service.upsert(world.door(prober), LEAD, body)
+    assert [(p.pointer, p.code) for p in refused.value.problems] == [
+        ("/fields/phone", "duplicate_value")
+    ]
+    said = f"{refused.value} {refused.value.details} {refused.value.problems}"
+    assert str(made) not in said and number[1:] not in said
+    assert await records_of(world) == before
+    assert await events(world, made) == ["studio.record.created"]
+    (audit,) = (await audits(world, world.lead, "studio.record.duplicate_refused"))[-1:]
+    assert audit.actor_id == prober.id
+    assert audit.details == {"object_id": str(world.lead), "field": "phone"}
+
+
+async def test_r7_4_co16_an_upsert_onto_a_record_the_caller_cannot_read_reveals_nothing(
+    world: World,
+) -> None:
+    """Discovery 10 (b), FOG-42: the upsert's SELECT, `ON CONFLICT DO NOTHING`
+    and conditional UPDATE under the full record policies. The prober holds
+    every action on the object at workspace depth, in another workspace than
+    the record's, so only the read reach keeps the row from it. Sent with the
+    record's own values the update branch would write nothing and answer with
+    the record, so those bodies are the ones only the SELECT policy refuses."""
+    owner = await world.person(workspace=world.tenant.workspaces[1])
+    number = phone()
+    made = await world.service.create(
+        world.door(owner), LEAD, {"name": "Gốc", "fields": {"phone": number, "note": "gốc"}}
+    )
+    prober = await world.person()
+    with pytest.raises(NotFoundError):
+        await world.service.get(world.door(prober), LEAD, made.record.id)
+
+    for body in (
+        {"match_field": "phone", "name": "Đè", "fields": {"phone": number, "note": "đè"}},
+        {"match_field": "phone", "name": "Gốc", "fields": {"phone": number, "note": "gốc"}},
+        # Another writing of the same number reaches the same row (R6.2).
+        {"match_field": "phone", "name": "Gốc", "fields": {"phone": "+84" + number[1:]}},
+    ):
+        await _refused_upsert(world, prober, body, made.record.id, number)
+    got = await world.service.get(world.door(owner), LEAD, made.record.id)
+    assert (got.name, got.version, got.fields["note"]) == ("Gốc", 1, "gốc")
+
+    # Without a name the upsert is a create that lacks one: the same 422 as
+    # for a number nobody holds, so the answer cannot tell the two apart.
+    answers = []
+    for held in (number, phone()):
+        with pytest.raises(RecordInvalidError) as invalid:
+            await world.service.upsert(
+                world.door(prober), LEAD, {"match_field": "phone", "fields": {"phone": held}}
+            )
+        answers.append([(p.pointer, p.code) for p in invalid.value.problems])
+    assert answers == [[("/name", "required")]] * 2
+
+
+async def test_r7_4_co16_a_readable_match_out_of_update_reach_is_a_plain_duplicate(
+    world: World,
+) -> None:
+    """The UPDATE policy's own half (failure-modes #3, one test per layer):
+    the prober reads the record across the company but changes only its own
+    workspace's, so its upsert reaches the update branch and the policy's
+    USING refuses the row."""
+    owner = await world.person(workspace=world.tenant.workspaces[1])
+    number = phone()
+    made = await world.service.create(
+        world.door(owner), LEAD, {"name": "Gốc", "fields": {"phone": number, "note": "gốc"}}
+    )
+    prober = await world.person({"read": "tenant", "create": "workspace", "update": "workspace"})
+    seen = await world.service.get(world.door(prober), LEAD, made.record.id)
+    assert not seen.permissions.update
+    await _refused_upsert(
+        world,
+        prober,
+        {"match_field": "phone", "name": "Đè", "fields": {"phone": number, "note": "đè"}},
+        made.record.id,
+        number,
+    )
+    got = await world.service.get(world.door(owner), LEAD, made.record.id)
+    assert (got.name, got.version, got.fields["note"]) == ("Gốc", 1, "gốc")
 
 
 # ---- R7.6: the duplicate-probe limit, by actor kind (gate (d)) -------------------

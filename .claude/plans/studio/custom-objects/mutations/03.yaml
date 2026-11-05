@@ -200,3 +200,17 @@ mutations:
     new: "        pass"
     tests:
       - packages/python/dw_studio/tests/integration/test_record_service.py::test_a_write_waits_for_the_definition_s_exclusive_lock
+  # Discovery 10 (b), FOG-42: the upsert onto a row the record policies keep
+  # from the caller, one mutation per layer (failure-modes #3).
+  - name: R7.4 CO16 the upsert's match reads past the read reach
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: '        ("record_access_records_select", f"USING ({_guarded(actor(''select''), _reach(''read''))})"),'
+    new: '        ("record_access_records_select", f"USING ({_guarded(actor(''select''), ''true'')})"),'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_service.py::test_r7_4_co16_an_upsert_onto_a_record_the_caller_cannot_read_reveals_nothing
+  - name: R7.4 CO16 the upsert's update branch changes past the update reach
+    file: db/migrations/versions/996c234cfde3_actor_boundaries.py
+    old: '            f"USING ({_guarded(actor(''update''), _reach(''update''))}) WITH CHECK ({update_check})",'
+    new: '            f"USING ({_guarded(actor(''update''), ''true'')}) WITH CHECK ({update_check})",'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_service.py::test_r7_4_co16_a_readable_match_out_of_update_reach_is_a_plain_duplicate
