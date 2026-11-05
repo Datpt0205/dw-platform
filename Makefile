@@ -20,7 +20,7 @@ COMPOSE := docker compose --env-file .env -f infra/compose/docker-compose.yml
         db-migrate migrate lint format typecheck \
         test-unit coverage test-integration test-architecture test-contract test-hooks test-plans \
         test-e2e test-web test-all eval-smoke test-eval-smoke eval-leadcare eval-wf-ai \
-        demo-dw demo-dw-again demo-dw-down bench-record-access \
+        demo-dw demo-dw-again demo-dw-down bench-record-access bench-rbac \
         generate-contracts new-context release-manifest release-manifest-check semconv-snapshot semconv-snapshot-check ci
 
 help: ## List available targets
@@ -151,6 +151,10 @@ SCALE ?= smoke
 MODULUS ?= 8
 bench-record-access: ## record-access/01's policy variants on the records harness (SCALE=smoke|d12 MODULUS=8|4; own container, not CI)
 	uv run python scripts/bench_records_storage.py --scale $(SCALE) --moduli $(MODULUS) --policy-variants all
+
+bench-rbac: ## FOG-38's tenant-role costs at D12 (own DB `dw_bench_rbac_fog38`, dropped after; not CI)
+	DW_TEST_DB_SUFFIX=$${DW_TEST_DB_SUFFIX:-_fog38} uv run python db/bench/rbac/bench_rbac.py \
+		setup q1 q1gc q2 q3 q4 drop $(if $(OUT),--out $(OUT),)
 
 eval-smoke: ## Evaluation smoke suite (deterministic safety-gate graders)
 	uv run python scripts/run_evals.py --smoke
