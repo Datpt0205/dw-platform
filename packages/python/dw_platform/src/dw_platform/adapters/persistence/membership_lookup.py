@@ -34,8 +34,14 @@ _RECORDS_ALL_READ = "crm.records.all.read"
 _ACCESS_VERSION = text(
     "SELECT version FROM platform.tenant_access_versions WHERE tenant_id = CAST(:t AS uuid)"
 )
+# `platform.scopes_in` is called in FROM, never in a SELECT list: in FROM the
+# SQL function is inlined into the plan, while a set-returning call in a select
+# list runs opaque, as a function of its own. At D12 that took the lookup below
+# from 10.4 to 3.0 ms p50 for a plain member and 25.2 to 19.3 ms for a person
+# with 30 roles (tenant-rbac/07, `db/bench/rbac/RESULTS.md`).
 _SCOPES_IN = text(
-    "SELECT platform.scopes_in(CAST(:t AS uuid), CAST(:u AS uuid), CAST(:w AS uuid)) AS key"
+    "SELECT s.key"
+    " FROM platform.scopes_in(CAST(:t AS uuid), CAST(:u AS uuid), CAST(:w AS uuid)) AS s(key)"
 )
 # What one person holds in the tenant, the roles assigned to this membership,
 # and their projection for this workspace, in one round trip. Every answer is
@@ -44,8 +50,10 @@ _SCOPES_IN = text(
 _HELD = text(
     """
     SELECT
-        ARRAY(SELECT platform.scopes_in(CAST(:t AS uuid), CAST(:u AS uuid), CAST(:w AS uuid)))
-            AS scopes,
+        ARRAY(
+            SELECT s.key
+            FROM platform.scopes_in(CAST(:t AS uuid), CAST(:u AS uuid), CAST(:w AS uuid)) AS s(key)
+        ) AS scopes,
         ARRAY(
             SELECT DISTINCT r.key
             FROM platform.role_assignments a

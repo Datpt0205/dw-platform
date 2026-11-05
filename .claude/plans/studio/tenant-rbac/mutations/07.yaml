@@ -1,0 +1,52 @@
+# Mutation check of tenant-rbac ticket 07: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control of the ticket
+# (K1-K3), and for K3 one per way the freeze could move or go (failure-modes #3).
+mutations:
+  - name: K1 the lookup reads every effective key without the workspace projection
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/membership_lookup.py
+    old:
+      "            FROM platform.scopes_in(CAST(:t AS uuid), CAST(:u AS uuid), CAST(:w AS uuid))\
+      \ AS s(key)\n        ) AS scopes,"
+    new:
+      "            FROM (SELECT DISTINCT g.permission_key FROM platform.effective_grants(CAST(:t\
+      \ AS uuid), CAST(:u AS uuid)) g) AS s(key)\n        ) AS scopes,"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_access_lookup_scopes_from.py::test_every_membership_holds_exactly_what_scopes_in_answers
+      - packages/python/dw_platform/tests/integration/test_access_lookup_scopes_from.py::test_the_heavy_person_holds_each_key_only_where_its_depth_reaches
+  - name: K2 the projection is asked for another tenant of the same person
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/membership_lookup.py
+    old:
+      "            FROM platform.scopes_in(CAST(:t AS uuid), CAST(:u AS uuid), CAST(:w AS uuid))\
+      \ AS s(key)\n        ) AS scopes,"
+    new:
+      "            FROM platform.scopes_in((SELECT tm2.tenant_id FROM platform.tenant_members\
+      \ tm2 WHERE tm2.user_id = CAST(:u AS uuid) AND tm2.tenant_id <> CAST(:t AS uuid) LIMIT\
+      \ 1), CAST(:u AS uuid), CAST(:w AS uuid)) AS s(key)\n        ) AS scopes,"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_access_lookup_scopes_from.py::test_nothing_held_in_another_tenant_reaches_the_lookup
+  - name: K3 the startup heap is never frozen
+    file: apps/api/src/dw_api/main.py
+    old: "        gc.collect()\n        gc.freeze()\n"
+    new: "        gc.collect()\n"
+    tests:
+      - apps/api/tests/unit/test_gc_freeze_at_startup.py::test_the_startup_heap_is_frozen_once_after_the_app_is_built
+      - apps/api/tests/unit/test_gc_freeze_at_startup.py::test_the_heap_is_frozen_while_the_app_runs_and_released_after
+  - name: K3 startup garbage is frozen with the heap
+    file: apps/api/src/dw_api/main.py
+    old: "        gc.collect()\n        gc.freeze()\n"
+    new: "        gc.freeze()\n        gc.collect()\n"
+    tests:
+      - apps/api/tests/unit/test_gc_freeze_at_startup.py::test_the_startup_heap_is_frozen_once_after_the_app_is_built
+  - name: K3 the freeze moves into create_app, before routes and middleware exist
+    file: apps/api/src/dw_api/main.py
+    old: "    container = container or build_container(studio_kinds=studio_kinds)\n"
+    new: "    container = container or build_container(studio_kinds=studio_kinds)\n    gc.freeze()\n"
+    tests:
+      - apps/api/tests/unit/test_gc_freeze_at_startup.py::test_the_startup_heap_is_frozen_once_after_the_app_is_built
+  - name: K3 a stopped app stays frozen
+    file: apps/api/src/dw_api/main.py
+    old: "            gc.unfreeze()\n"
+    new: ""
+    tests:
+      - apps/api/tests/unit/test_gc_freeze_at_startup.py::test_the_startup_heap_is_frozen_once_after_the_app_is_built
+      - apps/api/tests/unit/test_gc_freeze_at_startup.py::test_the_heap_is_frozen_while_the_app_runs_and_released_after

@@ -12,6 +12,7 @@ package.
 
 from __future__ import annotations
 
+import gc
 import logging
 from collections.abc import AsyncIterator, Sequence
 from contextlib import asynccontextmanager
@@ -164,9 +165,19 @@ def create_app(
         # a composition root that is synchronous cannot open one.
         if container.run_events is not None:
             await container.run_events.start()
+        # The heap built so far (imports, the container, the app) lives as long
+        # as the process; frozen out of the collector, a full collection stops
+        # walking it on every request's garbage (~240 ms each at D12, the whole
+        # P95 tail of `/me`; tenant-rbac/07). Startup garbage is collected first
+        # so it is not frozen with it.
+        gc.collect()
+        gc.freeze()
         try:
             yield
         finally:
+            # One process may build several apps (tests, the bench): a stopped
+            # app's cycles must become collectable again.
+            gc.unfreeze()
             await container.shutdown()
 
     # The schema and its Swagger/ReDoc UIs describe every route to anyone who
