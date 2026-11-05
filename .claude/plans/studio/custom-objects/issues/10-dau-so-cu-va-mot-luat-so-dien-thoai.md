@@ -1,6 +1,6 @@
 # 10 — Đầu số di động trước đợt đổi 2018 và một chủ cho luật số điện thoại
 
-Status: ready-for-agent
+Status: resolved
 Area: studio
 Yêu cầu: R6.2, R7.3, CO17
 
@@ -42,16 +42,16 @@ một chủ.
 
 ## Tiêu chí chấp nhận
 
-- [ ] R6.2: `0168 456 7890`, `+84 168 456 7890`, `841684567890` và `01684567890` lưu `+84384567890`; mỗi mã trong 21 mã
+- [x] R6.2: `0168 456 7890`, `+84 168 456 7890`, `841684567890` và `01684567890` lưu `+84384567890`; mỗi mã trong 21 mã
       có một vector ở mỗi dạng; gỡ một dòng khỏi bảng → test của mã đó đỏ; số mã mới (`038 456 7890`) không đổi.
-- [ ] R7.3 (CO17): hai lần Tạo hoặc cập nhật song song với `0168 456 7890` và `038 456 7890` → một dòng; gỡ bảng → hai
+- [x] R7.3 (CO17): hai lần Tạo hoặc cập nhật song song với `0168 456 7890` và `038 456 7890` → một dòng; gỡ bảng → hai
       dòng, test đỏ.
-- [ ] R6.2: `phone_vn`, `coerce_input` và oracle đọc cùng luật: một test chạy cùng bộ vector qua cả bốn và đỏ khi một
+- [x] R6.2: `phone_vn`, `coerce_input` và oracle đọc cùng luật: một test chạy cùng bộ vector qua cả bốn và đỏ khi một
       bên đổi luật mà bên kia không; `84900000101` và `0084 900 000 101` qua `phone_vn` → hợp lệ.
-- [ ] R6.2: `+84 130 123 4567` (mã `1xx` ngoài bảng) và `04 3825 1234` (số cố định trước 2017) → 422 `invalid_type`,
+- [x] R6.2: `+84 130 123 4567` (mã `1xx` ngoài bảng) và `04 3825 1234` (số cố định trước 2017) → 422 `invalid_type`,
       không lưu; `+1 415 555 0100` vẫn lưu `+14155550100`; quyết định về số cố định cũ ghi trong Comments cùng văn bản
       nguồn.
-- [ ] Xong: `uv run python -m pytest -m unit packages/python/dw_studio packages/python/dw_platform packages/python/dw_kernel tests/e2e/marketing_pilot` xanh.
+- [x] Xong: `uv run python -m pytest -m unit packages/python/dw_studio packages/python/dw_platform packages/python/dw_kernel tests/e2e/marketing_pilot` xanh.
 
 ## Nguồn
 
@@ -76,3 +76,38 @@ một chủ.
   `invalid_type`, không đổi bảng mã lỗi. Đã có câu trả lời: giá trị lọc trên trường số điện thoại đi qua cùng bộ ép
   kiểu (ticket 04, Việc cần làm, dòng 31).
 - 2026-11-05 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, lane 2, theo ủy quyền 31/10/2026): số cố định trước đợt đổi mã vùng 2017. Văn bản: Quyết định số
+  2036/QĐ-BTTTT ngày 21/11/2016 của Bộ Thông tin và Truyền thông, "Kế hoạch chuyển đổi mã vùng" (59/63 tỉnh, giai đoạn
+  1 từ 0 giờ 11/2/2017); tìm 5/11/2026 không thấy bản trên trang của Bộ (`mst.gov.vn`, `mic.gov.vn`), chỉ bản của bên
+  thứ ba (`https://luatvietnam.vn/thong-tin/quyet-dinh-2036-qd-btttt-bo-thong-tin-va-truyen-thong-110635-d1.html`,
+  `https://hethongphapluat.com/decision-no-2036-qd-btttt-dated-november-21-2016.html`), nên phụ lục mã vùng không đọc
+  làm nguồn. Quyết định: không đổi, từ chối `invalid_type` số cố định cũ nằm ngoài họ của kế hoạch hiện hành
+  (`04 3825 1234`, `0511 382 1234`; hôm nay lưu `+84438251234`), giữ nguyên số cố định mã `2x` hiện hành. Lý do không
+  đổi kể cả khi có phụ lục: một số cũ của TP.HCM `08 3825 1234` trùng từng chữ số với số di động VinaPhone
+  `083 825 1234` (123 → 83 theo QĐ 798), số cũ Hải Phòng `031 …` rơi vào họ `3` của Viettel, nên không bảng nào tách
+  được; các số đó đọc là số di động hiện hành như hôm nay. Từ chối thì người nhập sửa được, gộp sai thì không
+  (failure-modes #7). Nếu sai thì: một bảng mã vùng cũ, từ bản chính thức của phụ lục, chỉ cho mã nằm ngoài họ.
+- 2026-11-05 (agent, lane 2): resolved. Chủ: `packages/python/dw_kernel/src/dw_kernel/phone.py` (`normalize_phone`,
+  `is_vietnamese_phone`, `PRE_2018_MOBILE_CODES`), thư viện chuẩn; `values.py` bỏ hàm và hai biểu thức của mình,
+  `json_schema.py` bỏ `_PHONE_VN`; oracle thêm bảng (viết theo mạng) và `0084`; `pyproject.toml` thêm `tests/e2e` vào
+  `pythonpath` và `mypy_path`, không phụ thuộc mới. Test: `packages/python/dw_kernel/tests/unit/test_phone.py` (21 mã ×
+  9 dạng, bảng so với danh sách viết tay, bốn dạng của tiêu chí, số đang dùng, số bị từ chối, 217 ca);
+  `packages/python/dw_studio/tests/unit/test_phone_rule.py` (bốn bên trên 845 vector: 104 số của `TEST_RANGE` × 7 dạng
+  của bộ sinh, 21 mã × 5 dạng, 12 ca biên; một test chặn bộ vector chỉ có một đáp án); `test_record_service.py`
+  `test_r7_3_co17_an_old_and_a_new_writing_of_one_number_race_to_one_record` (hai upsert song song `0168…` và `038…` →
+  một dòng `+8438…`). Phá tay, bản gốc trong scratchpad, sha256 so lại: bỏ dòng 168 khỏi bảng của chủ → 20 đỏ; bỏ phép
+  kiểm họ → 13 đỏ; `phone_vn` về biểu thức cũ → 213 đỏ; `coerce_input` tự chuẩn hóa → 532 đỏ; oracle bỏ 168 → 5 đỏ;
+  oracle đổi 199 → 5 đỏ; chủ bỏ phép đổi mã → test đua đỏ (hai dòng). `mutations/10.yaml` sáu mục.
+  Cổng trên bản xuất sạch của `a0c530b5` cộng thay đổi (cây chung có việc dở của lane 1 làm hỏng `kinds.py`): unit
+  toàn repo 4836 qua, 9 bỏ qua, phủ 76,29%; `test_record_service.py` 28/28; mypy Linux 913 tệp sạch; lint-imports 16
+  hợp đồng giữ ("Kernel is pure" giữ: `dw_kernel.phone` chỉ dùng `re` và `types`); verify_invariants,
+  verify_architecture, `release_manifest --check` xanh; ruff và format sạch. `reviewing-feature-security`: (3) `phone_vn`
+  nhận rộng hơn (`84…`, `0084…`, mã cũ) nhưng chỉ là phép kiểm, chưa công cụ nào trong `configs/` khai nó; (4) đầu vào
+  công cụ do mô hình viết vẫn qua cùng phép kiểm, lỗi không nhắc giá trị; (6) số ngoài kế hoạch bị từ chối, không lưu
+  nguyên dạng; (1), (2), (5) không áp dụng: không bảng, không quyền, không audit mới. Nợ lúc đóng hàng:
+  `scripts/mutate.py` cho `mutations/10.yaml`; P50/P95/P99 của tạo, `PATCH` và upsert so với điểm bắt đầu hàng (phép
+  chuẩn hóa thêm một tra bảng, không câu truy vấn); `/code-review`; `checking-plan-consistency` của vùng (marketing-pilot
+  MP10 nay phát lại cùng luật có bảng 21 mã).
+  Sót của lane: `4ad791f8` được đẩy với hai chú thích viết tên văn bản tiếng Việt ngoài dấu backtick, `check_hygiene`
+  báo sau khi lệnh đẩy chạy cùng chuỗi; commit kế tiếp sửa, `--base a0c530b5` về 0. Từ nay kiểm hygiene trước, đẩy
+  trong một lệnh riêng.

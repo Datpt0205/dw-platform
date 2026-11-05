@@ -1,0 +1,45 @@
+# Mutation check of custom-objects ticket 10: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per guard of the ticket: a row
+# of the 2018 table, the current plan's families, and each reader of the one
+# rule (RecordService's coercion, `phone_vn`, the oracle's copy), each of which
+# the four-way test of `test_phone_rule.py` holds to the owner (failure-modes
+# #2). The R7.3 race through the real store is the integration half.
+mutations:
+  - name: R6.2 a row of the 2018 table is missing
+    file: packages/python/dw_kernel/src/dw_kernel/phone.py
+    old: "        \"168\": \"38\",\n"
+    new: ""
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_phone.py
+      - packages/python/dw_studio/tests/unit/test_phone_rule.py
+  - name: R6.2 a Vietnamese number outside the current plan is kept
+    file: packages/python/dw_kernel/src/dw_kernel/phone.py
+    old: "    if _NATIONAL.fullmatch(national) is None:\n        return None\n"
+    new: ""
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_phone.py
+      - packages/python/dw_studio/tests/unit/test_phone_rule.py
+  - name: R6.2 phone_vn keeps a rule of its own
+    file: packages/python/dw_platform/src/dw_platform/application/json_schema.py
+    old: "    return not isinstance(value, str) or is_vietnamese_phone(value)"
+    new: '    return not isinstance(value, str) or __import__("re").fullmatch(r"(?:\+84|0)(?:[35789]\d{8}|2\d{9})", __import__("re").sub(r"[\s.\-()]", "", value)) is not None'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_phone_rule.py
+  - name: R6.2 RecordService's coercion keeps a rule of its own
+    file: packages/python/dw_studio/src/dw_studio/records/domain/values.py
+    old: "        phone = normalize_phone(text)"
+    new: '        phone = "+" + text.replace(" ", "").lstrip("+")'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_phone_rule.py
+  - name: R7.3 the oracle's copy of the table drifts
+    file: tests/e2e/marketing_pilot/measure.py
+    old: '    "199": "59",'
+    new: '    "199": "58",'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_phone_rule.py
+  - name: R7.3 CO17 the old and the new number race to two records
+    file: packages/python/dw_kernel/src/dw_kernel/phone.py
+    old: "    if renumbered is not None:\n        national = renumbered + national[3:]\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_service.py::test_r7_3_co17_an_old_and_a_new_writing_of_one_number_race_to_one_record

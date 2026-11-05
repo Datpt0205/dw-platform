@@ -162,6 +162,7 @@ mypy_path = [
     "apps/docgen/src",
     "apps/worker/src",
     "tests/support",
+    "tests/e2e",
     "packages/python/dw_platform/tests/integration",
     "packages/python/dw_agent_runtime/tests/integration",
     "packages/python/dw_agent_runtime/tests/unit",
@@ -221,7 +222,14 @@ testpaths = [
     "tests/e2e",
     "scripts/bench_records_storage",
 ]
-pythonpath = [".", "tests/support", "packages/python/dw_agent_runtime/tests/integration"]
+# `tests/e2e`: the marketing pilot's oracle, which `dw_studio`'s
+# test_phone_rule.py holds to the platform's phone rule (custom-objects 10).
+pythonpath = [
+    ".",
+    "tests/support",
+    "tests/e2e",
+    "packages/python/dw_agent_runtime/tests/integration",
+]
 markers = [
     "unit: fast tests without external services",
     "integration: tests requiring Postgres/Qdrant/Redis/MinIO",

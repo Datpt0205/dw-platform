@@ -740,6 +740,39 @@ async def test_r7_3_co17_two_concurrent_upserts_of_one_number_make_one_record(
     assert other.created and other.record.id != results[0].record.id
 
 
+async def test_r7_3_co17_an_old_and_a_new_writing_of_one_number_race_to_one_record(
+    world: World,
+) -> None:
+    """Custom-objects ticket 10: "0168 456 7890", written before decision
+    `798/QĐ-BTTTT` renumbered Viettel's 168 as 38, is the person's "038 456
+    7890"; two concurrent upserts of the two leave one record, kept under the
+    new number."""
+    person = await world.person()
+    door = world.door(person)
+    tail = str(uuid.uuid4().int)[:7]
+    old, new = f"0168 {tail[:3]} {tail[3:]}", f"038 {tail[:3]} {tail[3:]}"
+    results = await asyncio.gather(
+        world.service.upsert(
+            door, LEAD, {"match_field": "phone", "name": "Cũ", "fields": {"phone": old}}
+        ),
+        world.service.upsert(
+            door, LEAD, {"match_field": "phone", "name": "Mới", "fields": {"phone": new}}
+        ),
+    )
+    assert results[0].record.id == results[1].record.id
+    assert sorted(r.created for r in results) == [False, True]
+    assert {r.record.fields["phone"] for r in results} == {f"+8438{tail}"}
+    assert (
+        await world.count(
+            "SELECT count(*) FROM studio.records WHERE object_id = :o AND u01 IN (:new, :old)",
+            o=world.lead,
+            new=f"+8438{tail}",
+            old=f"+84168{tail}",
+        )
+        == 1
+    )
+
+
 async def test_r7_2_s_the_update_branch_is_a_merge_patch_and_no_change_writes_nothing(
     world: World,
 ) -> None:
