@@ -3,7 +3,7 @@ run manifest and the version rows it pins (workflow-engine/03 step 2, R4.11,
 R6.14; ADR-0109 decision 7).
 
 Every call is one transaction of `dw_app` under the run's tenant (RLS), so
-another tenant's run is no run. `take` reads the `queued` row `FOR UPDATE`,
+another tenant's run is no run. `take` reads the claimed row `FOR UPDATE`,
 then the root artifact `FOR SHARE` (so a `save_draft` of a draft root waits,
 as at the door), then the manifest through `PinnedResolver.load`, which
 hashes a draft's content again the way it was pinned: a draft changed since
@@ -14,23 +14,30 @@ The plan the run's `RunContext` carries is the tenant's own, read here
 `cancel_past_deadline` ends the run and audits `run.deadline_exceeded` as the
 `studio_runs` lane in one transaction (CLAUDE.md, Agent and tool rules: a lane
 acting on its own audits as itself).
+
+Every call names the claim the `studio_runs` lane made (workflow-engine/04,
+R5.5): a row is read and written only `WHERE lease_owner = :token`, so a
+worker whose claim lapsed and was taken over reads `StudioLeaseLostError` and
+writes nothing. A run leaves `running` with its claim cleared.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 from typing import Any, Final, Literal
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_agent_runtime.adapters.run_store import RunStatus
-from dw_agent_runtime.adapters.runtime_tables import worker_runs
+from dw_agent_runtime.adapters.runtime_tables import STUDIO_RUN, worker_runs
 from dw_agent_runtime.pinned import PinnedResolver
-from dw_agent_runtime.ports import StudioRun, StudioRunBlocked
-from dw_kernel.errors import ConfigError, ConflictError
+from dw_agent_runtime.ports import StudioLeaseLostError, StudioRun, StudioRunBlocked
+from dw_agent_runtime.studio_lane import LANE
+from dw_kernel.errors import ConfigError
 from dw_kernel.ids import TenantId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_kernel.residency import parse_route_class
@@ -41,16 +48,8 @@ from dw_studio.core.adapters.run_intake import tenant_plan
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestStore
 from dw_studio.core.adapters.tables import artifacts
 
-LANE: Final = "studio_runs"
 DEADLINE_EXCEEDED: Final = "run.deadline_exceeded"
 INCOMPATIBLE_RESUME: Final = "incompatible_resume"
-
-
-def _not_queued() -> ConflictError:
-    return ConflictError(
-        "the run is not a queued Studio run of this tenant",
-        details={"reason_code": "run_not_queued"},
-    )
 
 
 @dataclass(frozen=True)
@@ -59,17 +58,21 @@ class SqlStudioRunStore:
     ids: IdGenerator
     clock: UtcClock
 
-    async def take(self, tenant_id: uuid.UUID, run_id: uuid.UUID) -> StudioRun | StudioRunBlocked:
+    async def take(
+        self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str
+    ) -> StudioRun | StudioRunBlocked:
         async with tenant_session(
             self.session_factory, TenantScope(tenant_id=tenant_id)
         ) as session:
             row = (
                 await session.execute(
-                    sa.select(worker_runs).where(worker_runs.c.id == run_id).with_for_update()
+                    sa.select(worker_runs)
+                    .where(_claimed(run_id, lease_token), STUDIO_RUN)
+                    .with_for_update()
                 )
             ).one_or_none()
-            if row is None or row.artifact_kind is None or row.status != RunStatus.QUEUED.value:
-                raise _not_queued()
+            if row is None:
+                raise StudioLeaseLostError(run_id)
             (
                 await session.execute(
                     sa.select(artifacts.c.id)
@@ -84,12 +87,15 @@ class SqlStudioRunStore:
             except ConfigError as exc:
                 if exc.details.get("reason") != "pinned_version_changed":
                     raise
-                await self._set(
-                    session, run_id, RunStatus.BLOCKED, error={"code": INCOMPATIBLE_RESUME}
+                await self._leave(
+                    session,
+                    run_id,
+                    lease_token,
+                    RunStatus.BLOCKED,
+                    error={"code": INCOMPATIBLE_RESUME},
                 )
                 return StudioRunBlocked(run_id, INCOMPATIBLE_RESUME)
             plan = await tenant_plan(session)
-            await self._set(session, run_id, RunStatus.RUNNING)
             root = resolver.root.artifact
             assert root is not None  # `load` refuses a root it cannot read
             return StudioRun(
@@ -115,6 +121,56 @@ class SqlStudioRunStore:
                 trace_id=row.trace_id or str(run_id),
                 # As admitted; NULL is a row admitted before the column.
                 data_route_class=parse_route_class(row.data_route_class or "vn_only"),
+                trigger_kind=row.trigger_kind or "",
+                root_run_id=None if row.root_run_id == row.id else row.root_run_id,
+            )
+
+    async def admitted(
+        self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str, deadline: timedelta
+    ) -> datetime:
+        async with tenant_session(
+            self.session_factory, TenantScope(tenant_id=tenant_id)
+        ) as session:
+            # Set once, at the first take that passed dispatch; a take again
+            # (after a wait, a requeue) keeps it (R5.22).
+            found: datetime | None = await session.scalar(
+                sa.update(worker_runs)
+                .where(_claimed(run_id, lease_token))
+                .values(
+                    deadline_at=sa.func.coalesce(
+                        worker_runs.c.deadline_at, sa.func.now() + sa.literal(deadline)
+                    ),
+                    updated_at=sa.func.now(),
+                )
+                .returning(worker_runs.c.deadline_at)
+            )
+        if found is None:
+            raise StudioLeaseLostError(run_id)
+        return found
+
+    async def hold(
+        self,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        *,
+        lease_token: str,
+        delay: timedelta,
+        until: datetime | None = None,
+    ) -> None:
+        due: Any = sa.literal(until) if until is not None else sa.func.now() + sa.literal(delay)
+        async with tenant_session(
+            self.session_factory, TenantScope(tenant_id=tenant_id)
+        ) as session:
+            await session.execute(
+                sa.update(worker_runs)
+                .where(_claimed(run_id, lease_token))
+                .values(
+                    status=RunStatus.QUEUED.value,
+                    lease_owner=None,
+                    lease_until=None,
+                    available_at=due,
+                    updated_at=sa.func.now(),
+                )
             )
 
     async def finish(
@@ -123,20 +179,36 @@ class SqlStudioRunStore:
         run_id: uuid.UUID,
         status: Literal["completed", "failed", "cancelled"],
         *,
+        lease_token: str,
         error: Mapping[str, Any] | None = None,
         result: Mapping[str, Any] | None = None,
+        outcomes: Sequence[str] = (),
     ) -> None:
         async with tenant_session(
             self.session_factory, TenantScope(tenant_id=tenant_id)
         ) as session:
-            await self._set(session, run_id, RunStatus(status), error=error, result=result)
+            await self._leave(
+                session,
+                run_id,
+                lease_token,
+                RunStatus(status),
+                error=error,
+                result=result,
+                outcomes=outcomes,
+            )
 
-    async def cancel_past_deadline(self, tenant_id: uuid.UUID, run_id: uuid.UUID) -> bool:
+    async def cancel_past_deadline(
+        self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str
+    ) -> bool:
         async with tenant_session(
             self.session_factory, TenantScope(tenant_id=tenant_id)
         ) as session:
-            workspace = await self._set(
-                session, run_id, RunStatus.CANCELLED, error={"code": "deadline_exceeded"}
+            workspace = await self._leave(
+                session,
+                run_id,
+                lease_token,
+                RunStatus.CANCELLED,
+                error={"code": "deadline_exceeded"},
             )
             if workspace is None:
                 return False
@@ -156,32 +228,44 @@ class SqlStudioRunStore:
             )
             return True
 
-    async def _set(
-        self,
+    @staticmethod
+    async def _leave(
         session: AsyncSession,
         run_id: uuid.UUID,
+        lease_token: str,
         status: RunStatus,
         *,
         error: Mapping[str, Any] | None = None,
         result: Mapping[str, Any] | None = None,
+        outcomes: Sequence[str] = (),
     ) -> uuid.UUID | None:
-        """Move the run on from where it stands (`queued` to `running` or
-        `blocked`, `running` to an end); the workspace of the row moved, None
-        when it no longer stood there."""
-        values: dict[str, Any] = {"status": status.value, "updated_at": sa.func.now()}
+        """Move the claimed run out of `running`, its claim cleared; the
+        workspace of the row moved, None when the claim was no longer held or
+        the run had already left `running` (a kill's cancel)."""
+        values: dict[str, Any] = {
+            "status": status.value,
+            "lease_owner": None,
+            "lease_until": None,
+            "outcomes": list(outcomes),
+            "updated_at": sa.func.now(),
+        }
         if error is not None:
             values["error"] = dict(error)
         if result is not None:
             values["result"] = dict(result)
-        source = (
-            RunStatus.QUEUED
-            if status in (RunStatus.RUNNING, RunStatus.BLOCKED)
-            else RunStatus.RUNNING
-        )
         found: uuid.UUID | None = await session.scalar(
             sa.update(worker_runs)
-            .where(worker_runs.c.id == run_id, worker_runs.c.status == source.value)
+            .where(_claimed(run_id, lease_token))
             .values(**values)
             .returning(worker_runs.c.workspace_id)
         )
         return found
+
+
+def _claimed(run_id: uuid.UUID, lease_token: str) -> sa.ColumnElement[bool]:
+    """The run, while it is `running` under this claim (R5.5)."""
+    return sa.and_(
+        worker_runs.c.id == run_id,
+        worker_runs.c.status == RunStatus.RUNNING.value,
+        worker_runs.c.lease_owner == lease_token,
+    )

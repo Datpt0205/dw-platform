@@ -29,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_agent_runtime.tool_specs import ToolSpec
 from dw_kernel.errors import ConflictError, NotFoundError
+from dw_kernel.expressions import ExpressionEngine, ExpressionEnv
 from dw_platform.testing.rbac import (
     PlantedTenant,
     assign,
@@ -121,14 +122,30 @@ class FakeTriggerActivation:
             self.active[artifact] = version
 
 
+class UncheckedExpressions:
+    """An `ExpressionEngine` for a test whose documents name no `outcomes[]`
+    (this module, beside the layers, names no CEL adapter): asked anything,
+    it says so. A test that checks outcomes passes the real engine."""
+
+    def check(self, source: str, env: ExpressionEnv) -> Any:
+        raise NotImplementedError("not exercised: the test's documents name no outcomes")
+
+    async def evaluate(self, checked: Any, activation: Mapping[str, object]) -> Any:
+        raise NotImplementedError("not exercised: the test's documents name no outcomes")
+
+
 def workflow_entry(
-    triggers: FakeTriggerActivation | None = None, boundaries: ActorBoundaryPort | None = None
+    triggers: FakeTriggerActivation | None = None,
+    boundaries: ActorBoundaryPort | None = None,
+    *,
+    expressions: ExpressionEngine | None = None,
 ) -> ArtifactKindEntry:
     return workflow_kind(
         nodes=fixture_node_registry(),
         tools=NoTools(),
         triggers=triggers or FakeTriggerActivation(),
         boundaries=boundaries or RecordingBoundaries(),
+        expressions=expressions or UncheckedExpressions(),
     )
 
 

@@ -54,6 +54,8 @@ from dw_agent_runtime.dispatch import (
     ToolClaimPort,
 )
 from dw_agent_runtime.ports import (
+    BindingReviewPort,
+    HeldRunAlertPort,
     LanePath,
     RunControlPort,
     StepRecorderPort,
@@ -81,6 +83,7 @@ from dw_kernel.errors import (
     IdempotencyConflictError,
     PermissionDeniedError,
 )
+from dw_kernel.expressions import ExpressionEngine
 from dw_kernel.ports import UtcClock
 from dw_kernel.residency import ResidencyRefusedError
 from dw_observability.metrics import DW_NODE_FAILURE_TOTAL
@@ -263,6 +266,8 @@ class StudioRunContext:
     pinned_results: Mapping[str, Any] | None = None
     # The simulated decision of each approval step (workflow-nodes R9.9).
     approval_decisions: Mapping[str, str] = field(default_factory=dict)
+    # The `studio_runs` lane's claim every write of the run names (R5.5).
+    lease_token: str = ""
 
 
 # ---- the wrapper ------------------------------------------------------------------
@@ -318,7 +323,9 @@ class StudioNode:
             # none: closed, nothing runs (gate MEDIUM (b)).
             raise StudioRunFailedError("deadline_unset", self.step.id)
         if self.ports.clock.now() >= ctx.deadline_at:
-            await self.ports.runs.cancel_past_deadline(run.tenant_id, run.run_id)
+            await self.ports.runs.cancel_past_deadline(
+                run.tenant_id, run.run_id, lease_token=ctx.lease_token
+            )
             raise RunDeadlineExceededError(self.step.id)
 
     async def __call__(
@@ -573,3 +580,9 @@ class StudioRunPorts:
 
     nodes: StudioNodePorts
     registry: Mapping[str, NodeTypeSpec]
+    # Dispatch (workflow-engine/04): whether a trigger's run must wait for its
+    # binding to be approved again, and who is told of a held run.
+    binding_review: BindingReviewPort
+    alerts: HeldRunAlertPort
+    # What evaluates the document's `outcomes[]` when the run ends (R5.24).
+    expressions: ExpressionEngine

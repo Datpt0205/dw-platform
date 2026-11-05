@@ -99,6 +99,16 @@ MESSAGES: Mapping[str, tuple[str, str]] = {
         "The input of {detail} is not exactly what was approved",
     ),
     "wf.param_undeclared": ("Tham số chưa khai: {detail}", "Undeclared parameter: {detail}"),
+    # R2.6: a CEL expression of the wrong type (an `outcomes[]` condition
+    # first, workflow-engine/04; every condition with workflow-nodes/03).
+    "wf.type_mismatch": (
+        "Biểu thức phải trả kiểu {detail}",
+        "The expression must be of type {detail}",
+    ),
+    "wf.expression_invalid": (
+        "Biểu thức không đọc được: {detail}",
+        "The expression does not parse: {detail}",
+    ),
     # The assistant's own checks (wf-ai R2.2, R2.3): it composes from what the
     # pack's workflow already uses, never a new tool or prompt.
     "wf.tool_not_in_base": (
@@ -162,8 +172,9 @@ STEP_POLICY_KEYS: Final = frozenset({"retry", "timeout_s", "on_error", ERROR_LAN
 # approval's empty lane may be left out, as wf-ai's wire leaves `rejected`.
 PACK_RULES: Final = PathRules(
     required_document_keys=frozenset({"key", "version"}),
-    # A pack's values come from its configuration, never a Binding set.
-    refused_document_keys=frozenset({"bindings"}),
+    # A pack's values come from its configuration, never a Binding set, and
+    # its runs record no outcomes (workflow-engine R1.9).
+    refused_document_keys=frozenset({"bindings", "outcomes"}),
     required_step_keys=frozenset(),
     refused_step_keys=STEP_POLICY_KEYS,
     every_port_lane=False,
@@ -219,6 +230,19 @@ def _document_rules(document: WorkflowDocument, rules: PathRules) -> list[Proble
         Problem.of(key, "wf.schema_invalid", f"{key} is not allowed here")
         for key in sorted(rules.refused_document_keys & document.model_fields_set)
     ]
+    # An outcome's name is unique in its document (R1.9): the run's row
+    # records names, so two of one name would be one result.
+    seen: set[str] = set()
+    for index, outcome in enumerate(document.outcomes):
+        if outcome.name in seen:
+            found.append(
+                Problem.of(
+                    join_path("outcomes", index, "name"),
+                    "wf.schema_invalid",
+                    f"the outcome {outcome.name} is named twice",
+                )
+            )
+        seen.add(outcome.name)
     return found
 
 

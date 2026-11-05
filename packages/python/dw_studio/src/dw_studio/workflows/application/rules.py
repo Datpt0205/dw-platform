@@ -6,7 +6,9 @@ model: no `key` or `version` (the envelope holds the artifact and its
 `version_no`, ADR-0109 decisions 1, 2), a `retry`, `timeout_s` and `on_error`
 on every step, and a lane, `[]` at least, for every port a step's type lists.
 `WorkflowValidator` is the `validate` of the kind's registry entry: the core's
-function with these rules, each problem at a JSON pointer.
+function with these rules, each problem at a JSON pointer, and the core's
+check of the document's `outcomes[]` conditions through the one
+`ExpressionEngine` (workflow-engine R1.9, R2.5, R2.6).
 """
 
 from __future__ import annotations
@@ -15,8 +17,13 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, Final
 
+from pydantic import ValidationError
+
+from dw_agent_runtime.wflite.document import WorkflowDocument
+from dw_agent_runtime.wflite.outcomes import check_outcomes
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_agent_runtime.wflite.validate import PathRules, Problem, ToolSpecLookup, validate
+from dw_kernel.expressions import ExpressionEngine
 from dw_studio.core.domain.artifacts import DocumentProblem
 
 STUDIO_RULES: Final = PathRules(
@@ -46,6 +53,8 @@ class WorkflowValidator:
 
     registry: Mapping[str, NodeTypeSpec]
     tools: ToolSpecLookup
+    # What types each `outcomes[]` condition (R1.9).
+    expressions: ExpressionEngine
 
     def __call__(self, document: Any) -> list[DocumentProblem]:
         if not isinstance(document, Mapping):
@@ -54,13 +63,17 @@ class WorkflowValidator:
                     Problem.of("", "wf.schema_invalid", "a workflow is a JSON object")
                 )
             ]
-        return [
-            as_document_problem(problem)
-            for problem in validate(
-                document,
-                registry=self.registry,
-                rules=STUDIO_RULES,
-                tools=self.tools,
-                work_schemas={},
-            )
-        ]
+        found = validate(
+            document,
+            registry=self.registry,
+            rules=STUDIO_RULES,
+            tools=self.tools,
+            work_schemas={},
+        )
+        try:
+            parsed = WorkflowDocument.model_validate(document)
+        except ValidationError:
+            parsed = None  # reported above as `wf.schema_invalid`
+        if parsed is not None:
+            found += check_outcomes(parsed, self.registry, self.expressions)
+        return [as_document_problem(problem) for problem in found]

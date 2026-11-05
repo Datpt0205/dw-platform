@@ -28,12 +28,16 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator, Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Final, cast
+from typing import Any, Final, Literal, cast
 
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
 
-from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
+from dw_agent_runtime.adapters.checkpoint import (
+    FENCE_RUN_ID,
+    FENCE_TOKEN,
+    SqlAlchemyCheckpointSaver,
+)
 from dw_agent_runtime.adapters.langchain_usage import LangchainUsageMeter
 from dw_agent_runtime.adapters.run_store import (
     TERMINAL_STATUSES,
@@ -49,11 +53,24 @@ from dw_agent_runtime.ports import (
     RunGraphsPort,
     RunLease,
     RunWaitsPort,
+    StudioLeaseLostError,
     StudioRun,
     StudioRunBlocked,
 )
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.run_control import HOLDING_REASONS, RunControlDoor, RunHaltedError
+from dw_agent_runtime.studio_dispatch import (
+    RUN_DEADLINE,
+    BindingReviewAlert,
+    Ended,
+    Held,
+    PrincipalInactiveAlert,
+    StudioAdmission,
+)
+
+# The lane a Studio run is admitted in (ADR-0113 decision 3), whose name a
+# refusal's audit stands under.
+from dw_agent_runtime.studio_lane import LANE as _STUDIO_LANE
 from dw_agent_runtime.wflite.compile import COMPILER_VERSION, StudioWorkflow, compile_workflow
 from dw_agent_runtime.wflite.document import WorkflowDocument
 from dw_agent_runtime.wflite.node_wrapper import (
@@ -62,6 +79,7 @@ from dw_agent_runtime.wflite.node_wrapper import (
     StudioRunFailedError,
     StudioRunPorts,
 )
+from dw_agent_runtime.wflite.outcomes import reached_outcomes
 from dw_kernel.errors import (
     ConfigError,
     ConflictError,
@@ -99,9 +117,6 @@ _DURABILITIES: Final = frozenset({"sync", "async", "exit"})
 # The lease heartbeat (usage-and-limits R5.9; ADR-0121 decision 5): every
 # 60 seconds a process running a run of the tree moves `expires_at` 300 s on.
 LEASE_BEAT_SECONDS: Final = 60.0
-# The lane a Studio run is admitted in (ADR-0113 decision 3), whose name a
-# refusal's audit stands under.
-_STUDIO_LANE: Final = "studio_runs"
 
 
 class ResumeInterrupted(Exception):  # noqa: N818 - names what the row records
@@ -486,53 +501,81 @@ class LangGraphWorkflowRunner:
         await self._handle_outcome(run_context, run_context.run_id, state)
         return run_context.run_id
 
-    async def run_studio(self, *, tenant_id: uuid.UUID, run_id: uuid.UUID) -> RunStatus:
-        """Run a `queued` Studio run until it ends (workflow-engine/03 step 2).
+    async def run_studio(
+        self, *, tenant_id: uuid.UUID, run_id: uuid.UUID, lease_token: str
+    ) -> RunStatus:
+        """Run a Studio run the `studio_runs` lane claimed under `lease_token`
+        until it ends, waits or is held (workflow-engine/03 step 2, /04 step 3).
 
         Everything comes from the run's row, its manifest and its pinned
         document, read under the run's tenant by `StudioRunStorePort.take`;
         nothing is inserted (R3.5). A draft whose content changed since the
-        run pinned it is left `blocked` and nothing is compiled (R6.14). The
-        graph runs with the `durability` the manifest's `engine` pinned, never
-        the library's default (R4.25), and with a `recursion_limit` that
-        covers every node once (R4.1); the run's step ceiling across resumes
-        is workflow-engine/06's. A run with a checkpoint already (taken again
-        after a crash) goes on from it. workflow-engine/04 calls this from the
-        `studio_runs` lane."""
+        run pinned it is left `blocked` and nothing is compiled (R6.14).
+
+        Then dispatch, the one place a Studio run is admitted for every
+        `trigger_kind` (`StudioAdmission`, R5.9-R5.19, R5.25): a refusal holds
+        the run `queued` or ends it, as the refusal table says, with no model
+        call. A run that passes gets its `deadline_at` at its first take
+        (R5.22), and runs with the `durability` the manifest's `engine`
+        pinned (R4.25) and a `recursion_limit` that covers every node once
+        (R4.1). Every write names the claim: checkpoints through the saver's
+        fence, the row through the store's (R5.5), and a claim another worker
+        took over raises `StudioLeaseLostError`, writing nothing. A run that
+        ends `completed` or `failed` after its graph ran records the
+        `outcomes[]` it reached in the same write (R5.24). Called by the
+        `studio_runs` lane (`dw_agent_runtime.studio_lane`) and nothing else."""
         studio = self.studio
         if studio is None:
             raise ConfigError(
                 "this runner runs no Studio run", details={"reason": "studio_not_wired"}
             )
         runs = studio.nodes.runs
-        taken = await runs.take(tenant_id, run_id)
+        taken = await runs.take(tenant_id, run_id, lease_token=lease_token)
         if isinstance(taken, StudioRunBlocked):
             return RunStatus.BLOCKED
         durability = taken.engine.get("durability")
         if durability not in _DURABILITIES:
             # Closed: a manifest without its engine section runs nothing.
-            await runs.finish(tenant_id, run_id, "failed", error={"code": "engine_unpinned"})
+            await runs.finish(
+                tenant_id,
+                run_id,
+                "failed",
+                lease_token=lease_token,
+                error={"code": "engine_unpinned"},
+            )
             return RunStatus.FAILED
-        graph = self._studio_graph(studio, taken)
         run = _studio_run_context(taken)
-        try:
-            lease = await self._admit_studio(run)
-        except LimitExceededError as refused:
-            # The answer of `LimitsPort.admit` (R4.10); how each trigger kind is
-            # refused (ended, held `queued`, skipped) is the `studio_runs`
-            # lane's, workflow-engine/04, which reads this code.
-            await runs.finish(tenant_id, run_id, "failed", error=dict(refused.details))
-            return RunStatus.FAILED
+        verdict = await StudioAdmission(
+            run_control=self.run_control,
+            binding_review=studio.binding_review,
+            limits=self.limits,
+        ).decide(taken, run)
+        if isinstance(verdict, Held):
+            await self._hold_studio(studio, taken, run, verdict, lease_token)
+            return RunStatus.QUEUED
+        if isinstance(verdict, Ended):
+            if verdict.refusal is not None:
+                await self._lane_audit(run, "limits.refused", details=verdict.refusal.details)
+            await runs.finish(
+                tenant_id, run_id, verdict.status, lease_token=lease_token, error=verdict.error
+            )
+            return RunStatus(verdict.status)
+        lease = verdict.lease
+        deadline_at = await runs.admitted(
+            tenant_id, run_id, lease_token=lease_token, deadline=RUN_DEADLINE
+        )
+        graph = self._studio_graph(studio, taken)
         decisions = taken.input.get("approval_decisions")
         context = StudioRunContext(
             run=run,
-            deadline_at=taken.deadline_at,
+            deadline_at=deadline_at,
             pinned_results=taken.pinned_results,
             approval_decisions=(
                 {str(k): str(v) for k, v in decisions.items()}
                 if isinstance(decisions, dict)
                 else {}
             ),
+            lease_token=lease_token,
         )
         config: dict[str, Any] = {
             "recursion_limit": len(graph.nodes) + 1,
@@ -540,74 +583,118 @@ class LangGraphWorkflowRunner:
                 "thread_id": str(taken.thread_id),
                 "tenant_id": str(taken.tenant_id),
                 "workspace_id": str(taken.workspace_id),
+                FENCE_RUN_ID: str(run_id),
+                FENCE_TOKEN: lease_token,
             },
         }
+
+        async def end(
+            status: Literal["completed", "failed"],
+            *,
+            error: dict[str, Any] | None = None,
+            state: dict[str, Any] | None = None,
+        ) -> RunStatus:
+            await self._release(run, run_id, status)
+            if state is None:
+                state = dict((await graph.aget_state(config)).values)
+            outcomes = await reached_outcomes(
+                WorkflowDocument.model_validate(taken.document),
+                studio.registry,
+                studio.expressions,
+                state,
+                tenant_id=TenantId(tenant_id),
+            )
+            await runs.finish(
+                tenant_id,
+                run_id,
+                status,
+                lease_token=lease_token,
+                error=error,
+                result=None if error is not None else _jsonable(state),
+                outcomes=outcomes,
+            )
+            return RunStatus(status)
+
         try:
             snapshot = await graph.aget_state(config)
             work = {k: v for k, v in taken.input.items() if k != "approval_decisions"}
             payload = None if snapshot.next else {"work": work}
             async with self._beating(lease):
                 state = await graph.ainvoke(payload, config, context=context, durability=durability)
+        except (StudioLeaseLostError, asyncio.CancelledError):
+            # Another worker holds the run now, or this one is shutting down
+            # and the lane hands the claim back: the row, the money lease and
+            # the checkpoint are the next holder's (R5.5, R5.6).
+            raise
         except RunDeadlineExceededError:
             await self._release(run, run_id, "cancelled")
             return RunStatus.CANCELLED
         except StudioRunFailedError as failed:
-            await self._release(run, run_id, "failed")
-            await runs.finish(
-                tenant_id,
-                run_id,
-                "failed",
-                error={"code": failed.code, "step_id": failed.step_id},
-            )
-            return RunStatus.FAILED
+            return await end("failed", error={"code": failed.code, "step_id": failed.step_id})
         except RunHaltedError as halted:
             await self._release(run, run_id, "cancelled")
             await runs.finish(
                 tenant_id,
                 run_id,
                 "cancelled",
+                lease_token=lease_token,
                 error={"code": halted.reason.value, "door": halted.door.value},
             )
             return RunStatus.CANCELLED
         except ResidencyRefusedError:
             # A policy refusal before anything was sent, not a step's failure:
             # no error lane takes it (compliance-pdpl R2.2).
-            await self._release(run, run_id, "failed")
-            await runs.finish(tenant_id, run_id, "failed", error={"code": RESIDENCY_REFUSED})
-            return RunStatus.FAILED
+            return await end("failed", error={"code": RESIDENCY_REFUSED})
         except LimitExceededError as stopped:
             # A limit spent mid-run stops it at the next call (R5.5): no error
             # lane, no retry, no cheaper model.
-            await self._release(run, run_id, "failed")
-            await runs.finish(tenant_id, run_id, "failed", error=dict(stopped.details))
-            return RunStatus.FAILED
-        except BaseException as exc:
-            await self._release(run, run_id, "failed")
-            if not isinstance(exc, Exception):
-                raise
+            return await end("failed", error=dict(stopped.details))
+        except Exception as exc:
             logger.exception("a Studio run failed", extra={"run_id": str(run_id)})
-            await runs.finish(
-                tenant_id,
-                run_id,
-                "failed",
-                error={"code": "step_failed", "type": type(exc).__name__},
-            )
-            return RunStatus.FAILED
-        await self._release(run, run_id, "completed")
-        await runs.finish(tenant_id, run_id, "completed", result=_jsonable(state))
-        return RunStatus.COMPLETED
+            return await end("failed", error={"code": "step_failed", "type": type(exc).__name__})
+        return await end("completed", state=state)
 
-    async def _admit_studio(self, run: RunContext) -> RunLease:
-        """A Studio run's lease, taken when the `studio_runs` lane hands the run
-        over (ADR-0113 decision 3); a refusal is audited once, in the lane's
-        name (ADR 0011), and the run is never taken on a guess."""
-        if run.lease_root != run.run_id:
-            return self.limits.lease(run)
+    async def _hold_studio(
+        self,
+        studio: StudioRunPorts,
+        taken: StudioRun,
+        run: RunContext,
+        held: Held,
+        lease_token: str,
+    ) -> None:
+        """A run the refusal table holds: back to `queued`, due later, and the
+        people who can lift the hold told (R5.20, R5.21). The audit of a spent
+        limit is written once per period, since the run is next due when the
+        period resets (usage-and-limits M11). A notice that fails is logged:
+        the run is held anyway, and its next take tells again, the inbox's
+        UNIQUE key keeping it to one notice (gate MEDIUM (c))."""
+        if held.refusal is not None:
+            await self._lane_audit(run, "limits.refused", details=held.refusal.details)
+        await studio.nodes.runs.hold(
+            taken.tenant_id,
+            taken.run_id,
+            lease_token=lease_token,
+            delay=held.delay,
+            until=held.until,
+        )
         try:
-            return await self.limits.admit(run)
-        except LimitExceededError as refused:
-            await self._lane_audit(run, "limits.refused", details=refused.details)
-            raise
+            match held.alert:
+                case PrincipalInactiveAlert(principal_id=principal):
+                    await studio.alerts.principal_inactive(
+                        taken.tenant_id, workspace_id=taken.workspace_id, principal_id=principal
+                    )
+                case BindingReviewAlert(principal_id=principal, grants_changed_at=at):
+                    await studio.alerts.binding_needs_review(
+                        taken.tenant_id,
+                        workspace_id=taken.workspace_id,
+                        artifact_id=taken.artifact_id,
+                        principal_id=principal,
+                        grants_changed_at=at,
+                    )
+        except Exception:
+            logger.warning(
+                "a held run's notice failed", exc_info=True, extra={"run_id": str(taken.run_id)}
+            )
 
     async def stream(
         self,
@@ -1221,6 +1308,8 @@ def _studio_run_context(taken: StudioRun) -> RunContext:
         run_as_principal_id=taken.run_as_principal_id,
         run_manifest_hash=taken.run_manifest_hash,
         artifact_id=taken.artifact_id,
+        # A child spends its root's lease; a root its own (usage-and-limits R5.6).
+        root_run_id=taken.root_run_id,
         worker_id=f"studio:{taken.artifact_kind}:{taken.artifact_version_id}",
         worker_version=version,
         channel="studio",

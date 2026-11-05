@@ -32,6 +32,8 @@ from dw_agent_runtime.adapters.model_stack import (
 from dw_agent_runtime.adapters.pack_tools import build_leadcare_tools, register_leadcare_tools
 from dw_agent_runtime.adapters.release_manifest import read_release_manifest_ref
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
+from dw_agent_runtime.adapters.span_step_recorder import TelemetryStepRecorder
+from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
 from dw_agent_runtime.adapters.wflite_host import (
     build_run_starter,
     build_send_floor,
@@ -45,11 +47,13 @@ from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.resolver import StaticPlanModelProfiles
 from dw_agent_runtime.model.run_policy import load_worker_run_policy
-from dw_agent_runtime.ports import RunControlPort
+from dw_agent_runtime.ports import BindingReviewPort, LimitsPort, RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.wflite.catalog import PackCatalog
+from dw_agent_runtime.wflite.node_wrapper import StudioNodePorts, StudioRunPorts
+from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_agent_runtime.wflite.starter import WorkflowRunStarter
 from dw_agent_runtime.wflite.waits import WorkQueueRunWaits
 from dw_connectors.egress import EgressClient, NoCatalogueHosts
@@ -68,6 +72,7 @@ from dw_knowledge.ingest_jobs import IngestJobQueue, IngestJobStore
 from dw_knowledge.ports import DocumentParserPort, EmbeddingPort, ObjectStoragePort, VectorIndexPort
 from dw_observability.telemetry import TelemetryPort
 from dw_platform.adapters.persistence.egress_allowlist_repo import SqlAllowedHosts
+from dw_platform.adapters.persistence.held_run_alerts import SqlHeldRunAlerts
 from dw_platform.adapters.persistence.plan_model_profiles import (
     CachingPlanModelProfiles,
     SqlPlanModelProfiles,
@@ -75,6 +80,9 @@ from dw_platform.adapters.persistence.plan_model_profiles import (
 from dw_platform.adapters.persistence.residency import SqlRouteClasses
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.application.work_queue import WorkQueue
+from dw_studio.core.adapters.cel.engine import CelCppEngine
+from dw_studio.core.adapters.run_manifest_store import SqlRunManifestEngines
+from dw_studio.core.adapters.studio_runs import SqlStudioRunStore
 from dw_usage.adapters.limits_sql import SqlLimits
 from dw_usage.adapters.price_book_file import enforce_price_coverage, load_price_book
 from dw_usage.adapters.sql import SqlUsageLedger
@@ -317,12 +325,14 @@ def build_model_stack_for(
     deployed profile with a paid route the book does not price refuses to
     start (R2.3)."""
     # The one resolver every model door of this process asks (model-connections
-    # R1.1), filtered by the plan catalogue. No Studio run is taken here yet, so
-    # no manifest reader: such a run's every call would be refused.
+    # R1.1), filtered by the plan catalogue, and reading a Studio run's models
+    # from the engine its manifest pinned (R1.4): this process takes Studio
+    # runs (workflow-engine/04; model-connections/02 MEDIUM (a)).
     models = build_model_resolver(
         model_provider_config(settings),
         profiles_dir=REPO_ROOT / "configs" / "models",
         plans=CachingPlanModelProfiles(SqlPlanModelProfiles(sessions), clock),
+        pinned=SqlRunManifestEngines(sessions),
     )
     prompts = PromptRegistry()
     prompts.load_directory(REPO_ROOT / "configs" / "prompts")
@@ -366,6 +376,9 @@ class WfLiteRuntime:
     runner: LangGraphWorkflowRunner
     starter: WorkflowRunStarter
     tools: ToolRegistry
+    # The process's one limits port, which the Studio runner admits with too
+    # (workflow-engine/04).
+    limits: LimitsPort
 
 
 def build_wflite_runtime(
@@ -474,6 +487,60 @@ def build_wflite_runtime(
             catalog=packs, session_factory=sessions, tools=tools, runner=runner
         ),
         tools=tools,
+        limits=stack.limits,
+    )
+
+
+def build_studio_runner(
+    sessions: async_sessionmaker[AsyncSession],
+    *,
+    limits: LimitsPort,
+    run_control: RunControlPort,
+    binding_review: BindingReviewPort,
+    clock: UtcClock,
+    ids: IdGenerator,
+    telemetry: TelemetryPort,
+) -> LangGraphWorkflowRunner:
+    """The runner the `studio_runs` lane runs Studio runs on (workflow-engine
+    R5.1): the one step registry the API validates against, the run store and
+    checkpoint saver fenced by the lane's claim, the process's limits and
+    switches, the one `ExpressionEngine` for `outcomes[]`, and who is told of a
+    held run. No effect door is wired yet: each joins with the ticket that
+    builds it (workflow-nodes 04-08), and a step that needs one ends its run
+    `effect_door_unwired` until then, never a send through a guess."""
+    graphs = GraphRegistry()
+    policy = load_worker_run_policy(CONFIGS / "policies" / WORKER_RUN_POLICY)
+    nodes = StudioNodePorts(
+        doors={},
+        claims=SqlToolClaims(sessions),
+        run_control=run_control,
+        runs=SqlStudioRunStore(sessions, ids, clock),
+        recorder=TelemetryStepRecorder(telemetry, clock),
+        telemetry=telemetry,
+        clock=clock,
+    )
+    return LangGraphWorkflowRunner(
+        worker_registry=WorkerRegistry(graph_registry=graphs),
+        graph_registry=graphs,
+        checkpoint_saver=SqlAlchemyCheckpointSaver(sessions, checkpoint_serializer()),
+        run_store=SqlWorkerRunStore(
+            sessions, stale_run_after_seconds=policy.stale_run_after_seconds
+        ),
+        uow_factory=SqlPlatformUnitOfWorkFactory(sessions),
+        clock=clock,
+        id_generator=ids,
+        limits=limits,
+        approval_policy=AutonomyApprovalPolicy(),
+        run_control=run_control,
+        release_manifest_ref=read_release_manifest_ref(REPO_ROOT),
+        telemetry=telemetry,
+        studio=StudioRunPorts(
+            nodes=nodes,
+            registry=build_node_registry(),
+            binding_review=binding_review,
+            alerts=SqlHeldRunAlerts(sessions),
+            expressions=CelCppEngine(),
+        ),
     )
 
 

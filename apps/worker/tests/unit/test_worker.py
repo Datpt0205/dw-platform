@@ -149,6 +149,11 @@ def test_only_the_platform_lanes_are_wired() -> None:
     (usage-and-limits R3.5).
     `reaper` is the sixteenth, since it has a queue on every host with a
     database: the leases of runs whose process died (usage-and-limits R5.4).
+    `studio_runs` is the seventeenth: Studio runs are taken from the run row
+    itself, fairly by tenant, and run only here, never in the API
+    (workflow-engine R5.1); `studio_run_reaper` the eighteenth, which ends
+    overdue runs and queues again or dead-letters those whose worker died
+    (R5.6, R5.7, R5.23). Both need a database alone.
 
     Naming the whole set is the point: a context's lane arriving in this process
     becomes a visible change rather than a silent one.
@@ -171,6 +176,8 @@ def test_only_the_platform_lanes_are_wired() -> None:
         "dw_timers",
         "usage_rollup",
         "reaper",
+        "studio_runs",
+        "studio_run_reaper",
     }
 
 

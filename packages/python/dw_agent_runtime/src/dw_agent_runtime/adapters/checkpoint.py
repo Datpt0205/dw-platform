@@ -5,6 +5,15 @@ one-shot worker has one run per thread; a conversation worker keeps many runs on
 the same thread. Rows carry tenant_id and sit behind RLS: the saver sets the
 transaction-local tenant context from the runner-provided config before every
 statement.
+
+A Studio run's config carries its claim (`FENCE_RUN_ID`, `FENCE_TOKEN`,
+workflow-engine R5.5): `aput` and `aput_writes` then begin their own
+transaction by locking the run's row `FOR SHARE` where `lease_owner` is that
+token. No row means another worker took the run after this one's lease
+lapsed: the write rolls back and `StudioLeaseLostError` stops the run. The
+check and the write are one transaction, so a claim committed between them
+cannot let a stale write through, and a stale write never takes the slot of
+the new holder's (`ON CONFLICT DO NOTHING` below).
 """
 
 from __future__ import annotations
@@ -30,6 +39,7 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_agent_runtime.adapters.runtime_tables import run_checkpoint_writes, run_checkpoints
+from dw_agent_runtime.ports import StudioLeaseLostError
 from dw_kernel.errors import TenantContextMissingError
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
 
@@ -56,6 +66,35 @@ def allowlisted_serializer(allowed: Iterable[tuple[str, str]]) -> SerializerProt
     ``allowed`` as objects; any other type loads as plain data (ADR-0112
     decision 10). The composition root owns ``allowed``."""
     return JsonPlusSerializer(allowed_msgpack_modules=tuple(allowed))
+
+
+# A Studio run's claim, in its config's `configurable` (workflow-engine R5.5).
+FENCE_RUN_ID = "dw_fence_run_id"
+FENCE_TOKEN = "dw_fence_token"
+
+_FENCE = sa.text(
+    "SELECT 1 FROM platform.worker_runs WHERE id = :run_id AND lease_owner = :token FOR SHARE"
+)
+
+
+def _fence_of(config: RunnableConfig) -> tuple[uuid.UUID, str] | None:
+    conf = config.get("configurable", {})
+    run_id, token = conf.get(FENCE_RUN_ID), conf.get(FENCE_TOKEN)
+    if run_id is None and token is None:
+        return None
+    if not run_id or not token:
+        # Half a fence is no fence: closed.
+        raise TenantContextMissingError("a fenced checkpoint names its run and its token")
+    return uuid.UUID(str(run_id)), str(token)
+
+
+async def _hold_fence(session: AsyncSession, fence: tuple[uuid.UUID, str] | None) -> None:
+    if fence is None:
+        return
+    run_id, token = fence
+    held = (await session.execute(_FENCE, {"run_id": run_id, "token": token})).first()
+    if held is None:
+        raise StudioLeaseLostError(run_id)
 
 
 # The primary keys the two upserts below conflict on.
@@ -155,11 +194,13 @@ class SqlAlchemyCheckpointSaver(BaseCheckpointSaver[str]):
         thread_id, tenant_id, workspace_id, ns = _scope(config)
         parent_id = config.get("configurable", {}).get("checkpoint_id")
 
+        fence = _fence_of(config)
         type_cp, blob_cp = self.serde.dumps_typed(checkpoint)
         _, blob_md = self.serde.dumps_typed(dict(metadata))
 
         scope = TenantScope(tenant_id, workspace_id)
         async with tenant_session(self._session_factory, scope) as session:
+            await _hold_fence(session, fence)
             statement = sa.dialects.postgresql.insert(run_checkpoints).values(
                 thread_id=thread_id,
                 checkpoint_ns=ns,
@@ -189,18 +230,16 @@ class SqlAlchemyCheckpointSaver(BaseCheckpointSaver[str]):
                 )
             )
 
-        return cast(
-            RunnableConfig,
-            {
-                "configurable": {
-                    "thread_id": str(thread_id),
-                    "checkpoint_ns": ns,
-                    "checkpoint_id": checkpoint["id"],
-                    "tenant_id": str(tenant_id),
-                    "workspace_id": str(workspace_id),
-                }
-            },
-        )
+        configurable: dict[str, Any] = {
+            "thread_id": str(thread_id),
+            "checkpoint_ns": ns,
+            "checkpoint_id": checkpoint["id"],
+            "tenant_id": str(tenant_id),
+            "workspace_id": str(workspace_id),
+        }
+        if fence is not None:
+            configurable[FENCE_RUN_ID], configurable[FENCE_TOKEN] = str(fence[0]), fence[1]
+        return cast(RunnableConfig, {"configurable": configurable})
 
     async def aput_writes(
         self,
@@ -213,9 +252,11 @@ class SqlAlchemyCheckpointSaver(BaseCheckpointSaver[str]):
         checkpoint_id = config.get("configurable", {}).get("checkpoint_id")
         if not checkpoint_id:
             raise TenantContextMissingError("aput_writes requires checkpoint_id in config")
+        fence = _fence_of(config)
 
         scope = TenantScope(tenant_id, workspace_id)
         async with tenant_session(self._session_factory, scope) as session:
+            await _hold_fence(session, fence)
             for position, (channel, value) in enumerate(writes):
                 # `WRITES_IDX_MAP` reserves negative slots for the special
                 # channels, which is what keeps slot 0 free for a task's real

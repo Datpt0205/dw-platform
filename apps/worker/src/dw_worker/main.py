@@ -21,7 +21,9 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import signal
+import socket
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from typing import TYPE_CHECKING
@@ -32,6 +34,7 @@ from dw_agent_runtime.adapters.checkpoint_retention import SqlCheckpointRetentio
 from dw_agent_runtime.adapters.killed_runs import SqlKilledRuns
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.run_control import SqlRunControl
+from dw_agent_runtime.adapters.studio_run_queue import SqlStudioRunQueue
 from dw_agent_runtime.adapters.tool_claim_retention import SqlToolClaimRetention
 from dw_agent_runtime.adapters.wf_drafts import SqlWorkflowDrafts
 from dw_agent_runtime.adapters.wflite_host import build_pinned_workflows
@@ -41,7 +44,13 @@ from dw_agent_runtime.channel_decisions import (
     ChannelDecisionCommand,
 )
 from dw_agent_runtime.control_switch_lane import ControlSwitchLane, RunCancelHooks
+from dw_agent_runtime.ports import LimitsPort, RunControlPort
 from dw_agent_runtime.run_control import lane_actors
+from dw_agent_runtime.studio_lane import LANE as STUDIO_RUNS_LANE
+from dw_agent_runtime.studio_lane import LANE_INTERVAL_SECONDS as STUDIO_LANE_INTERVAL_SECONDS
+from dw_agent_runtime.studio_lane import REAPER_INTERVAL_SECONDS as STUDIO_REAPER_INTERVAL_SECONDS
+from dw_agent_runtime.studio_lane import REAPER_LANE as STUDIO_REAPER_LANE
+from dw_agent_runtime.studio_lane import StudioRunReaper, StudioRunsLane
 from dw_agent_runtime.wflite.catalog import load_shipped_packs
 from dw_agent_runtime.wflite.publish import (
     DW_WORKFLOW_PREFIX,
@@ -158,6 +167,7 @@ from dw_worker.composition import (
     build_ingest_components,
     build_object_storage,
     build_residency_gate,
+    build_studio_runner,
     build_vector_index,
     build_wflite_runtime,
 )
@@ -198,6 +208,11 @@ from dw_worker.consumers.reaper import INTERVAL_SECONDS as REAP_INTERVAL_SECONDS
 from dw_worker.consumers.reaper import ReapTarget, build_reaper_consumer
 from dw_worker.consumers.retention import INTERVAL_SECONDS as RETENTION_INTERVAL_SECONDS
 from dw_worker.consumers.retention import RetentionPrunePort, build_retention_consumer
+from dw_worker.consumers.studio_runs import (
+    DEAD_LETTERED,
+    UnwiredBindingReview,
+    build_dead_letter_handler,
+)
 from dw_worker.consumers.zalo_poll import build_zalo_poll_consumer
 from dw_worker.consumers.zalo_webhook import INTERVAL_SECONDS as ZALO_WEBHOOK_INTERVAL_SECONDS
 from dw_worker.consumers.zalo_webhook import build_zalo_webhook_consumer
@@ -212,6 +227,8 @@ logger = logging.getLogger("dw_worker")
 # The usage roll-up's cadence (usage-and-limits ticket 02): five minutes, so the
 # usage screen trails the ledger by at most that.
 USAGE_ROLLUP_INTERVAL_SECONDS = 300
+# How long an orderly shutdown waits for each lane to hand its work back.
+_CLOSE_SECONDS = 20.0
 
 
 def _build_worker_telemetry(settings: WorkerSettings) -> TelemetryPort:
@@ -391,6 +408,54 @@ def build_run_cancel_hooks() -> RunCancelHooks:
     a context joins with one `register` line, none by default.
     workflow-engine/08 registers `record_unresolved_effects`."""
     return RunCancelHooks().freeze()
+
+
+def build_studio_lanes(
+    registry: ConsumerRegistry,
+    handlers: dict[str, EventHandler],
+    sessions: async_sessionmaker[AsyncSession],
+    *,
+    limits: LimitsPort,
+    run_control: RunControlPort,
+    clock: UtcClock,
+    ids: IdGenerator,
+    telemetry: TelemetryPort,
+) -> StudioRunsLane:
+    """The Studio run queue's lanes (workflow-engine/04, R5.1): `studio_runs`
+    takes and runs Studio runs on the runner `build_studio_runner` builds,
+    handing its claims back at an orderly shutdown; `studio_run_reaper` ends
+    overdue runs and queues orphans again or dead-letters them; the outbox's
+    `studio.run.dead_lettered` tells who must know (R5.26).
+
+    Neither lane is a `tenant_wide_scope()` lane: `platform.worker_runs` is
+    narrowed by tenant alone, so each claim, requeue and cancel runs under the
+    one tenant's RLS, and the reads across tenants are the three definer
+    functions that return tenant ids. The `BindingReviewPort` is
+    `UnwiredBindingReview` until workflow-triggers/03 answers it: every
+    trigger's run is held, none let through (R5.25)."""
+    runner = build_studio_runner(
+        sessions,
+        limits=limits,
+        run_control=run_control,
+        binding_review=UnwiredBindingReview(),
+        clock=clock,
+        ids=ids,
+        telemetry=telemetry,
+    )
+    queue = SqlStudioRunQueue(sessions, ids, clock)
+    lane = StudioRunsLane(
+        queue=queue, runner=runner, worker=f"{socket.gethostname()}:{os.getpid()}"
+    )
+    registry.register(
+        STUDIO_RUNS_LANE, lane, interval_seconds=STUDIO_LANE_INTERVAL_SECONDS, close=lane.close
+    )
+    registry.register(
+        STUDIO_REAPER_LANE, StudioRunReaper(queue), interval_seconds=STUDIO_REAPER_INTERVAL_SECONDS
+    )
+    handlers[DEAD_LETTERED] = build_dead_letter_handler(
+        SqlScopeHolders(sessions), SqlNotificationRepository(sessions)
+    )
+    return lane
 
 
 def build_tenant_wide_scopes() -> TenantWideScopeRegistry:
@@ -631,6 +696,18 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
             )
         )
         # A decided publication of a DW's workflow draft (wf-ai R6.5, R6.6).
+        # Studio runs (workflow-engine/04): the queue's two lanes and the
+        # reader of a dead letter.
+        build_studio_lanes(
+            registry,
+            handlers,
+            sessions,
+            limits=wflite.limits,
+            run_control=run_control,
+            clock=clock,
+            ids=ids,
+            telemetry=telemetry,
+        )
         handlers[DW_WORKFLOW_PUBLISH_DECIDED] = build_publish_handler(
             PublishSettler(
                 repo=SqlWorkflowDrafts(sessions),
@@ -919,6 +996,13 @@ async def run_worker(
     for task in tasks:
         task.cancel()
     await asyncio.gather(*tasks, return_exceptions=True)
+    # What a lane holds across ticks goes back before the process ends, so a
+    # deploy is not a crash (workflow-engine R5.6).
+    for name, close in registry.closers().items():
+        try:
+            await asyncio.wait_for(close(), timeout=_CLOSE_SECONDS)
+        except Exception:
+            logger.exception("lane %s did not close cleanly", name)
     logger.info("worker stopped cleanly")
 
 

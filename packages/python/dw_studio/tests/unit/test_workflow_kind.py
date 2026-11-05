@@ -19,6 +19,7 @@ import pytest
 from dw_agent_runtime.testing.workflow_types import fixture_node_registry, fixture_node_types
 from dw_agent_runtime.wflite.validate import PACK_RULES, PathRules, validate
 from dw_kernel.errors import ConflictError
+from dw_studio.core.adapters.cel.engine import CelCppEngine
 from dw_studio.core.application.boundaries import FieldBoundary, ObjectBoundary
 from dw_studio.core.domain.artifacts import Reference, TargetKind, Usage
 from dw_studio.kinds import (
@@ -40,7 +41,7 @@ from dw_studio.workflows.testing.fakes import RecordingBoundaries
 
 pytestmark = pytest.mark.unit
 
-CHECK = WorkflowValidator(fixture_node_registry(), NoTools())
+CHECK = WorkflowValidator(fixture_node_registry(), NoTools(), CelCppEngine())
 EXTRACT = WorkflowDependencies(fixture_node_registry())
 CLASSES = [{"key": "lead.reply", "effect_level": "internal", "reversible": True, "ceiling": "A2"}]
 
@@ -434,6 +435,7 @@ async def test_the_hook_activates_the_version_once_on_the_transaction_it_was_han
         tools=NoTools(),
         triggers=fake,
         boundaries=RecordingBoundaries(),
+        expressions=CelCppEngine(),
     ).publish_hook
 
     tx = Tx()

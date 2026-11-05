@@ -87,6 +87,15 @@ class WorkKindDecl(_Strict):
     schema_: str = Field(alias="schema", pattern=r"^[A-Za-z0-9_.@-]+\.json$")
 
 
+class Outcome(_Strict):
+    """A named result a run can reach (workflow-engine R1.9, R5.24; H-14):
+    `when`, a CEL condition over the run's final state, typed `bool` at
+    submit (`wflite.outcomes`)."""
+
+    name: str = Field(pattern=STEP_ID)
+    when: str = Field(min_length=1, max_length=4096)
+
+
 class WorkflowDocument(_Strict):
     model_config = ConfigDict(extra="forbid", frozen=True, populate_by_name=True)
 
@@ -106,3 +115,7 @@ class WorkflowDocument(_Strict):
     # the key (`PACK_RULES`). Never dumped: a document's text is the
     # envelope's, and a dump that grew the key would change every stored one.
     bindings: list[dict[str, Any]] = Field(default_factory=list, exclude=True)
+    # A Studio document's named results, which the `studio_runs` lane writes
+    # on the run's row when it ends (R5.24); a pack refuses the key
+    # (`PACK_RULES`). Never dumped, as `bindings`.
+    outcomes: list[Outcome] = Field(default_factory=list, exclude=True)

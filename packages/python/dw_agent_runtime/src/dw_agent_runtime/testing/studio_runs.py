@@ -30,6 +30,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.dispatch import OutcomeUnknownError
+from dw_agent_runtime.ports import BindingHold, StudioRun
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.testing.step_recorder import FakeStepRecorder
 from dw_agent_runtime.wflite.compile import StudioWorkflow, compile_workflow
@@ -41,6 +42,7 @@ from dw_agent_runtime.wflite.node_wrapper import (
     StudioRunFailedError,
 )
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
+from dw_kernel.expressions import ExpressionEnv
 from dw_kernel.run_mode import RunMode
 from dw_observability.telemetry import RecordingTelemetry
 
@@ -100,7 +102,23 @@ class FakeStudioRuns:
     cancelled: list[uuid.UUID] = field(default_factory=list)
     finished: list[tuple[uuid.UUID, str, Mapping[str, Any] | None]] = field(default_factory=list)
 
-    async def take(self, tenant_id: uuid.UUID, run_id: uuid.UUID) -> Any:
+    async def take(self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str) -> Any:
+        raise NotImplementedError("not exercised by the node wrapper")
+
+    async def admitted(
+        self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str, deadline: timedelta
+    ) -> datetime:
+        raise NotImplementedError("not exercised by the node wrapper")
+
+    async def hold(
+        self,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        *,
+        lease_token: str,
+        delay: timedelta,
+        until: datetime | None = None,
+    ) -> None:
         raise NotImplementedError("not exercised by the node wrapper")
 
     async def finish(
@@ -109,14 +127,70 @@ class FakeStudioRuns:
         run_id: uuid.UUID,
         status: Literal["completed", "failed", "cancelled"],
         *,
+        lease_token: str,
         error: Mapping[str, Any] | None = None,
         result: Mapping[str, Any] | None = None,
+        outcomes: Sequence[str] = (),
     ) -> None:
         self.finished.append((run_id, status, error))
 
-    async def cancel_past_deadline(self, tenant_id: uuid.UUID, run_id: uuid.UUID) -> bool:
+    async def cancel_past_deadline(
+        self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str
+    ) -> bool:
         self.cancelled.append(run_id)
         return True
+
+
+@dataclass
+class FakeBindingReview:
+    """`BindingReviewPort` by its contract: a hold for each principal named in
+    `holds` (its `grants_changed_at`), None for every other run; `fails`
+    raises as a broken port would. Records each run asked about."""
+
+    holds: dict[uuid.UUID, datetime] = field(default_factory=dict)
+    fails: bool = False
+    asked: list[uuid.UUID] = field(default_factory=list)
+
+    async def review(self, run: StudioRun) -> BindingHold | None:
+        self.asked.append(run.run_id)
+        if self.fails:
+            raise ConnectionError("the binding review could not be read")
+        at = self.holds.get(run.run_as_principal_id)
+        return None if at is None else BindingHold(at)
+
+
+@dataclass
+class RecordingAlerts:
+    """`HeldRunAlertPort` that records what it was asked to tell."""
+
+    told: list[tuple[str, uuid.UUID, uuid.UUID]] = field(default_factory=list)
+
+    async def principal_inactive(
+        self, tenant_id: uuid.UUID, *, workspace_id: uuid.UUID, principal_id: uuid.UUID
+    ) -> None:
+        self.told.append(("principal_inactive", tenant_id, principal_id))
+
+    async def binding_needs_review(
+        self,
+        tenant_id: uuid.UUID,
+        *,
+        workspace_id: uuid.UUID,
+        artifact_id: uuid.UUID,
+        principal_id: uuid.UUID,
+        grants_changed_at: datetime,
+    ) -> None:
+        self.told.append(("binding_needs_review", tenant_id, principal_id))
+
+
+class NoExpressions:
+    """An `ExpressionEngine` for a runner whose documents name no
+    `outcomes[]`: asked anything, it says so."""
+
+    def check(self, source: str, env: ExpressionEnv) -> Any:
+        raise NotImplementedError("not exercised: the document has no outcomes")
+
+    async def evaluate(self, checked: Any, activation: Mapping[str, object]) -> Any:
+        raise NotImplementedError("not exercised: the document has no outcomes")
 
 
 @dataclass

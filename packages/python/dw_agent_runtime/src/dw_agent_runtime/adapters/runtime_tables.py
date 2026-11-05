@@ -85,7 +85,15 @@ worker_runs = sa.Table(
     # What a `simulate` run's steps answer instead of their doors, fixed at
     # insert (workflow-engine/03, revision 66777ec67d16).
     sa.Column("pinned_results", JSONB, nullable=True),
+    # The `outcomes[]` a Studio run reached when it ended (workflow-engine/04,
+    # R5.24).
+    sa.Column("outcomes", sa.ARRAY(sa.Text), nullable=False, server_default=sa.text("'{}'")),
 )
+
+# What makes a row a Studio run (workflow-engine/02): it names its artifact.
+# One owner, for the queue, the Studio run store and the claim path that must
+# leave Studio runs to their own reaper.
+STUDIO_RUN = worker_runs.c.artifact_kind.isnot(None)
 
 run_checkpoints = sa.Table(
     "run_checkpoints",

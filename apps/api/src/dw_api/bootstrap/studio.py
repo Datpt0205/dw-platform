@@ -89,6 +89,7 @@ from dw_platform.application.config_versions import (
     ConfigVersionService,
 )
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
+from dw_studio.core.adapters.cel.engine import CelCppEngine
 from dw_studio.core.adapters.field_security_inputs import SqlFieldSecurityInputs
 from dw_studio.core.adapters.run_bindings import SqlRunBindings
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestEngines, SqlRunManifestStore
@@ -239,6 +240,9 @@ def build_studio(
             tools=tools,
             triggers=NoTriggerSubscriptions(),
             boundaries=actor_boundaries,
+            # The one `ExpressionEngine` adapter (ADR-0114); here it types a
+            # workflow's `outcomes[]` conditions at submit (workflow-engine R1.9).
+            expressions=CelCppEngine(),
         )
         if kinds is None
         else kinds

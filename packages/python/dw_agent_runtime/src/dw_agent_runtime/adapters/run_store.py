@@ -21,7 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from dw_agent_runtime.adapters.runtime_tables import worker_runs
+from dw_agent_runtime.adapters.runtime_tables import STUDIO_RUN, worker_runs
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
 from dw_kernel.autonomy import FAIL_CLOSED_LEVEL, AutonomyLevel
 from dw_kernel.errors import ConflictError, NotFoundError
@@ -321,6 +321,10 @@ class SqlWorkerRunStore:
             .where(
                 worker_runs.c.thread_id == thread_id,
                 worker_runs.c.status == RunStatus.RUNNING.value,
+                # A Studio run whose worker died is `studio_run_reaper`'s to
+                # queue again or dead-letter, never this claim path's to fail
+                # (workflow-engine/04, R5.6).
+                ~STUDIO_RUN,
                 # A bound INTERVAL, not an interpolated one. The number is an
                 # int from a validated policy and could not carry SQL, but a
                 # value spliced into a statement is a habit worth not having.

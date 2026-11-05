@@ -6,9 +6,9 @@ and application handlers depend only on the protocols.
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Mapping, Sequence
+from collections.abc import AsyncIterator, Callable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Literal, Protocol, TypeVar
 from uuid import UUID
@@ -568,6 +568,13 @@ class StudioRun:
     # The data route class `RunRequestService` pinned on the row at admission
     # (compliance-pdpl R2.1); a row admitted before it existed reads `vn_only`.
     data_route_class: RouteClass = "vn_only"
+    # What asked for the run, which shapes a refusal at dispatch (workflow-
+    # engine R5.9-R5.19). Empty matches no row of the table, so a run read
+    # without it is held, never let through (R5.25).
+    trigger_kind: str = ""
+    # The root of the run's tree, whose lease a child spends (usage-and-limits
+    # R5.6); None for a root.
+    root_run_id: UUID | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -580,18 +587,54 @@ class StudioRunBlocked:
     reason_code: str
 
 
-class StudioRunStorePort(Protocol):
-    """A Studio run's row as the runner moves it (workflow-engine/03; ticket 04
-    adds the lease). Declared here, satisfied by `dw_studio`, which reads the
-    manifest and the version rows; every call runs in a transaction of its own
-    under `tenant_id`'s RLS."""
+class StudioLeaseLostError(Exception):
+    """The run's claim is no longer this worker's: another took it after the
+    lease lapsed (workflow-engine R5.5). Nothing was written; the worker stops
+    running the run and leaves its row, its money lease and its waits to the
+    holder of the new claim."""
 
-    async def take(self, tenant_id: UUID, run_id: UUID) -> StudioRun | StudioRunBlocked:
-        """The `queued` run moved to `running`, with its manifest loaded and its
-        pinned versions checked (`PinnedResolver.load`), its root artifact read
-        `FOR SHARE` so a concurrent `save_draft` waits; a pinned version that
-        changed leaves the run `blocked` (`incompatible_resume`) instead. A run
-        that is not this tenant's, or not `queued`, is a `ConflictError`."""
+    def __init__(self, run_id: UUID) -> None:
+        super().__init__(f"the claim on run {run_id} is held by another worker")
+        self.run_id = run_id
+
+
+class StudioRunStorePort(Protocol):
+    """A Studio run's row as the runner moves it (workflow-engine/03, 04).
+    Declared here, satisfied by `dw_studio`, which reads the manifest and the
+    version rows; every call runs in a transaction of its own under
+    `tenant_id`'s RLS, and every write names the claim's `lease_token`
+    (`WHERE lease_owner = :token`, R5.5): a worker whose claim was taken over
+    writes nothing and gets `StudioLeaseLostError`."""
+
+    async def take(
+        self, tenant_id: UUID, run_id: UUID, *, lease_token: str
+    ) -> StudioRun | StudioRunBlocked:
+        """The run the `studio_runs` lane claimed (`running` under
+        `lease_token`), with its manifest loaded and its pinned versions
+        checked (`PinnedResolver.load`), its root artifact read `FOR SHARE` so
+        a concurrent `save_draft` waits; a pinned version that changed leaves
+        the run `blocked` (`incompatible_resume`) instead."""
+        ...
+
+    async def admitted(
+        self, tenant_id: UUID, run_id: UUID, *, lease_token: str, deadline: timedelta
+    ) -> datetime:
+        """The run passed dispatch: its `deadline_at` set to now plus
+        `deadline` when it has none (the first take, R5.22), never moved
+        after; the deadline in force."""
+        ...
+
+    async def hold(
+        self,
+        tenant_id: UUID,
+        run_id: UUID,
+        *,
+        lease_token: str,
+        delay: timedelta,
+        until: datetime | None = None,
+    ) -> None:
+        """Back to `queued` with no claim, `attempt` unchanged, due at `until`
+        when given (a limit's `resets_at`), else now plus `delay`."""
         ...
 
     async def finish(
@@ -600,17 +643,128 @@ class StudioRunStorePort(Protocol):
         run_id: UUID,
         status: Literal["completed", "failed", "cancelled"],
         *,
+        lease_token: str,
         error: Mapping[str, Any] | None = None,
         result: Mapping[str, Any] | None = None,
+        outcomes: Sequence[str] = (),
     ) -> None:
-        """End a `running` run; a run already ended is left as it is."""
+        """End the claimed run with the `outcomes[]` it reached (R5.24), in
+        one transaction."""
         ...
 
-    async def cancel_past_deadline(self, tenant_id: UUID, run_id: UUID) -> bool:
-        """End a `running` run `cancelled` with `error.code` `deadline_exceeded`
-        and audit `run.deadline_exceeded` as `system:studio_runs`, in one
-        transaction (R4.11). False when the run was no longer running."""
+    async def cancel_past_deadline(
+        self, tenant_id: UUID, run_id: UUID, *, lease_token: str
+    ) -> bool:
+        """End the claimed run `cancelled` with `error.code`
+        `deadline_exceeded` and audit `run.deadline_exceeded` as
+        `system:studio_runs`, in one transaction (R4.11). False when the run
+        was no longer running."""
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class StudioClaim:
+    """One run the `studio_runs` lane took, and the token its writes name."""
+
+    tenant_id: UUID
+    run_id: UUID
+    lease_token: str
+
+
+@dataclass(frozen=True, slots=True)
+class ReapedRuns:
+    """What one pass of `studio_run_reaper` did in one tenant."""
+
+    requeued: int = 0
+    dead_lettered: int = 0
+    cancelled: int = 0
+
+
+class StudioRunQueuePort(Protocol):
+    """The queue the `studio_runs` and `studio_run_reaper` lanes work
+    (workflow-engine R5.2-R5.7, R5.23; ADR-0113 decisions 2, 3). The three
+    `*_due` reads cross tenants through SECURITY DEFINER functions and return
+    tenant ids only; every other call runs under one tenant's RLS. Declared
+    here, satisfied by `SqlStudioRunQueue`."""
+
+    async def scopes_due(self, limit: int) -> list[UUID]:
+        """Tenants with a due `queued` run, the longest waiting first."""
+        ...
+
+    async def claim(
+        self, tenant_id: UUID, *, limit: int, worker: str, lease: timedelta
+    ) -> list[StudioClaim]:
+        """Up to `limit` of the tenant's due runs by `(priority, available_at,
+        created_at, id)`, each moved to `running` under a new token
+        `<worker>:<uuid>` until now plus `lease`, in one short transaction."""
+        ...
+
+    async def beat(self, claim: StudioClaim, *, lease: timedelta) -> bool:
+        """`lease_until` moved on; False when the claim is no longer held."""
+        ...
+
+    async def release(self, claim: StudioClaim) -> bool:
+        """An orderly shutdown's hand-back: `queued`, due now, no claim,
+        `attempt` unchanged; False when the claim is no longer held."""
+        ...
+
+    async def orphans_due(self, limit: int) -> list[UUID]: ...
+
+    async def requeue_orphans(
+        self, tenant_id: UUID, *, max_requeues: int, backoff: Callable[[int], timedelta]
+    ) -> ReapedRuns:
+        """Each `running` run whose claim lapsed: `queued` with `attempt + 1`
+        and `available_at` after `backoff(attempt)`, or, once it was requeued
+        `max_requeues` times, `dead_lettered` with its audit and outbox event
+        in the same transaction (R5.6, R5.7)."""
+        ...
+
+    async def deadlines_due(self, limit: int, *, unclaimed_after: timedelta) -> list[UUID]: ...
+
+    async def cancel_overdue(self, tenant_id: UUID, *, unclaimed_after: timedelta) -> ReapedRuns:
+        """Each unfinished run past `deadline_at` that no live claim holds,
+        and each never admitted `queued` run older than `unclaimed_after`,
+        `cancelled` `deadline_exceeded` with its audit (R5.23)."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class BindingHold:
+    """`binding_needs_review`: the run-as service principal's grants grew at
+    `grants_changed_at`, after the binding set naming it was approved
+    (workflow-triggers R3.7)."""
+
+    grants_changed_at: datetime
+
+
+class BindingReviewPort(Protocol):
+    """Asked at dispatch for a run a trigger requested (workflow-engine R5.19):
+    whether its binding must be approved again first. Declared here, where it
+    is asked; workflow-triggers/03 satisfies it. None lets the run on."""
+
+    async def review(self, run: StudioRun) -> BindingHold | None: ...
+
+
+class HeldRunAlertPort(Protocol):
+    """Who is told that a trigger's runs are held (workflow-engine R5.20,
+    R5.21), through the platform's notification door. The adapter builds the
+    `source_key` from what it reads (a member's `status_changed_at`, the
+    hold's `grants_changed_at`), so a hold of many runs over many cycles tells
+    each person once per change, and the lane keeps no state of its own."""
+
+    async def principal_inactive(
+        self, tenant_id: UUID, *, workspace_id: UUID, principal_id: UUID
+    ) -> None: ...
+
+    async def binding_needs_review(
+        self,
+        tenant_id: UUID,
+        *,
+        workspace_id: UUID,
+        artifact_id: UUID,
+        principal_id: UUID,
+        grants_changed_at: datetime,
+    ) -> None: ...
 
 
 def check_step_run(attempt: int, lane_path: object, iteration_path: object) -> None:

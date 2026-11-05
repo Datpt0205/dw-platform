@@ -28,9 +28,9 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "87a8c2295eca6785597bad36effe590393799c92c37424b3f57469c40a678915",
+      "checksum": "fc229b16779e65fce795ee379916be3fe9e093993f1fd9325aa6710865358606",
       "copy_id": "platform.audit_actions.workflow_engine",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "checksum": "157df89d9b16a646120c67b8ade1fb7cf6087424aec00a4d1e03e4fe1265554c",
@@ -43,9 +43,9 @@
       "version": "1.0.0"
     },
     {
-      "checksum": "060932876c2273adb679c89befb7cfbf46b8f55e9e2deb8d5f6aafbf5aeae2a5",
+      "checksum": "6e7f6463054fbe1c803bd8166a0e2b12953bb4783ec8dbf0da066a47e9dcde37",
       "copy_id": "platform.run_reason_codes.workflow_engine",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "checksum": "c945cbd0f35ec3427a62b3da68a52a42e233a47b6402447604668061edda506c",
@@ -85,7 +85,7 @@
       "version": "1.2.0"
     }
   ],
-  "git_sha": "a1207f7f2d46a987170576aa829908026aa274a3",
+  "git_sha": "unknown",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "model_profiles": [

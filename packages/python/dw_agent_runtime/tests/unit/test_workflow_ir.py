@@ -302,8 +302,9 @@ def test_the_pack_rules_are_the_ticket_s() -> None:
     assert (
         PathRules(
             required_document_keys=frozenset({"key", "version"}),
-            # A pack has no Binding set (tenant-config ticket 05).
-            refused_document_keys=frozenset({"bindings"}),
+            # A pack has no Binding set (tenant-config ticket 05) and records
+            # no outcomes (workflow-engine ticket 04, R1.9).
+            refused_document_keys=frozenset({"bindings", "outcomes"}),
             required_step_keys=frozenset(),
             refused_step_keys=frozenset({"retry", "timeout_s", "on_error", "error_lane"}),
             every_port_lane=False,

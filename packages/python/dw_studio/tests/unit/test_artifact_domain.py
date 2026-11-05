@@ -12,6 +12,7 @@ import pytest
 from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_kernel.canonical import content_hash
 from dw_kernel.ports import SystemClock, Uuid7Generator
+from dw_studio.core.adapters.cel.engine import CelCppEngine
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.service import canonical_document
 from dw_studio.core.domain.artifacts import (
@@ -120,6 +121,7 @@ def test_the_running_app_registers_no_test_kind() -> None:
             tools=NoTools(),
             triggers=NoTriggerSubscriptions(),
             boundaries=RecordingBoundaries(),
+            expressions=CelCppEngine(),
         )
     )
     assert running.kinds == {"object", "workflow"}

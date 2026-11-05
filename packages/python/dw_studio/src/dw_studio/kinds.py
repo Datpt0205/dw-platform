@@ -21,6 +21,7 @@ from typing import Any, Final
 from dw_agent_runtime.wflite.document import SCHEMA_ID as WORKFLOW_DOCUMENT_SCHEMA
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_agent_runtime.wflite.validate import ToolSpecLookup
+from dw_kernel.expressions import ExpressionEngine
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_studio.core.application.boundaries import (
     ActorBoundaryPort,
@@ -79,11 +80,13 @@ def workflow_kind(
     tools: ToolSpecLookup,
     triggers: TriggerActivationPort,
     boundaries: ActorBoundaryPort,
+    expressions: ExpressionEngine,
 ) -> ArtifactKindEntry:
     """`nodes` is the step-type registry the composition root builds, `tools`
-    the platform layer of the tool register (workflow-engine R1.4), and
+    the platform layer of the tool register (workflow-engine R1.4),
     `boundaries` where a version's data boundary is recorded when it goes
-    live (R1.7)."""
+    live (R1.7), and `expressions` the one `ExpressionEngine`, which types the
+    document's `outcomes[]` conditions at submit (R1.9)."""
     return ArtifactKindEntry(
         kind=WORKFLOW_KIND,
         document_schema=WORKFLOW_DOCUMENT_SCHEMA,
@@ -91,7 +94,7 @@ def workflow_kind(
         write_key=WORKFLOWS_EDIT_SCOPE,
         submit_key=VERSIONS_SUBMIT_SCOPE,
         publish_hook=workflow_publish_hook(triggers, boundaries, nodes),
-        validate=WorkflowValidator(nodes, tools),
+        validate=WorkflowValidator(nodes, tools, expressions),
         extract=WorkflowDependencies(nodes),
     )
 
@@ -105,12 +108,19 @@ def platform_kinds(
     tools: ToolSpecLookup,
     triggers: TriggerActivationPort,
     boundaries: ActorBoundaryPort,
+    expressions: ExpressionEngine,
 ) -> tuple[ArtifactKindEntry, ...]:
     """Every kind of `studio.artifact_kinds`, one entry each; the
     composition-root test holds the two equal."""
     return (
         object_kind(object_store, clock=clock, ids=ids),
-        workflow_kind(nodes=nodes, tools=tools, triggers=triggers, boundaries=boundaries),
+        workflow_kind(
+            nodes=nodes,
+            tools=tools,
+            triggers=triggers,
+            boundaries=boundaries,
+            expressions=expressions,
+        ),
     )
 
 

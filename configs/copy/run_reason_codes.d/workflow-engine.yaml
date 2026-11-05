@@ -4,7 +4,7 @@
 # writes, in the same change.
 schema_version: "1.0"
 copy_id: platform.run_reason_codes.workflow_engine
-version: "1.0.0"
+version: "1.1.0"
 codes:
   # workflow-engine/02, the door a Studio run is created through.
   run_as_mismatch: "Lượt chạy không được xin dưới danh nghĩa chủ thể này"
@@ -31,4 +31,7 @@ codes:
   boundary_deriver_missing: "Loại này chưa chạy được trước khi phát hành"
   step_type_unavailable: "Loại bước này chưa chạy được trong lượt Studio"
   engine_unpinned: "Bản kê của lượt không ghim chế độ bền"
-  run_not_queued: "Lượt chạy không ở hàng chờ"
+  # workflow-engine/04, the studio_runs lane and its reaper.
+  dead_lettered: "Lượt chạy dừng hẳn sau năm lần tiến trình chạy nó lỗi"
+  limit_refused: "Lần kích hoạt theo lịch bị bỏ qua vì đã hết hạn mức của kỳ"
+  binding_needs_review: "Bộ giá trị gắn cần được duyệt lại vì quyền của tài khoản dịch vụ đã tăng"

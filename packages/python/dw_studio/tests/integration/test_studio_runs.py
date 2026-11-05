@@ -35,7 +35,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.pool import NullPool
-from studio_run_stack import DIED, FileDoor, build_runner
+from studio_run_stack import DIED, FileDoor, build_runner, claimed, run_claimed
 
 from dw_agent_runtime.adapters.run_control import SqlRunControl
 from dw_agent_runtime.adapters.run_store import RunStatus
@@ -783,13 +783,13 @@ async def test_r6_14_a_draft_edited_after_the_door_blocks_its_run_and_compiles_n
     )
     door = FileDoor(tmp_path / "door.json")
     runner, _ = build_runner(sessions, {"tool": door})
-    assert await runner.run_studio(tenant_id=world.tenant, run_id=edited) == RunStatus.BLOCKED
+    assert await run_claimed(runner, sessions, world.tenant, edited) == RunStatus.BLOCKED
     (row,) = await rows(
         migrator, "SELECT status, error FROM platform.worker_runs WHERE id = :r", r=edited
     )
     assert (row.status, row.error) == ("blocked", {"code": "incompatible_resume"})
     assert door.calls() == [] and runner._compiled == {}
-    assert await runner.run_studio(tenant_id=world.tenant, run_id=unchanged) == RunStatus.COMPLETED
+    assert await run_claimed(runner, sessions, world.tenant, unchanged) == RunStatus.COMPLETED
     assert [c[1].split(":")[2] for c in door.calls()] == ["gui"]
 
 
@@ -807,7 +807,7 @@ async def test_r4_11_past_its_deadline_a_run_is_cancelled_and_audited_by_its_lan
     await with_deadline(migrator, run_id, minutes=-1)
     door = FileDoor(tmp_path / "door.json")
     runner, _ = build_runner(sessions, {"tool": door})
-    assert await runner.run_studio(tenant_id=world.tenant, run_id=run_id) == RunStatus.CANCELLED
+    assert await run_claimed(runner, sessions, world.tenant, run_id) == RunStatus.CANCELLED
     (row,) = await rows(
         migrator, "SELECT status, error FROM platform.worker_runs WHERE id = :r", r=run_id
     )
@@ -868,7 +868,7 @@ async def test_r4_29_a_pinned_approval_written_past_the_door_fails_at_that_step(
         await with_deadline(migrator, run_id)
     door = FileDoor(tmp_path / "door.json")
     runner, _ = build_runner(sessions, {"tool": door})
-    assert await runner.run_studio(tenant_id=world.tenant, run_id=bent) == RunStatus.FAILED
+    assert await run_claimed(runner, sessions, world.tenant, bent) == RunStatus.FAILED
     (row,) = await rows(migrator, "SELECT error FROM platform.worker_runs WHERE id = :r", r=bent)
     assert row.error == {"code": "pinned_result_invalid", "step_id": "duyet"}
     assert [c[1].split(":")[1:3] for c in door.calls()] == [[str(bent), "truoc"]]
@@ -877,7 +877,7 @@ async def test_r4_29_a_pinned_approval_written_past_the_door_fails_at_that_step(
         == []
     )
     # The honest run takes the rejected lane by its simulated decision.
-    assert await runner.run_studio(tenant_id=world.tenant, run_id=honest) == RunStatus.COMPLETED
+    assert await run_claimed(runner, sessions, world.tenant, honest) == RunStatus.COMPLETED
     assert [c[1].split(":")[2] for c in door.calls()][1:] == ["truoc"]
 
 
@@ -925,10 +925,13 @@ async def test_r4_25_a_worker_killed_after_a_send_resumes_after_it_and_replays_t
     door = FileDoor(door_file)
     assert [c[1].split(":")[2] for c in door.calls()] == ["mot", "sua"]
     await rows(
-        migrator, "UPDATE platform.worker_runs SET status = 'queued' WHERE id = :r", r=run_id
+        migrator,
+        "UPDATE platform.worker_runs SET status = 'queued', lease_owner = NULL,"
+        " lease_until = NULL WHERE id = :r",
+        r=run_id,
     )
     runner, _ = build_runner(sessions, {"tool": door, "records": door})
-    assert await runner.run_studio(tenant_id=world.tenant, run_id=run_id) == RunStatus.COMPLETED
+    assert await run_claimed(runner, sessions, world.tenant, run_id) == RunStatus.COMPLETED
     calls = [c[1].split(":")[2] for c in door.calls()]
     assert calls == ["mot", "sua", "sua"], "the send before the death was made again"
     assert len({c[1] for c in door.calls() if c[1].endswith(":sua:")}) == 1
@@ -967,8 +970,9 @@ async def test_al_r8_1_a_run_is_taken_for_its_own_component(
     the one the node head's `RunControlPort` asks about."""
     artifact, version, _ = await a_draft(service, world, doc(source, send("gui")))
     run_id = (await door_of(store).request(ask(world, version))).run_id
+    token = await claimed(sessions, world.tenant, run_id)
     taken = await SqlStudioRunStore(sessions, Uuid7Generator(), SystemClock()).take(
-        world.tenant, run_id
+        world.tenant, run_id, lease_token=token
     )
     assert getattr(taken, "artifact_id", None) == artifact
 
@@ -993,8 +997,9 @@ async def test_the_take_reads_the_data_route_class_the_door_pinned(
             ),
             {"r": run_id},
         )
+    token = await claimed(sessions, world.tenant, run_id)
     taken = await SqlStudioRunStore(sessions, Uuid7Generator(), SystemClock()).take(
-        world.tenant, run_id
+        world.tenant, run_id, lease_token=token
     )
     assert getattr(taken, "data_route_class", None) == "cross_border_minimised"
 
@@ -1025,5 +1030,5 @@ async def test_al_r8_1_a_killed_workflows_simulate_run_still_runs_at_the_real_no
     )
     door = FileDoor(tmp_path / "door.json")
     runner, _ = build_runner(sessions, {"tool": door}, run_control=control)
-    assert await runner.run_studio(tenant_id=world.tenant, run_id=run_id) == RunStatus.COMPLETED
+    assert await run_claimed(runner, sessions, world.tenant, run_id) == RunStatus.COMPLETED
     assert [c[1].split(":")[2] for c in door.calls()] == ["gui"]

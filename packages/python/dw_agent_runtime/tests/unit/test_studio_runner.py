@@ -9,9 +9,9 @@ against PostgreSQL are `dw_studio/tests/integration/test_studio_runs.py`'s.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -29,7 +29,15 @@ from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor
 from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.run_control import OpenRunControl
-from dw_agent_runtime.testing.studio_runs import ScriptedDoor, StudioHarness, document, step
+from dw_agent_runtime.testing.studio_runs import (
+    FakeBindingReview,
+    NoExpressions,
+    RecordingAlerts,
+    ScriptedDoor,
+    StudioHarness,
+    document,
+    step,
+)
 from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_agent_runtime.wflite.compile import COMPILER_VERSION
 from dw_agent_runtime.wflite.node_wrapper import StudioRunPorts
@@ -38,16 +46,45 @@ from dw_kernel.residency import ResidencyRefusedError
 pytestmark = pytest.mark.unit
 
 
+TOKEN = "worker-1:claim"
+
+
 @dataclass
 class FakeTake:
-    """`StudioRunStorePort` whose `take` hands out one prepared run."""
+    """`StudioRunStorePort` whose `take` hands out one prepared run, as the
+    claim under `TOKEN` reads it."""
 
     taken: StudioRun | StudioRunBlocked
     finished: list[tuple[str, Mapping[str, Any] | None]] = field(default_factory=list)
     cancelled: list[uuid.UUID] = field(default_factory=list)
+    outcomes: list[list[str]] = field(default_factory=list)
+    held: list[tuple[timedelta, datetime | None]] = field(default_factory=list)
+    deadlines: list[datetime] = field(default_factory=list)
 
-    async def take(self, tenant_id: uuid.UUID, run_id: uuid.UUID) -> StudioRun | StudioRunBlocked:
+    async def take(
+        self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str
+    ) -> StudioRun | StudioRunBlocked:
+        assert lease_token == TOKEN
         return self.taken
+
+    async def admitted(
+        self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str, deadline: timedelta
+    ) -> datetime:
+        assert isinstance(self.taken, StudioRun)
+        found = self.taken.deadline_at or datetime.now(UTC) + deadline
+        self.deadlines.append(found)
+        return found
+
+    async def hold(
+        self,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        *,
+        lease_token: str,
+        delay: timedelta,
+        until: datetime | None = None,
+    ) -> None:
+        self.held.append((delay, until))
 
     async def finish(
         self,
@@ -55,12 +92,18 @@ class FakeTake:
         run_id: uuid.UUID,
         status: Any,
         *,
+        lease_token: str,
         error: Mapping[str, Any] | None = None,
         result: Mapping[str, Any] | None = None,
+        outcomes: Sequence[str] = (),
     ) -> None:
+        assert lease_token == TOKEN
         self.finished.append((status, error))
+        self.outcomes.append(list(outcomes))
 
-    async def cancel_past_deadline(self, tenant_id: uuid.UUID, run_id: uuid.UUID) -> bool:
+    async def cancel_past_deadline(
+        self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str
+    ) -> bool:
         self.cancelled.append(run_id)
         return True
 
@@ -88,8 +131,14 @@ def studio_run(doc: Mapping[str, Any], harness: StudioHarness, **over: Any) -> S
         engine={"durability": "sync"},
         version_no=1,
         trace_id="t",
+        trigger_kind="manual",
     )
     return replace(base, **over)
+
+
+async def go(runner: LangGraphWorkflowRunner) -> RunStatus:
+    """The run, as the `studio_runs` lane hands it over under its claim."""
+    return await runner.run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4(), lease_token=TOKEN)
 
 
 def runner_of(harness: StudioHarness, store: FakeTake) -> LangGraphWorkflowRunner:
@@ -106,7 +155,13 @@ def runner_of(harness: StudioHarness, store: FakeTake) -> LangGraphWorkflowRunne
         limits=OpenLimits(),
         approval_policy=AutonomyApprovalPolicy(),
         run_control=OpenRunControl(),
-        studio=StudioRunPorts(nodes=harness.ports(), registry=fixture_node_registry()),
+        studio=StudioRunPorts(
+            nodes=harness.ports(),
+            registry=fixture_node_registry(),
+            binding_review=FakeBindingReview(),
+            alerts=RecordingAlerts(),
+            expressions=NoExpressions(),
+        ),
     )
 
 
@@ -147,9 +202,7 @@ async def test_the_run_takes_its_durability_from_the_manifests_engine(durability
     runner = runner_of(h, store)
     spy = Spy()
     runner._compiled[runner_key(store.taken)] = spy
-    assert (
-        await runner.run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4()) == RunStatus.COMPLETED
-    )
+    assert await go(runner) == RunStatus.COMPLETED
     ((payload, config, kwargs),) = spy.invoked
     assert kwargs["durability"] == durability
     assert config["recursion_limit"] == len(spy.nodes) + 1
@@ -169,7 +222,7 @@ def runner_key(taken: Any) -> tuple[str, ...]:
 async def test_a_manifest_without_its_durability_runs_nothing() -> None:
     h, door = harness()
     store = FakeTake(studio_run(two_sends(), h, engine={}))
-    status = await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    status = await go(runner_of(h, store))
     assert status == RunStatus.FAILED
     assert store.finished == [("failed", {"code": "engine_unpinned"})]
     assert door.calls == []
@@ -182,7 +235,7 @@ async def test_a_run_with_a_checkpoint_goes_on_from_it() -> None:
     runner = runner_of(h, store)
     spy = Spy(nxt=("hai",))
     runner._compiled[runner_key(store.taken)] = spy
-    await runner.run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    await go(runner)
     assert spy.invoked[0][0] is None
 
 
@@ -192,7 +245,7 @@ async def test_a_run_with_a_checkpoint_goes_on_from_it() -> None:
 async def test_a_run_that_completes_is_recorded_completed() -> None:
     h, door = harness()
     store = FakeTake(studio_run(two_sends(), h))
-    status = await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    status = await go(runner_of(h, store))
     assert status == RunStatus.COMPLETED and len(door.calls) == 2
     assert store.finished == [("completed", None)]
 
@@ -203,7 +256,7 @@ async def test_outcome_unknown_fails_the_run_before_workflow_engine_08() -> None
     h, door = harness()
     door.script = [OutcomeUnknownError("may have been applied")]
     store = FakeTake(studio_run(two_sends(), h))
-    status = await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    status = await go(runner_of(h, store))
     assert status == RunStatus.FAILED
     assert store.finished == [("failed", {"code": "outcome_unknown", "step_id": "mot"})]
 
@@ -212,14 +265,14 @@ async def test_a_blocked_take_compiles_nothing() -> None:
     h, door = harness()
     store = FakeTake(StudioRunBlocked(uuid.uuid4(), "incompatible_resume"))
     runner = runner_of(h, store)
-    assert await runner.run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4()) == RunStatus.BLOCKED
+    assert await go(runner) == RunStatus.BLOCKED
     assert runner._compiled == {} and door.calls == [] and store.finished == []
 
 
 async def test_past_the_deadline_the_run_is_cancelled_by_the_store_alone() -> None:
     h, door = harness()
     store = FakeTake(studio_run(two_sends(), h, deadline_at=h.clock.now()))
-    status = await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    status = await go(runner_of(h, store))
     assert status == RunStatus.CANCELLED
     assert len(store.cancelled) == 1 and store.finished == [] and door.calls == []
 
@@ -229,7 +282,7 @@ async def test_a_runner_with_no_studio_ports_refuses() -> None:
     runner = runner_of(h, FakeTake(studio_run(two_sends(), h)))
     runner.studio = None
     with pytest.raises(Exception, match="no Studio run"):
-        await runner.run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+        await go(runner)
 
 
 # ---- R4.2: one LRU of 256 for every graph -----------------------------------------
@@ -307,7 +360,7 @@ async def test_every_node_head_asks_with_the_component_the_run_was_taken_for() -
     kill of it refuses the run without the node naming it."""
     h, _ = harness()
     store = FakeTake(studio_run(two_sends(), h))
-    await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    await go(runner_of(h, store))
     assert isinstance(store.taken, StudioRun)
     asked = [(c.artifact_id, c.run_mode, extra) for c, extra in h.run_control.contexts]
     assert asked == [(store.taken.artifact_id, "live", ())] * 2
@@ -319,7 +372,7 @@ async def test_a_kill_at_the_node_head_cancels_the_run_before_any_door() -> None
     h, door = harness()
     h.run_control.refuse(HaltReason.ARTIFACT_KILLED, doors=[RunControlDoor.NODE])
     store = FakeTake(studio_run(two_sends(), h))
-    status = await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    status = await go(runner_of(h, store))
     assert status == RunStatus.CANCELLED
     assert store.finished == [("cancelled", {"code": "artifact_killed", "door": "node"})]
     assert door.calls == []
@@ -332,7 +385,7 @@ async def test_a_studio_run_carries_the_class_its_row_pinned() -> None:
     """R2.1: read from the row at the take, never computed again."""
     h, _ = harness()
     store = FakeTake(studio_run(two_sends(), h, data_route_class="cross_border_minimised"))
-    await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    await go(runner_of(h, store))
     assert {c.route_class for c, _ in h.run_control.contexts} == {"cross_border_minimised"}
 
 
@@ -342,7 +395,7 @@ async def test_a_residency_refusal_fails_the_run_and_is_never_retried_or_routed(
     h, door = harness()
     door.script = [ResidencyRefusedError("not here")]
     store = FakeTake(studio_run(two_sends(), h))
-    status = await runner_of(h, store).run_studio(tenant_id=uuid.uuid4(), run_id=uuid.uuid4())
+    status = await go(runner_of(h, store))
     assert status == RunStatus.FAILED
     assert store.finished == [("failed", {"code": "residency_refused"})]
     assert len(door.calls) == 1

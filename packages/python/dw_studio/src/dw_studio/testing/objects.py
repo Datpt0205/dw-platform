@@ -24,6 +24,7 @@ from dw_platform.testing.rbac import (
     plant_person,
     plant_role,
 )
+from dw_studio.core.adapters.cel.engine import CelCppEngine
 from dw_studio.core.application.registry import ArtifactKindEntry
 from dw_studio.kinds import OBJECTS_MANAGE_SCOPE, platform_kinds
 from dw_studio.records.adapters.definition_store import object_store_of
@@ -86,4 +87,5 @@ def running_kinds() -> tuple[ArtifactKindEntry, ...]:
         tools=NoTools(),
         triggers=NoTriggerSubscriptions(),
         boundaries=RecordingBoundaries(),
+        expressions=CelCppEngine(),
     )

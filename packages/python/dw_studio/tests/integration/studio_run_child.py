@@ -21,13 +21,13 @@ SUPPORT = Path(__file__).resolve().parents[5] / "tests" / "support"
 
 async def main(url: str, tenant: str, run: str, door_file: str, step: str) -> None:
     sys.path.insert(0, str(SUPPORT))
-    from studio_run_stack import FileDoor, build_runner
+    from studio_run_stack import FileDoor, build_runner, run_claimed
 
     engine = create_async_engine(url, poolclass=NullPool)
     sessions = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
     door = FileDoor(Path(door_file), die_after=step)
     runner, _ = build_runner(sessions, {"tool": door, "records": door})
-    await runner.run_studio(tenant_id=uuid.UUID(tenant), run_id=uuid.UUID(run))
+    await run_claimed(runner, sessions, uuid.UUID(tenant), uuid.UUID(run))
     await engine.dispose()
 
 
