@@ -395,6 +395,15 @@ open` là một trường `basic` mở, hợp lệ vì phiên bản đó không 
   `ToolDefinition.data_classification`; Hiện trạng sửa theo. ADR-0106 (Accepted) bổ sung 4/11/2026 ghi cả hai cùng chữ ký bốn tham
   số. Nếu sai thì: ADR-0106 (Accepted) quyết 4 thêm ngoại lệ cho vai không giữ `obj.read`; một ADR thay ADR-0116 (Accepted) quyết 4 và sửa
   CLAUDE.md trước khi gỡ trường.
+- 5/11/2026 (agent, theo ủy quyền 31/10/2026): khi dựng ticket 01, R2.6 và `tenant-rbac:R9.9` (tài khoản dịch vụ không
+  bao giờ đọc trường nhạy cảm) cùng Accepted mà trái nhau ở một ca: vai giữ `obj.<object>.create` của một tài khoản
+  dịch vụ đọc được trường duy nhất `sensitive` qua ngoại lệ R2.6. Mở là lộ dữ liệu nhạy cảm cho principal của Digital
+  Worker (CRITICAL, không nhận), nên luật chặt hơn thắng: ngoại lệ trường duy nhất không mở trường `sensitive` cho tài
+  khoản dịch vụ; người vẫn giữ ngoại lệ như ADR-0106 (Accepted) quyết 4 (M2 của gate). `resolve_field_access` thêm tham
+  số từ khóa bắt buộc `service_account`. Hàm, cổng và adapter nằm ở lõi Studio (`dw_studio.core`), không ở gói
+  `dw_studio.field_security`, vì người gọi là các capability độc lập. Sửa: ADR-0106 (Accepted) bổ sung 5/11/2026. Nếu
+  sai thì: bỏ tham số và ghi ở ADR-0106 (Accepted) rằng ngoại lệ trường duy nhất thắng R9.9; tách gói nền `dw_studio.field_security`
+  ngoài danh sách capability của `scripts/verify_architecture.py`.
 
 ## Danh sách ticket
 

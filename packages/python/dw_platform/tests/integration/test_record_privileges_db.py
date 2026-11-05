@@ -729,7 +729,8 @@ async def test_r9_9_a_sensitive_field_permission_never_reaches_a_service_account
             await conn.execute(
                 sa.text(
                     "UPDATE studio.field_defs SET pd_category = 'sensitive',"
-                    " sensitive_type = 'identity_credentials' WHERE id = :f"
+                    " sensitive_type = 'identity_credentials', access_mode = 'secured'"
+                    " WHERE id = :f"
                 ),
                 {"f": world.lead["note"]},
             )
@@ -827,7 +828,8 @@ async def test_r9_12_a_publish_and_a_role_change_take_their_locks_in_one_order(
                 await publish.execute(
                     sa.text(
                         "UPDATE studio.field_defs SET pd_category = 'sensitive',"
-                        " sensitive_type = 'identity_credentials' WHERE id = :f"
+                        " sensitive_type = 'identity_credentials', access_mode = 'secured'"
+                        " WHERE id = :f"
                     ),
                     {"f": world.lead["note"]},
                 )

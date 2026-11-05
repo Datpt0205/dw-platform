@@ -1,0 +1,156 @@
+# Mutation check of field-security ticket 01: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control (FS1, FS7, FS8, FS11,
+# FS12, FS13, FS15 and the criteria R2.2-R2.10 name) and per layer that holds one
+# (failure-modes #3, #5): the database's in the migration, taking effect when the
+# suite's session fixture recreates the database; the decision's in the pure
+# function; the inputs' in the adapter and the service.
+mutations:
+  - name: FS1 R1.2 a personal-data field is created open
+    file: db/migrations/versions/2f177d264a27_field_access_mode.py
+    old: "            NEW.access_mode := 'secured';"
+    new: "            NEW.access_mode := NEW.access_mode;"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_r1_1_r1_2_fs1_one_mode_per_field_and_personal_data_starts_secured
+  - name: R1.1 the column takes any value
+    file: db/migrations/versions/2f177d264a27_field_access_mode.py
+    old: " CONSTRAINT ck_field_defs_access_mode CHECK (access_mode IN ('open', 'secured'))"
+    new: " CONSTRAINT ck_field_defs_access_mode CHECK (true)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_r1_1_r1_2_fs1_one_mode_per_field_and_personal_data_starts_secured
+  - name: FS11 R1.3 the database lets a sensitive field open
+    file: db/migrations/versions/2f177d264a27_field_access_mode.py
+    old: '    " CHECK (pd_category <> ''sensitive'' OR access_mode = ''secured'')"'
+    new: '    " CHECK (true)"'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_r1_3_fs11_a_sensitive_field_is_never_opened
+  - name: FS11 the decision reads a sensitive field's row as open
+    file: packages/python/dw_studio/src/dw_studio/core/domain/field_access.py
+    old: '    return field.access_mode != "open" or field.pd_category is PdCategory.SENSITIVE'
+    new: '    return field.access_mode != "open"'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_fs11_a_sensitive_field_is_secured_whatever_its_row_says
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_1_to_r2_7_hold_over_1500_generated_cases
+  - name: FS12 R1.6 securing a field leaves the access version where it was
+    file: db/migrations/versions/2f177d264a27_field_access_mode.py
+    old: '    " FOR EACH ROW WHEN (OLD.access_mode IS DISTINCT FROM NEW.access_mode)"'
+    new: '    " FOR EACH ROW WHEN (false)"'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_field_security_r1_6_fs12_a_secured_field_is_hidden_from_the_next_request
+  - name: FS15 R1.7 the revision does not fill in the rows already defined
+    file: db/migrations/versions/2f177d264a27_field_access_mode.py
+    old: '    "UPDATE studio.field_defs SET access_mode = ''secured'' WHERE pd_category <> ''none''",'
+    new: '    "SELECT 1",'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_access_mode_backfill.py::test_r1_7_fs15_existing_personal_data_fields_become_secured
+  - name: FS15 R1.8 a later version does not write access_mode
+    file: packages/python/dw_studio/src/dw_studio/records/application/metadata.py
+    old: "    # field-security R1.8: opened or secured by a later version.\n    \"access_mode\",\n"
+    new: "    # field-security R1.8: opened or secured by a later version.\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_field_security_r1_8_fs15_each_version_writes_every_access_mode
+  - name: FS15 R1.8 name stays open whatever its category
+    file: packages/python/dw_studio/src/dw_studio/records/domain/document.py
+    old: '        access_mode="open" if category == PdCategory.NONE.value else "secured",'
+    new: '        access_mode="open",'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_rules.py::test_field_security_r1_8_the_definition_carries_each_access_mode
+      - packages/python/dw_studio/tests/integration/test_object_definitions.py::test_field_security_r1_8_fs15_each_version_writes_every_access_mode
+  - name: R2.2 reading or updating without object read
+    file: packages/python/dw_studio/src/dw_studio/core/domain/field_access.py
+    old: '    sees = action == "create" or holds_read'
+    new: "    sees = True"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_2_without_object_read_every_field_is_hidden
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_1_to_r2_7_hold_over_1500_generated_cases
+  - name: R2.2 R2.4 a field edit counts without the action's write key
+    file: packages/python/dw_studio/src/dw_studio/core/domain/field_access.py
+    old: "                level = EDIT if edits and writes else READ if holds_read else HIDDEN"
+    new: "                level = EDIT if edits else READ if holds_read else HIDDEN"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_2_a_field_edit_without_object_update_is_read
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_7_read_never_answers_edit
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_r2_2_r2_3_r2_4_a_request_reads_the_person_s_live_grants
+  - name: FS1 R2.3 a secured field reads without its field key
+    file: packages/python/dw_studio/src/dw_studio/core/domain/field_access.py
+    old: '            elif f"fld.{name}.{field.api_name}.read" in principal_grants:'
+    new: "            elif True:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_3_fs1_a_secured_field_not_granted_is_hidden_and_not_visible
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_r2_2_r2_3_r2_4_a_request_reads_the_person_s_live_grants
+  - name: R2.4 the keys are the acting workspace's projection
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/field_security_inputs.py
+    old: '    "  NULLIF(current_setting(''app.tenant_id'', true), '''')::uuid, :u) g) AS keys,"'
+    new:
+      "    \"  NULLIF(current_setting('app.tenant_id', true), '')::uuid, :u) g WHERE g.depth = 'tenant'\"\
+      \n    \" OR g.anchor_workspace_id = NULLIF(current_setting('app.workspace_id', true), '')::uuid) AS keys,\""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_r2_4_grants_anchored_in_another_workspace_still_count
+  - name: FS8 R2.5 a field missing from a link is not capped
+    file: packages/python/dw_studio/src/dw_studio/core/domain/field_access.py
+    old: "                level = _at_most(level, link.get(field.field_id, HIDDEN))"
+    new: "                level = _at_most(level, link.get(field.field_id, EDIT))"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_5_the_boundary_caps_what_the_principal_holds
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_r2_5_a_run_reads_within_its_boundary_and_a_wider_one_widens_it
+  - name: FS7 R2.6 no unique-field exception
+    file: packages/python/dw_studio/src/dw_studio/core/domain/field_access.py
+    old: "                and field.is_unique\n"
+    new: "                and False\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_6_fs7_a_unique_field_is_read_for_a_creator_but_not_past_the_boundary
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_7_create_uses_the_create_key_and_needs_no_object_read
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_a_service_account_never_reads_a_sensitive_field
+  - name: R9.9 the unique exception opens a sensitive field to a service account
+    file: packages/python/dw_studio/src/dw_studio/core/domain/field_access.py
+    old: "                and not (service_account and field.pd_category is PdCategory.SENSITIVE)\n"
+    new: "                and True\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_6_a_unique_sensitive_field_stays_hidden_from_a_service_account
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_a_service_account_never_reads_a_sensitive_field
+  - name: R9.9 the adapter reads every principal as a person
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/field_security_inputs.py
+    old: '    " coalesce((SELECT u.kind = ''service'' FROM platform.users u WHERE u.id = :u), true)"'
+    new: '    " false"'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_a_service_account_never_reads_a_sensitive_field
+  - name: R2.7 create asks the update key and object read
+    file: packages/python/dw_studio/src/dw_studio/core/domain/field_access.py
+    old: '    writes = {"create": holds_create, "update": holds_update, "read": False}[action]'
+    new: '    writes = {"create": holds_update, "update": holds_update, "read": False}[action]'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_7_create_uses_the_create_key_and_needs_no_object_read
+  - name: FS8 R2.8 the service reads an empty chain as a user
+    file: packages/python/dw_studio/src/dw_studio/core/application/field_access.py
+    old: '        if actor.kind != "user":'
+    new: '        if actor.kind != "user" and actor.boundary_ids:'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_5_a_run_reads_its_chain_and_r2_8_an_empty_one_hides_all
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_r2_8_an_empty_chain_hides_all_and_no_actor_is_refused
+  - name: FS8 R2.8 the decision reads an empty chain as no boundary
+    file: packages/python/dw_studio/src/dw_studio/core/domain/field_access.py
+    old: "            if not boundary:\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_8_an_empty_chain_hides_every_field_the_open_ones_included
+  - name: R2.8 a transaction with no actor kind is decided anyway
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/field_security_inputs.py
+    old: '            raise ActorUnboundError("the transaction has no actor kind")'
+    new: "            pass"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_r2_8_an_empty_chain_hides_all_and_no_actor_is_refused
+  - name: FS12 FS13 R2.9 R2.10 the service keeps a principal's grants between calls
+    file: packages/python/dw_studio/src/dw_studio/core/application/field_access.py
+    old: "        principal = await self.inputs.principal(tx, actor.principal_id)\n"
+    new:
+      "        principal = self.__dict__.get(actor.principal_id) or await self.inputs.principal(tx,\
+      \ actor.principal_id)\n        self.__dict__[actor.principal_id] = principal\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_9_nothing_is_kept_between_two_calls
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_r2_9_fs12_a_grant_revoked_between_two_calls_of_one_run
+      - packages/python/dw_studio/tests/integration/test_field_access_db.py::test_r2_10_fs13_a_grant_in_one_company_is_not_one_in_another
+  - name: R2.1 reads_all answers yes for an object it does not hold
+    file: packages/python/dw_studio/src/dw_studio/core/domain/field_access.py
+    old: "        if not dot or access is None:\n            return False\n"
+    new: "        if not dot or access is None:\n            continue\n"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_field_access.py::test_r2_1_reads_all_over_the_stamped_fields

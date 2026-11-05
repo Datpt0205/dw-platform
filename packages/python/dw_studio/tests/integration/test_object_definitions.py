@@ -54,6 +54,8 @@ from dw_platform.testing.rbac import (
     plant_tenant,
 )
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore, SqlArtifactTx
+from dw_studio.core.adapters.field_security_inputs import SqlFieldSecurityInputs
+from dw_studio.core.application.field_access import FieldAccessService
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.service import ArtifactService, SealResult
 from dw_studio.core.domain.artifacts import DocumentInvalidError
@@ -74,6 +76,7 @@ from dw_studio.testing.objects import (
     plant_manager,
     running_kinds,
 )
+from dw_studio.testing.records import act_as_user
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
@@ -759,6 +762,116 @@ async def test_r1_1_a_later_version_is_applied_whole_and_twice_is_once(
 
     assert await _audits(migrator, artifact_id) == audits
     assert await _stamps(migrator, artifact_id) == stamps
+
+
+async def _modes(migrator: AsyncEngine, object_id: uuid.UUID) -> dict[str, str]:
+    return {
+        r.api_name: r.access_mode
+        for r in await rows(
+            migrator,
+            "SELECT api_name, access_mode FROM studio.field_defs WHERE object_id = :o",
+            o=object_id,
+        )
+    }
+
+
+async def test_field_security_r1_8_fs15_each_version_writes_every_access_mode(
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+) -> None:
+    """field-security R1.1, R1.8 (FS15): the column is what the version's
+    document says, `name` follows its category, `owner` and `workspace` are
+    open; a later version secures one field, opens another and raises the
+    name's category, and the store reads back `definition_of` that version."""
+    who = world.manager
+    plain_name = {"labels": {"vi": "Họ tên"}, "pd_category": "none"}
+    first = object_document(
+        object_field("ghi_chu"),
+        object_field("ma_kh", access_mode="secured"),
+        object_field("dien_thoai", "phone", pd_category="basic"),
+        name_field=plain_name,
+    )
+    artifact_id, _ = await published(service, who, first)
+    assert await _modes(migrator, artifact_id) == {
+        "name": "open",
+        "owner": "open",
+        "workspace": "open",
+        "ghi_chu": "open",
+        "ma_kh": "secured",
+        "dien_thoai": "secured",
+    }
+    second = object_document(
+        object_field("ghi_chu", access_mode="secured"),
+        object_field("ma_kh", access_mode="open"),
+        object_field("dien_thoai", "phone", pd_category="basic"),
+        name_field={**plain_name, "pd_category": "basic"},
+    )
+    v2 = await sealed_next(service, who, artifact_id, second)
+    await go_live(service, who, v2.version_id)
+    assert await _modes(migrator, artifact_id) == {
+        "name": "secured",
+        "owner": "open",
+        "workspace": "open",
+        "ghi_chu": "secured",
+        "ma_kh": "open",
+        "dien_thoai": "secured",
+    }
+    assert (await stored(sessions, who, artifact_id)).definition == definition_of(second)
+
+
+async def _reader(migrator: AsyncEngine, world: World, object_id: uuid.UUID) -> uuid.UUID:
+    """A member holding `read` on the object at tenant depth, nothing else."""
+    tenant = world.tenant
+    async with migrator.begin() as conn:
+        person = await plant_person(conn, tenant.tenant_id)
+        membership = await plant_membership(conn, tenant.tenant_id, tenant.main, person)
+        role = await plant_role(conn, tenant.tenant_id, f"r{uuid.uuid4().hex[:10]}", {})
+        await conn.execute(
+            sa.text(
+                "INSERT INTO platform.tenant_role_object_privileges"
+                " (tenant_id, role_id, object_id, action, depth)"
+                " VALUES (:t, :r, :o, 'read', 'tenant')"
+            ),
+            {"t": tenant.tenant_id, "r": role, "o": object_id},
+        )
+        await assign(conn, tenant.tenant_id, tenant.main, membership, role)
+    return person
+
+
+async def _level(
+    app_engine: AsyncEngine, world: World, person: uuid.UUID, object_id: uuid.UUID, field: str
+) -> str | None:
+    async with app_engine.begin() as conn:
+        await act_as_user(conn, world.tenant.tenant_id, person)
+        access = await FieldAccessService(SqlFieldSecurityInputs()).for_object(conn, object_id)
+    return access.level_of(field)
+
+
+async def test_field_security_r1_6_fs12_a_secured_field_is_hidden_from_the_next_request(
+    service: ArtifactService,
+    app_engine: AsyncEngine,
+    migrator: AsyncEngine,
+    world: World,
+) -> None:
+    """field-security R1.6 (FS12): the version securing `ghi_chu` goes live in
+    transaction A; the reader's first request after it sees the field hidden,
+    and the company's access version moved once, at A's commit, so a context
+    cached under the old version is not read again."""
+    who = world.manager
+    artifact_id, _ = await published(service, who, object_document(object_field("ghi_chu")))
+    reader = await _reader(migrator, world, artifact_id)
+    assert await _level(app_engine, world, reader, artifact_id, "ghi_chu") == "read"
+    version = "SELECT version FROM platform.tenant_access_versions WHERE tenant_id = :t"
+    before = (await rows(migrator, version, t=world.tenant.tenant_id))[0].version
+    secured = object_document(object_field("ghi_chu", access_mode="secured"))
+    v2 = await sealed_next(service, who, artifact_id, secured)
+
+    await go_live(service, who, v2.version_id)
+
+    assert (await rows(migrator, version, t=world.tenant.tenant_id))[0].version == before + 1
+    assert await _level(app_engine, world, reader, artifact_id, "ghi_chu") == "hidden"
 
 
 async def test_r1_4_default_access_defaults_to_private_and_the_check_names_itself(

@@ -261,3 +261,15 @@ Numbered in the block 0100-0199 reserved for Studio (ADR-0100 records the block)
   exception to it), and `obj.<object>.read` is not required, so a create-only role can create a record. If wrong: an
   ADR superseding ADR-0116 decision 4 and a CLAUDE.md change come first, before the tool field is removed; the unique
   field rule gains "except for a role without `obj.<object>.read`".
+
+## Amendments (2026-11-05)
+
+- Building field-security ticket 01 (agent, under Đạt's delegation of 2026-10-31): decision 4's unique-field rule and
+  tenant-rbac R9.9 ("no service account reads a sensitive field") disagreed for one case, a service account whose
+  role creates or updates an object with a unique sensitive field. The stricter rule wins: the unique-field rule does
+  not lift a `sensitive` field for a service account, and a person keeps it as decided. The function is
+  `resolve_field_access(principal_grants, object_security, boundary, action, *, service_account)`, the keyword
+  required, so a caller that forgets it fails a type check instead of opening a field. It lives in Studio's core
+  (`dw_studio.core.domain.field_access`, with `FieldAccessService` and its port beside it), the place every
+  independent capability may import. If wrong: the keyword goes and this decision says the unique-field rule wins
+  over R9.9.

@@ -16,6 +16,7 @@ import pytest
 
 from dw_kernel.personal_data import PdCategory
 from dw_studio.core.domain.artifacts import DocumentInvalidError
+from dw_studio.records.application.metadata import OWNER_ROW, WORKSPACE_ROW
 from dw_studio.records.domain.document import definition_of, parse_object
 from dw_studio.records.domain.field_types import (
     FIELD_TYPES,
@@ -547,6 +548,28 @@ def test_definition_of_is_order_and_default_blind_and_carries_the_name_row() -> 
     assert set(definition.fields) == {"name", "phone", "email"}
     assert definition.fields["name"].pd_category == PdCategory.BASIC.value
     assert definition.default_access == "private"
+
+
+def test_field_security_r1_8_the_definition_carries_each_access_mode() -> None:
+    """field-security R1.8 (FS15): a field's `access_mode` as the parse fills
+    it; `name` secured exactly when its category is not `none`; the two system
+    rows no document decides are open."""
+    document = a_document(
+        a_field(),
+        a_field("ghi_chu", type="text", pd_category="none"),
+        a_field("ma_noi_bo", type="text", pd_category="none", access_mode="secured"),
+        name_field={"labels": {"vi": "Họ tên"}, "pd_category": "none"},
+    )
+    fields = definition_of(document).fields
+    assert {name: f.access_mode for name, f in fields.items()} == {
+        "name": "open",
+        "phone": "secured",
+        "ghi_chu": "open",
+        "ma_noi_bo": "secured",
+    }
+    raised = a_document(a_field(), name_field={"labels": {"vi": "Họ tên"}, "pd_category": "basic"})
+    assert definition_of(raised).fields["name"].access_mode == "secured"
+    assert (OWNER_ROW.access_mode, WORKSPACE_ROW.access_mode) == ("open", "open")
 
 
 def test_definition_of_refuses_an_invalid_document() -> None:

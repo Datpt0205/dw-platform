@@ -796,6 +796,9 @@ _STUDIO_WRITES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
                 "pd_category",
                 "sensitive_type",
                 "subject_identifier",
+                # field-security ticket 01 (migration 2f177d264a27): written by
+                # the publish hook only, from the version's document.
+                "access_mode",
                 "updated_at",
                 "updated_by",
             }
