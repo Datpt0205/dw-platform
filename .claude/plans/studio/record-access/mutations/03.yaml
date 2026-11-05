@@ -1,0 +1,215 @@
+# Mutation check of record-access ticket 03: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control (RA1, RA2, RA4-RA11,
+# RA13, RA17, RA18, RA22, RA23, R9.10 and the gate's (b), (e), (f), (g), (h), (m),
+# (n)) and per layer that holds one (failure-modes #3, #5): the database's in the
+# migration, taking effect when the suite's session fixture recreates the
+# database; the application's in the module that holds it. The scan and catalog
+# mutations edit the file a source scan reads, in place (`mutate-in-place`).
+mutations:
+  - name: RA1 R1.2 the owner check is gone
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    op.execute(_OWNER_TRIGGER)\n"
+    new: "    pass\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r1_2_an_owner_who_is_not_an_active_member_is_refused
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r1_2_the_check_holds_under_a_security_definer_function
+  - name: RA1 (m) the owner check reads another company's members before refusing the row
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: |2-
+              IF NEW.tenant_id IS DISTINCT FROM
+                  NULLIF(current_setting('app.tenant_id', true), '')::uuid THEN
+    new: |2-
+              IF false THEN
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r1_2_another_company_s_row_is_refused_before_its_members_are_read
+  - name: RA2 R1.3 dw_app may update a record's owner again
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    for statement in _INDEXES:\n        op.execute(statement)\n\n    # 2."
+    new:
+      "    for statement in _INDEXES:\n        op.execute(statement)\n    op.execute(\"GRANT UPDATE (owner_id,\
+      \ access_key) ON studio.records TO dw_app\")\n\n    # 2."
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r1_3_dw_app_updates_no_owner_workspace_or_object
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r1_3_dw_app_updates_no_access_key
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_artifact_envelope_grants_dw_app_its_writes_and_no_more
+  - name: RA4 R2.2 the default arm leaves the computation
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    op.execute(_compute(default_access=True))\n"
+    new: "    op.execute(_compute(default_access=False))\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r2_2_public_read_opens_reading_and_never_writing
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_r5_1_ra12_every_reader_matches_the_oracle_over_random_organisations
+  - name: RA4 R2.3 public_read_write leaves the read tenant arm (gate (c))
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    \"read\": \"('public_read', 'public_read_write')\",\n"
+    new: "    \"read\": \"('public_read')\",\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r2_3_public_read_write_opens_update_and_includes_read
+  - name: RA4 R2.4 default access opens delete
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    \"update\": \"('public_read_write')\",\n"
+    new: "    \"update\": \"('public_read_write')\",\n    \"delete\": \"('public_read_write')\",\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r2_4_public_read_write_never_deletes
+  - name: RA4 R2.7 (b) the soft delete's delete reach leaves WITH CHECK
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    f\" AND (deleted_at IS NULL OR {_REACH['delete']})))\"\n"
+    new: "    f\"))\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r2_7_a_soft_delete_needs_delete_reach
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r2_7_workspace_update_with_own_delete_soft_deletes_only_ones_own
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r4_1_every_record_table_holds_the_module_s_policies
+  - name: RA5 R3.1 the own arm reads any owner
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: |2-
+              " OR (owner_id = (SELECT studio.acl_user())"
+              " AND object_id = ANY ((SELECT studio.acl_objects('read', 'own'))::uuid[])))"
+    new: |2-
+              " OR (owner_id IS NOT NULL"
+              " AND object_id = ANY ((SELECT studio.acl_objects('read', 'own'))::uuid[])))"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r3_1_own_depth_reaches_ones_own_records_for_each_command
+  - name: RA6 R3.2 the workspace arm leaves the read policy
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "        \" OR access_key = ANY ((SELECT studio.acl_keys('read'))::uuid[])\"\n"
+    new: "        \" OR false\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r3_2_workspace_depth_reaches_its_workspace_only
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r3_4_two_assignments_add_up_whatever_the_working_workspace
+  - name: RA7 R3.5 the create own arm keys the object alone, not its anchor
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "        \" AND access_key = ANY ((SELECT studio.acl_create_own_keys())::uuid[])))\"\n"
+    new: "        \" AND object_id = ANY ((SELECT studio.acl_objects('create', 'own'))::uuid[])))\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r3_5_a_create_outside_create_reach_is_refused
+  - name: RA8 R4.1 a tenant-only PERMISSIVE policy joins the record set
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    # 5. Default access in the computation, and the epoch when it changes.\n"
+    new:
+      "    op.execute(f\"CREATE POLICY wide ON studio.records USING ({_TENANT})\")\n    # 5. Default\
+      \ access in the computation, and the epoch when it changes.\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_rls_coverage.py::test_every_record_table_holds_exactly_the_record_policy_set
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r4_1_every_record_table_holds_the_module_s_policies
+  - name: RA8 R4.1 a studio.acl_* reader loses its fixed search_path
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old:
+      "    LANGUAGE sql STABLE\n    SET search_path = pg_catalog\n    AS $$\n        SELECT CASE WHEN\
+      \ current_setting('app.actor_kind', true)"
+    new:
+      "    LANGUAGE sql STABLE\n    AS $$\n        SELECT CASE WHEN current_setting('app.actor_kind',\
+      \ true)"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_rls_coverage.py::test_every_function_a_record_policy_reads_is_stable_invoker_and_pinned
+  - name: RA8 (h) the module changes and no revision applies it
+    file: packages/python/dw_studio/src/dw_studio/records/adapters/record_policy.py
+    old: "        f\" AND object_id = ANY ((SELECT studio.acl_objects('{action}', 'own'))::uuid[])))\"\n"
+    new: "        f\" AND object_id = ANY ((SELECT studio.acl_objects('{action}', 'tenant'))::uuid[])))\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r4_1_every_record_table_holds_the_module_s_policies
+  - name: RA9 R4.2 the RESTRICTIVE tenant policy admits every tenant
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    # 5. Default access in the computation, and the epoch when it changes.\n"
+    new:
+      "    for table in _record_tables():\n        op.execute(f\"ALTER POLICY tenant_isolation_records\
+      \ ON studio.{table} USING (true) WITH CHECK (true)\")\n    # 5. Default access in the computation,\
+      \ and the epoch when it changes.\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_rls_coverage.py::test_every_record_table_holds_exactly_the_record_policy_set
+  - name: RA10 R4.3 dw_app regains SELECT on a partition
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    # 5. Default access in the computation, and the epoch when it changes.\n"
+    new:
+      "    op.execute(\"GRANT SELECT ON studio.records_p2 TO dw_app\")\n    # 5. Default access in the\
+      \ computation, and the epoch when it changes.\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r4_3_dw_app_reaches_no_partition_by_name
+  - name: RA11 R4.5 the provisioner reads records
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    # 5. Default access in the computation, and the epoch when it changes.\n"
+    new:
+      "    op.execute(_for_role(\"dw_provisioner\", \"GRANT SELECT ON studio.records TO dw_provisioner;\"\
+      ))\n    # 5. Default access in the computation, and the epoch when it changes.\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_the_reach_ledger_is_read_only_and_its_inputs_no_ones
+  - name: RA13 R5.2 (n) the default-access trigger is gone
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: |2-
+          "CREATE TRIGGER trg_studio_default_access AFTER UPDATE OF default_access"
+          f" ON studio.object_defs FOR EACH ROW WHEN {_CONDITION}"
+          " EXECUTE FUNCTION studio.bump_access_epoch()",
+    new: |2-
+          "SELECT 1",
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r5_2_narrowing_default_access_holds_from_the_next_transaction
+      - packages/python/dw_studio/tests/integration/test_principal_scopes.py::test_step_7_every_declared_input_carries_its_trigger
+  - name: RA13 (n) the default-access trigger bumps on every publish
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    f\" ON studio.object_defs FOR EACH ROW WHEN {_CONDITION}\"\n"
+    new: "    \" ON studio.object_defs FOR EACH ROW\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r5_2_a_publish_that_keeps_default_access_bumps_no_epoch
+  - name: RA17 R6.1 the policies stop asking the actor kind
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "_ACTOR_OK = \"(SELECT studio.acl_actor_kind()) = 'user'\"\n"
+    new: "_ACTOR_OK = \"(SELECT studio.acl_actor_kind()) IS NOT NULL\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r6_1_no_actor_kind_or_an_unknown_one_reaches_nothing
+  - name: RA18 R6.2 the Studio door forgets the reach door
+    file: packages/python/dw_studio/src/dw_studio/records/adapters/user_session.py
+    old: "        (await session.execute(_REACH_DOOR)).first()\n"
+    new: "        pass\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r6_2_a_studio_request_binds_user_and_the_reach_before_its_first_statement
+  - name: RA18 (e) bind_actor(user) from a second module
+    file: packages/python/dw_studio/src/dw_studio/records/adapters/definition_store.py
+    old: "from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session\n"
+    new:
+      "from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session\n\
+      \n\nasync def _probe(s):\n    await bind_actor(s, 'user')\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_session_setting_scan.py::test_only_the_listed_modules_bind_an_actor_or_build_the_registry
+  - name: RA22 R7.1 (g) the tenant-wide scope outlives its transaction
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_session.py
+    old: "    \"       set_config('app.workspace_scope', 'tenant', true)\"\n"
+    new: "    \"       set_config('app.workspace_scope', 'tenant', false)\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r7_1_the_tenant_wide_scope_reads_every_record_of_one_tenant_for_one_transaction
+      - packages/python/dw_platform/tests/unit/test_tenant_wide_scope.py::test_a_registered_lane_binds_the_tenant_and_the_scope_for_its_transaction
+  - name: RA22 R7.2 an unregistered lane is served
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_session.py
+    old: "    if registry.get(lane) is None:\n"
+    new: "    if False:\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_tenant_wide_scope.py::test_r7_2_an_unregistered_lane_is_refused_before_any_statement
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r7_2_an_unregistered_lane_is_refused_before_anything_is_set
+  - name: RA22 R7.2 a setter outside the helper
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "_SET_TENANT = text(\"SELECT set_config('app.tenant_id', :tenant_id, true)\")\n"
+    new:
+      "_SET_TENANT = text(\"SELECT set_config('app.tenant_id', :tenant_id, true)\")\n_PROBE =\
+      \ \"SET LOCAL app.workspace_scope = 'tenant'\"\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_session_setting_scan.py::test_only_tenant_session_sets_the_scope_and_the_actor_kind
+  - name: RA22 (f) the registry built outside the worker's root
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/offboarding.py
+    old: "    scopes: TenantWideScopeRegistry = field(kw_only=True)\n"
+    new: "    scopes: TenantWideScopeRegistry = field(default_factory=lambda: TenantWideScopeRegistry())\n"
+    tests:
+      - packages/python/dw_platform/tests/unit/test_session_setting_scan.py::test_only_the_listed_modules_bind_an_actor_or_build_the_registry
+  - name: RA23 R7.3 G1 offboarding reads records without the tenant-wide scope
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/tenant_session.py
+    old: "    \"       set_config('app.workspace_scope', 'tenant', true)\"\n"
+    new: "    \"       set_config('app.workspace_scope', '', true)\"\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r7_3_g1_offboarding_exports_each_record_once_and_purges_them
+  - name: R9.10 the indexes that lead with (tenant_id, object_id) and the key are gone
+    file: db/migrations/versions/2c2095fbb4c7_record_policies_and_default_access.py
+    old: "    # 2. The owner check.\n"
+    new:
+      "    op.execute(\"DO $$ DECLARE r record; BEGIN FOR r IN SELECT indexrelid::regclass AS i FROM pg_index\
+      \ WHERE indrelid = 'studio.records'::regclass AND (pg_get_indexdef(indexrelid) LIKE '%(tenant_id,\
+      \ object_id%' OR pg_get_indexdef(indexrelid) LIKE '%(tenant_id, access_key%') LOOP EXECUTE\
+      \ 'DROP INDEX ' || r.i; END LOOP; END $$\")\n    # 2. The owner check.\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_policies.py::test_r9_10_the_standard_page_plans_no_sequential_scan_for_any_profile

@@ -7,7 +7,9 @@ workspaces the principal belongs to and the earliest expiry behind it. It is
 written from the ticket, not from the SQL, so the differential test compares
 two independent answers. `random_organisation` draws an organisation, and
 `plant` writes it, as the migrator, in the caller's transaction. Ticket 03
-adds the default-access arm here.
+added the default-access arm: a `public_read` or `public_read_write` object in
+the read tenant arm of a holder of read at any W1 depth, a `public_read_write`
+one in the update tenant arm of a holder of update (ADR-0105 decision 2 (a)).
 """
 
 from __future__ import annotations
@@ -38,6 +40,13 @@ ACTIONS = ("read", "create", "update", "delete", "assign")
 ARMS = ("own", "keys", "tenant")
 DEPTHS = ("own", "workspace", "tenant")
 OWNER = "tenant_owner"
+DEFAULT_ACCESS = ("private", "public_read", "public_read_write")
+# The tenant arm each default access opens, by action (gate (c): read-write
+# includes read; neither ever opens delete or assign).
+_OPENS: dict[str, frozenset[str]] = {
+    "read": frozenset({"public_read", "public_read_write"}),
+    "update": frozenset({"public_read_write"}),
+}
 
 
 def access_key(object_id: uuid.UUID, workspace_id: uuid.UUID) -> uuid.UUID:
@@ -78,6 +87,8 @@ class Organisation:
     objects: tuple[uuid.UUID, ...]
     roles: Mapping[uuid.UUID, Role]
     people: tuple[Person, ...]
+    # object -> `studio.object_defs.default_access`; `private` when absent.
+    default_access: Mapping[uuid.UUID, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -130,7 +141,9 @@ def expected_scope(org: Organisation, person_id: uuid.UUID, now: datetime) -> Sc
         arms.setdefault((action, "own"), set()).add(o)
         if depth == "workspace":
             arms.setdefault((action, "keys"), set()).add(access_key(o, anchor))
-        if depth == "tenant":
+        if depth == "tenant" or org.default_access.get(o, "private") in _OPENS.get(
+            action, frozenset()
+        ):
             arms.setdefault((action, "tenant"), set()).add(o)
         if action == "create" and depth == "own":
             create_own.add(access_key(o, anchor))
@@ -166,9 +179,17 @@ async def plant_random_organisation(conn: Conn, rng: random.Random, now: datetim
             conn, "UPDATE platform.workspaces SET archived_at = now() WHERE id = :w", {"w": w}
         )
     objects = []
+    default_access: dict[uuid.UUID, str] = {}
     for n in range(rng.randint(1, 3)):
         planted = await plant_object(conn, PlantedTenant(t, tenant.workspaces), f"obj{n}", {})
         objects.append(planted.object_id)
+        default_access[planted.object_id] = rng.choice(DEFAULT_ACCESS)
+        if default_access[planted.object_id] != "private":
+            await _run(
+                conn,
+                "UPDATE studio.object_defs SET default_access = :d WHERE id = :o",
+                {"d": default_access[planted.object_id], "o": planted.object_id},
+            )
 
     roles: dict[uuid.UUID, Role] = {}
     owner = await role_id(conn, t, OWNER)
@@ -235,5 +256,12 @@ async def plant_random_organisation(conn: Conn, rng: random.Random, now: datetim
             conn, "UPDATE platform.tenants SET status = :s WHERE id = :t", {"s": status, "t": t}
         )
     return Organisation(
-        t, status, tenant.workspaces, archived, tuple(objects), roles, tuple(people)
+        t,
+        status,
+        tenant.workspaces,
+        archived,
+        tuple(objects),
+        roles,
+        tuple(people),
+        default_access,
     )

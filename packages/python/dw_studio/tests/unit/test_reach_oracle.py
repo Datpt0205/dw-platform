@@ -116,3 +116,52 @@ def test_valid_until_is_the_earliest_live_expiry_and_a_stranger_has_no_scope() -
     )
     assert expected_scope(_org(p), p.id, NOW).valid_until == soon
     assert expected_scope(_org(p), uuid.uuid4(), NOW).arms == {}
+
+
+# record-access ticket 03: default access (ADR-0105 decision 2 (a); gate (c)).
+
+_BOTH = uuid.uuid4()
+
+
+def _defaulted(access: str, *privileges: tuple[uuid.UUID, str, str]) -> tuple[Organisation, Person]:
+    role = Role(_BOTH, "editor", privileges)
+    p = Person(uuid.uuid4(), "active", (MKT,), (Assignment(MKT, _BOTH),))
+    org = Organisation(
+        T,
+        "active",
+        (MKT, SALES),
+        frozenset(),
+        (LEAD, CAMPAIGN),
+        {_BOTH: role},
+        (p,),
+        {LEAD: access},
+    )
+    return org, p
+
+
+@pytest.mark.parametrize("depth", ["own", "workspace", "tenant"])
+def test_public_read_puts_the_object_in_the_read_tenant_arm_at_any_depth(depth: str) -> None:
+    org, p = _defaulted("public_read", (LEAD, "read", depth), (LEAD, "update", depth))
+    scope = expected_scope(org, p.id, NOW)
+    assert scope.arm("read", "tenant") == {LEAD}
+    assert scope.arm("update", "tenant") == (
+        frozenset({LEAD}) if depth == "tenant" else frozenset()
+    )
+
+
+def test_public_read_write_opens_update_and_read_but_never_delete_or_assign() -> None:
+    org, p = _defaulted(
+        "public_read_write",
+        *((LEAD, action, "own") for action in ("read", "update", "delete", "assign")),
+    )
+    scope = expected_scope(org, p.id, NOW)
+    assert scope.arm("read", "tenant") == scope.arm("update", "tenant") == {LEAD}
+    assert scope.arm("delete", "tenant") == scope.arm("assign", "tenant") == frozenset()
+
+
+def test_default_access_gives_nothing_to_someone_without_the_privilege() -> None:
+    org, p = _defaulted("public_read_write", (CAMPAIGN, "read", "own"))
+    scope = expected_scope(org, p.id, NOW)
+    assert LEAD not in scope.arm("read", "tenant") | scope.arm("update", "tenant")
+    private, q = _defaulted("private", (LEAD, "read", "own"))
+    assert expected_scope(private, q.id, NOW).arm("read", "tenant") == frozenset()

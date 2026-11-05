@@ -1,6 +1,6 @@
 # 03 — Cột truy cập, bộ policy trên bảng bản ghi, mặc định truy cập theo object và phạm vi toàn tenant cho lane
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02, .claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md, .claude/plans/studio/foundations-hardening/issues/03-quyen-dw-app-va-rls-initplan.md, .claude/plans/studio/foundations-hardening/issues/07-offboarding-xuat-mot-lan-theo-lo.md
 Area: studio
 Yêu cầu: G1, R1.2, R1.3, R2.2, R2.3, R2.4, R2.7, R3.1, R3.2, R3.3, R3.4, R3.5, R4.1, R4.2, R4.3, R4.4, R4.5, R4.6, R5.2, R6.1, R6.2, R7.1, R7.2, R7.3, R9.10, RA1, RA2, RA4, RA5, RA6, RA7, RA8, RA9, RA10, RA11, RA13, RA17, RA22, RA23
@@ -114,68 +114,68 @@ definitions_and_records.py`), áp cho bảng cha và mọi partition, đọc t�
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.2 (RA1): INSERT với `owner_id` là người của tenant B, hay một thành viên bị tạm khóa, hay `owner_kind = 'team'`
+- [x] R1.2 (RA1): INSERT với `owner_id` là người của tenant B, hay một thành viên bị tạm khóa, hay `owner_kind = 'team'`
       → 23514 `ck_records_owner_in_tenant`; cùng ca qua một hàm SECURITY DEFINER thử → 23514; gỡ trigger → test đỏ.
-- [ ] R1.3 (RA2): `dw_app` UPDATE thẳng `owner_id`, `owner_kind`, `workspace_id`, `object_id` hay `access_key` →
+- [x] R1.3 (RA2): `dw_app` UPDATE thẳng `owner_id`, `owner_kind`, `workspace_id`, `object_id` hay `access_key` →
       permission denied; cấp lại UPDATE trên cột đó → test đỏ.
-- [ ] R2.2 (RA4): object `private`: người giữ `read` mức Của tôi đọc bản ghi của người khác → 0 dòng; đổi sang
+- [x] R2.2 (RA4): object `private`: người giữ `read` mức Của tôi đọc bản ghi của người khác → 0 dòng; đổi sang
       `public_read` → 1 dòng, UPDATE → 0 dòng; bỏ nhánh mặc định khỏi hàm tính → test đỏ.
-- [ ] R2.3 (RA4): `public_read_write`: người giữ `read` và `update` mức Của tôi UPDATE theo id bản ghi của người khác →
+- [x] R2.3 (RA4): `public_read_write`: người giữ `read` và `update` mức Của tôi UPDATE theo id bản ghi của người khác →
       1 dòng; người chỉ giữ `read` đọc được nó; bỏ `public_read_write` khỏi mảng `read`/`tenant` → ca UPDATE trả 0, test
       đỏ.
-- [ ] R2.4 (RA4): `public_read_write`: người giữ `update` mức Của tôi DELETE bản ghi của người khác → 0 dòng bị ảnh
+- [x] R2.4 (RA4): `public_read_write`: người giữ `update` mức Của tôi DELETE bản ghi của người khác → 0 dòng bị ảnh
       hưởng, bản ghi còn nguyên.
-- [ ] R2.7 (RA4): `public_read_write`: cùng người UPDATE `deleted_at = now()` (xóa mềm) bản ghi đó → WITH CHECK
+- [x] R2.7 (RA4): `public_read_write`: cùng người UPDATE `deleted_at = now()` (xóa mềm) bản ghi đó → WITH CHECK
       từ chối 42501, `deleted_at` vẫn NULL; DELETE thật → 0 dòng; người giữ `update` mức Workspace và `delete` mức Của tôi
       xóa mềm bản ghi của đồng nghiệp cùng workspace → 42501; người có tầm `delete` → được; gỡ nhánh `delete` khỏi WITH
       CHECK của `_update` → ca đầu thành công, test đỏ.
-- [ ] R3.1 (RA5): vai trò `read` mức Của tôi: SELECT bản ghi của đồng nghiệp cùng workspace → 0 dòng, bản ghi của mình
+- [x] R3.1 (RA5): vai trò `read` mức Của tôi: SELECT bản ghi của đồng nghiệp cùng workspace → 0 dòng, bản ghi của mình
       → 1 dòng; UPDATE và xóa mềm theo cùng mức cho cùng kết quả.
-- [ ] R3.2 (RA6): mức Workspace của tôi được gán ở Marketing: bản ghi của Marketing → thấy, bản ghi của Sales → 0 dòng.
-- [ ] R3.3 (RA6): mức Toàn công ty: thấy bản ghi của cả Marketing và Sales.
-- [ ] R3.4 (RA6): người có hai lần gán (Của tôi ở Sales, Workspace ở Marketing) thấy hợp hai tầm; đổi workspace đang
+- [x] R3.2 (RA6): mức Workspace của tôi được gán ở Marketing: bản ghi của Marketing → thấy, bản ghi của Sales → 0 dòng.
+- [x] R3.3 (RA6): mức Toàn công ty: thấy bản ghi của cả Marketing và Sales.
+- [x] R3.4 (RA6): người có hai lần gán (Của tôi ở Sales, Workspace ở Marketing) thấy hợp hai tầm; đổi workspace đang
       làm việc giữa hai yêu cầu → cùng tập bản ghi.
-- [ ] R3.5 (RA7): INSERT với workspace sở hữu ngoài tầm `create`, với người phụ trách khác mình ở mức Của tôi, hay với
+- [x] R3.5 (RA7): INSERT với workspace sở hữu ngoài tầm `create`, với người phụ trách khác mình ở mức Của tôi, hay với
       cặp (Lead, Sales) khi `create` mức Của tôi của người gọi neo ở Marketing cho Lead và ở Sales cho Campaign → 42501,
       0 dòng mới.
-- [ ] R4.1 (RA8): thêm một policy PERMISSIVE trên `studio.records` → test catalog đỏ; sửa văn bản lệch mẫu → đỏ; một
+- [x] R4.1 (RA8): thêm một policy PERMISSIVE trên `studio.records` → test catalog đỏ; sửa văn bản lệch mẫu → đỏ; một
       hàm `studio.acl_*` mất STABLE hay `search_path` cố định → đỏ; đọc lại một dòng qua từng policy sau migration; ba
       bảng thử mang hình sai (PERMISSIVE chỉ theo tenant, `tenant_isolation_<t>` thành PERMISSIVE, `studio.acl_*`
       VOLATILE hay SECURITY DEFINER) → mỗi bảng bị test catalog bắt; đổi `reach_sql` của module mà không có revision mới
       → test so văn bản đỏ.
-- [ ] R4.2 (RA9): `dw_app` gắn tenant A: SELECT theo id bản ghi của B → 0 dòng; INSERT với `tenant_id` của B → lỗi
+- [x] R4.2 (RA9): `dw_app` gắn tenant A: SELECT theo id bản ghi của B → 0 dòng; INSERT với `tenant_id` của B → lỗi
       WITH CHECK; bỏ mệnh đề tenant khỏi policy RESTRICTIVE → test đỏ.
-- [ ] R4.3 (RA10): `dw_app` SELECT hay INSERT trên mọi partition đọc từ `pg_inherits` theo tên → permission denied; cấp
+- [x] R4.3 (RA10): `dw_app` SELECT hay INSERT trên mọi partition đọc từ `pg_inherits` theo tên → permission denied; cấp
       lại SELECT trên một partition → test đỏ.
-- [ ] R4.4 (RA11): chủ thể chỉ có `platform_admin`, không lần gán nào → 0 bản ghi; chủ thể là `support_staff`, không là
+- [x] R4.4 (RA11): chủ thể chỉ có `platform_admin`, không lần gán nào → 0 bản ghi; chủ thể là `support_staff`, không là
       thành viên công ty → 0 bản ghi, không lỗi (ticket 02 bước 4).
-- [ ] R4.5 (RA11): `has_table_privilege('dw_provisioner', 'studio.records', 'SELECT')` → false, cũng vậy với
+- [x] R4.5 (RA11): `has_table_privilege('dw_provisioner', 'studio.records', 'SELECT')` → false, cũng vậy với
       `studio.principal_scopes` và `studio.access_epochs`.
-- [ ] R4.6 (RA9): kết nối `dw_app` không gắn `app.tenant_id` → 0 dòng.
-- [ ] R5.2 (RA13): đổi `default_access` từ `public_read` về `private` ở giao dịch A → câu lệnh đầu của giao dịch B
+- [x] R4.6 (RA9): kết nối `dw_app` không gắn `app.tenant_id` → 0 dòng.
+- [x] R5.2 (RA13): đổi `default_access` từ `public_read` về `private` ở giao dịch A → câu lệnh đầu của giao dịch B
       của người chỉ với tới qua mặc định → 0 dòng; gỡ trigger trên `studio.object_defs` → test đỏ.
-- [ ] R6.1 (RA17): gắn tenant và chủ thể đúng, không gắn `app.actor_kind` → 0 dòng và INSERT bị từ chối;
+- [x] R6.1 (RA17): gắn tenant và chủ thể đúng, không gắn `app.actor_kind` → 0 dòng và INSERT bị từ chối;
       `app.actor_kind = 'admin'` → 0 dòng; giao dịch qua `tenant_wide_scope` không gắn loại actor → thấy mọi bản ghi của
       tenant (R7.1).
-- [ ] R6.2: phiên Studio mở từ một yêu cầu đã xác thực có `app.actor_kind = 'user'`, `app.user_id` là người
+- [x] R6.2: phiên Studio mở từ một yêu cầu đã xác thực có `app.actor_kind = 'user'`, `app.user_id` là người
       gọi và dòng sổ tầm `valid` trước câu lệnh đầu tiên; bỏ lời gọi cửa sổ tầm → yêu cầu đọc 0 bản ghi và test đỏ; một
       `TenantScope.from_access_context` của lượt chạy agent, không qua helper Studio → 0 bản ghi; thêm
       `bind_actor(session, 'user')` vào một module ngoài helper → test kiến trúc đỏ.
-- [ ] R7.1 (RA22): giao dịch qua `tenant_wide_scope` cho tenant A đọc mọi bản ghi của A, kể cả bản ghi chủ thể không
+- [x] R7.1 (RA22): giao dịch qua `tenant_wide_scope` cho tenant A đọc mọi bản ghi của A, kể cả bản ghi chủ thể không
       với tới, và 0 bản ghi của B; giao dịch kế tiếp trên cùng kết nối, gắn tenant B qua cửa API → `app.workspace_scope`
       rỗng, chỉ bản ghi trong tầm; đặt setting bằng `set_config(..., false)` trong helper → test đỏ.
-- [ ] R7.2 (RA22): lane không có trong `registry` → lỗi, `app.workspace_scope` không đổi; thêm một
+- [x] R7.2 (RA22): lane không có trong `registry` → lỗi, `app.workspace_scope` không đổi; thêm một
       `set_config('app.workspace_scope', ...)`, một `SET LOCAL app.workspace_scope` hay một `ALTER ROLE ... SET` ngoài
       helper → test quét mã đỏ; một mục `registry` thiếu lý do hay thiếu `reads_private_tables` → lỗi lúc dựng; dựng
       `TenantWideScopeRegistry` trong một module ngoài composition root của worker → test kiến trúc đỏ.
-- [ ] R7.3 (RA23): tenant có bản ghi của ba người phụ trách, một người đã rời tenant, trên các partition hash → bản
+- [x] R7.3 (RA23): tenant có bản ghi của ba người phụ trách, một người đã rời tenant, trên các partition hash → bản
       xuất có mỗi bản ghi đúng một lần; sau purge còn 0 bản ghi của tenant.
-- [ ] G1 (RA23): `test_export_rows_returns_only_this_tenants_data` và
+- [x] G1 (RA23): `test_export_rows_returns_only_this_tenants_data` và
       `test_purge_rows_respects_fk_order_and_leaves_the_other_tenant_alone` xanh với helper mới; bản ghi của tenant
       khác không đổi.
-- [ ] R9.10: test hình kế hoạch ở 10^5 bản ghi không có Seq Scan với mọi hồ sơ; xóa mọi chỉ mục của
+- [x] R9.10: test hình kế hoạch ở 10^5 bản ghi không có Seq Scan với mọi hồ sơ; xóa mọi chỉ mục của
       `studio.records` dẫn bằng `(tenant_id, object_id)` và chỉ mục `access_key` → test đỏ.
-- [ ] Xong: `make ci test-integration` xanh.
+- [x] Xong: `make ci test-integration` xanh.
 
 ## Nguồn
 
@@ -224,3 +224,57 @@ definitions_and_records.py`), áp cho bảng cha và mọi partition, đọc t�
   của lượt này không có người đọc mới: nhận rủi ro (agent, theo ủy quyền 31/10/2026). Nếu sai thì: ghi ở đây khi dựng. Thứ tự dựng: sau 02,
   custom-objects/02 (đã xong), foundations-hardening/03, /07 (đã xong); trước 04, 05, 07, custom-objects/03.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-05 (agent, theo ủy quyền 31/10/2026): quyết khi dựng, mỗi điều một dòng. (D1) `dw_app` được EXECUTE
+  `studio.access_key` (D8 của ticket 02): INSERT tính cột sinh, đo được "permission denied for function access_key" khi
+  thiếu; hàm chỉ là md5 của hai id, không lộ gì. Nếu sai thì: một trigger SECURITY DEFINER BEFORE INSERT điền cột (như
+  trục K của ticket 07) và thu EXECUTE. (D2) `studio.access_input_tables` thành một dòng mỗi trigger: thêm cột
+  `trigger_name`, `condition` (viết như `pg_get_triggerdef` in), PK `(table_name, trigger_name)`, CHECK trên tên và
+  `UPDATE OF default_access`; `trg_studio_default_access` là dòng thứ hai của `studio.object_defs`, vì PK theo bảng không
+  cho trigger thứ hai và WHEN theo `OLD` không đặt được trên trigger INSERT; test bước 7 của ticket 02 so mọi dòng. Nếu
+  sai thì: dòng `studio.object_defs` bắt `INSERT OR DELETE OR UPDATE OF default_access` không có WHEN, tăng epoch ở mỗi
+  lần phát hành. (D3) nhánh mặc định đọc `default_access` qua `studio.v_principal_grants` (cột mới, nối
+  `studio.object_defs` theo tenant của `ctx`), nên hàm tính vẫn chỉ đọc view (gate (h) của ticket 02). Nếu sai thì: một
+  view thứ ba. (D4) trigger người phụ trách để `owner_id`/`owner_kind` NULL cho NOT NULL từ chối (23502 như
+  custom-objects:R4.1), rồi tenant lệch → 42501 với đúng câu của RLS, rồi `team` hay không phải thành viên `active` → 23514. Nếu sai thì: NULL cũng 23514. (D5) phép so văn bản catalog với module ở `test_record_policies.py` của
+  `dw_studio` (bảng thử `LIKE studio.records`, policy do module dựng, so `pg_get_expr`); `test_rls_coverage.py` giữ luật
+  hình (đúng năm policy, RESTRICTIVE/PERMISSIVE, `tenant AND (scope OR (actor_ok AND ...))`, hàm qua `pg_depend`) cho mọi
+  bảng có `access_key` và partition, vì test của `dw_platform` không import ngữ cảnh. Nếu sai thì: `test_rls_coverage.py`
+  import module. (D6) `_TRUSTED_SETTINGS` không nới: `app.actor_kind`, `app.user_id`, `studio.acl_*` là `_REACH_READS`,
+  chỉ hợp lệ bên cạnh mệnh đề tenant thuần (`scope_outside_a_tenant_clause` mở rộng); `blind_policies` không coi policy
+  chỉ có WITH CHECK (`_insert`) là đọc mù. Nếu sai thì: chúng vào `_TRUSTED_SETTINGS`, và một policy chỉ hẹp theo chúng
+  sẽ qua. (D7) phép quét bỏ cả thư mục `tests/` như `test_drain_setting_scan.py`, danh sách cho phép:
+  `scripts/bench_records_storage/`, người gọi `bind_actor` là `user_session.py` và `dw_studio.testing.records`, người dựng
+  sổ là `apps/worker/src/dw_worker/main.py`. Nếu sai thì: từng tệp test vào danh sách kèm lý do. (D8)
+  `SqlTenantOffboarding.scopes` bắt buộc, chỉ theo từ khóa; worker dựng sổ một lần (`build_tenant_wide_scopes`, mục
+  `offboarding` với `reads_private_tables=True` vì bản xuất mang cả bảng riêng của một người); test dùng
+  `tests/support/tenant_wide_scopes.py`. Nếu sai thì: test import sổ của worker. (D9) `bind_tenant`, `bind_actor`,
+  `tenant_wide_scope` nhận cả `AsyncConnection`. Nếu sai thì: helper test bọc kết nối trong `AsyncSession`. (D10) helper
+  là `dw_studio.records.adapters.user_session.user_session(session_factory, context)`; RecordService (custom-objects/03)
+  nhận nó làm nhà máy giao dịch. Nếu sai thì: đổi tên ở custom-objects/03.
+- 2026-11-05 (agent): reviewing-feature-security: tách tenant (R4.2, R4.6, giao dịch kế tiếp R7.1, (m) không dò thành
+  viên chéo tenant) và phân quyền (RA4-RA11, RA17, RA22) có test âm; tác tử không áp dụng (`agent`, `workflow` đọc 0 tới
+  ticket 04, đóng khi thiếu); nội dung không tin cậy không áp dụng (không model, không prompt); audit: lần purge vẫn
+  đứng tên người vận hành, audit bản ghi là của RecordService; vòng đời: setting sống một giao dịch, loại actor lạ là
+  `''`, sổ tầm thiếu là `'{}'`, lane lạ bị từ chối trước khi đặt, mục sổ thiếu lý do lỗi lúc dựng.
+  `mutations/03.yaml` 27 mục, chưa chạy `scripts/mutate.py`.
+- 2026-11-05 (agent): MEDIUM. (M4, mới) `user_session` chưa có người gọi ứng dụng nào: người đọc là RecordService
+  của custom-objects/03; failure-modes #1 đứng mở tới đó, như M6 của ticket 02. (M5, mới) trang chuẩn ở mức Của tôi
+  trên 10^5 bản ghi đi chỉ mục `(tenant_id, object_id, created_at)` rồi lọc (1.861 dòng bỏ cho 50 dòng, 4 ms); chỉ mục
+  `(tenant_id, owner_id, object_id, ...)` không được chọn vì policy là OR; cân nhắc ở lần đo D12 của ticket 06. (M6, mới)
+  trigger người phụ trách đọc `platform.tenant_members` mỗi dòng chèn, kể cả nhập hàng loạt; R9.5 đo ở ticket 06.
+  (M1)-(M3) như gate.
+- 2026-11-05 (agent): resolved. Revision `2c2095fbb4c7`. Test: `test_record_policies.py` 39 ca (R1.2 gồm hàm definer và
+  (m), R1.3 năm cột, R2.2-R2.7, R3.1-R3.5, R4.1 so văn bản module với catalog và ba hình lệch, R4.2-R4.4, R4.6, R5.2 và
+  (n), R6.1, R6.2, R7.1-R7.3/G1 qua partition hash, R9.10 ở 10^5 bản ghi bốn hồ sơ); `test_rls_coverage.py` luật bộ
+  policy bản ghi, hàm qua `pg_depend`, sáu bảng thử, đọc lại qua từng policy, DO-13.2, `_REACH_READS` và (q);
+  `test_privileges.py`; `test_principal_scopes.py` bước 7 theo dòng trigger; oracle thêm nhánh mặc định (vi sai 500 tổ
+  chức xanh); đơn vị: quét setting (15), sổ toàn tenant (10), mẫu policy (3), oracle (+5), worker (1). Phá tay 7 mục của
+  `mutations/03.yaml` (trigger người phụ trách, WITH CHECK xóa mềm, trigger mặc định truy cập, `set_config(...,
+false)`, cửa sổ tầm của helper, `actor_ok`, chỉ mục R9.10), cả 7 đỏ (13 test đỏ, gồm (m) và so văn bản module); một
+  mục `mutations/03.yaml` sửa khi phá tay (WITH CHECK thừa một ngoặc). Cổng: unit phủ 77,04%;
+  tích hợp studio 354 qua, platform (rls, privileges, offboarding, coverage, registry, channel, digital workers, vault)
+  213 + 88 qua, usage purge xanh; mypy, lint-imports, verify_invariants, verify_architecture, check_hygiene xanh.
+- 2026-11-05 (agent): nợ lúc đóng hàng: `scripts/mutate.py` cho `mutations/03.yaml` (27); `make test-integration` đầy
+  đủ; P50/P95/P99 so với `0e6907b` của xuất và xóa offboarding (thêm studio.records và helper), phát hành đối tượng
+  (`UPDATE default_access` và trigger), cửa sổ tầm khi tính lại (view nối thêm `studio.object_defs`), ghi bản ghi dưới
+  trigger người phụ trách; `/code-review`; không route, ảnh hay dịch vụ nên không reviewing-deployment-security.
