@@ -38,6 +38,7 @@ from dw_studio.core.adapters.run_manifest_store import SqlRunManifestStore
 from dw_studio.core.application.service import ArtifactService, SealResult
 from dw_studio.testing.fixture_kinds import FIXTURE_KINDS, planted_fixture_kinds
 from dw_studio.testing.lifecycle import move_for_test
+from dw_studio.testing.objects import running_kinds
 from dw_studio.testing.world import StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
@@ -238,14 +239,19 @@ async def test_an_unregistered_kind_or_a_write_key_out_of_reach_creates_nothing(
 
 
 async def test_the_app_without_test_kinds_takes_no_fixture(api_db: DatabaseUrls) -> None:
-    """R2.15: built with the default kinds, `fixture` is not a kind; `object`
-    is (custom-objects 02), and `workflow` (workflow-engine 01). Ticket 04: the
-    run manifest builder pins the release this process serves, and a run reads
-    its manifest through Studio's store."""
+    """R2.15: built with the default kinds, `fixture` is not a kind; the kinds
+    are exactly `platform_kinds(...)`, their owner, as `running_kinds` builds
+    them (custom-objects 02's `object`, workflow-engine 01's `workflow`,
+    agent-builder 02's `agent`). Ticket 04: the run manifest builder pins the
+    release this process serves, and a run reads its manifest through Studio's
+    store."""
     container = build_container(
         ApiSettings(profile="test", database_url=api_db.app, dev_secret=SECRET)
     )
-    assert container.studio is not None and container.studio.kinds.kinds == {"object", "workflow"}
+    assert container.studio is not None
+    kinds = container.studio.kinds.kinds
+    assert kinds == {entry.kind for entry in running_kinds()}
+    assert not kinds & {entry.kind for entry in FIXTURE_KINDS}
     assert container.studio.run_manifests.registry is container.studio.kinds
     assert container.studio.run_manifests.release_manifest_ref == release_manifest_ref()
     assert container.studio.pinned_manifests is SqlRunManifestStore

@@ -99,13 +99,16 @@ async def api(api_db: DatabaseUrls) -> AsyncIterator[Api]:
 
 
 async def test_the_running_registry_is_the_kind_table(api: Api) -> None:
-    """The registry the composition root built, against `studio.artifact_kinds`."""
+    """The registry the composition root built, against `studio.artifact_kinds`:
+    the table owns the list, so a kind a ticket adds (agent-builder 02's
+    `agent`) is checked here without a second copy of the list to edit."""
     assert api.container.studio is not None
     async with api.migrator.connect() as conn:
         rows = {
             r.kind for r in await conn.execute(sa.text("SELECT kind FROM studio.artifact_kinds"))
         }
-    assert api.container.studio.kinds.kinds == rows == {"object", "workflow"}
+    assert "object" in rows, "the table this module is about lost its own kind"
+    assert api.container.studio.kinds.kinds == rows
 
 
 async def test_r1_3_only_a_holder_of_the_object_key_creates_or_finds_an_object(api: Api) -> None:
