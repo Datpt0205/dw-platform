@@ -442,3 +442,11 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   `14-chu-cuoi-duoi-xoa-nguoi-nhan-va-kich-hoat-lai.md`, `15-cong-ty-setup-mo-duoi-mat-chu-dong-thoi.md`); the status
   stays Accepted. If wrong: the checks take the tenant row `FOR UPDATE` on every path, and the wider `40P01` beside
   ticket 08's commit-time write is recorded there.
+- Decision 10, the confirmer of a role write: `platform.checker_candidates` stays the one SQL answer of who may
+  confirm; the role-assignment pre-check of the services removes the person receiving the role from that answer,
+  since R6.4 forbids them confirming their own role, and a request no one else could confirm is refused 409
+  `no_checker_available` instead of opening a proposal that cannot close. A workspace listed with `role_keys: []`
+  is a membership with no role, which hands out nothing and needs no second person. Recorded by the agent under
+  Đạt's delegation of 2026-10-31 when cutting tenant-rbac ticket 16
+  (`.claude/plans/studio/tenant-rbac/issues/16-membership-khong-vai-qua-put-memberships.md`); the status stays
+  Accepted. If wrong: `platform.checker_candidates` takes the assignee and excludes them itself (a revision).
