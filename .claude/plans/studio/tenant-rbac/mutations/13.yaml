@@ -1,0 +1,58 @@
+# Mutation check of tenant-rbac ticket 13: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per row of the ticket's
+# "Đột biến" column (K1 a-b, K3 a, K4 a-b; K2 (a) is K1 (a), listed with both
+# tests). Each is in the migration, mutated in place.
+mutations:
+  - name: K1 (a) no FOR KEY SHARE before reading again
+    file: db/migrations/versions/596062dfa2d0_a_suspension_waits_for_open_last_owner_checks.py
+    old:
+      "                PERFORM 1 FROM platform.tenants\n                WHERE id = v_tenant AND status\
+      \ IN ('active', 'locked')\n                FOR KEY SHARE;\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_last_owner_races.py::test_k1_a_move_to_p_beside_suspending_p_keeps_an_active_owner
+      - packages/python/dw_platform/tests/integration/test_last_owner_races.py::test_k2_a_handover_beside_suspending_the_recipient_keeps_an_active_owner
+  - name: "K1 (b) no second read: return after the lock"
+    file: db/migrations/versions/596062dfa2d0_a_suspension_waits_for_open_last_owner_checks.py
+    old:
+      "                FOR KEY SHARE;\n                IF NOT EXISTS {_OWNS} THEN\n                 \
+      \   RETURN NULL;\n                END IF;\n"
+    new: "                FOR KEY SHARE;\n                RETURN NULL;\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_last_owner_races.py::test_k1_a_move_to_p_beside_suspending_p_keeps_an_active_owner
+  - name: K3 (a) the lock taken unconditionally before the first read
+    file: db/migrations/versions/596062dfa2d0_a_suspension_waits_for_open_last_owner_checks.py
+    old:
+      "        f\"\"\"            IF NOT EXISTS {_OWNS} THEN\n                -- A write making this\
+      \ person an owner holds the tenant row FOR\n                -- UPDATE until it commits: wait for it,\
+      \ then read again.\n                PERFORM 1 FROM platform.tenants\n                WHERE id = v_tenant\
+      \ AND status IN ('active', 'locked')\n                FOR KEY SHARE;\n                IF NOT EXISTS\
+      \ {_OWNS} THEN\n                    RETURN NULL;\n                END IF;\n            END IF;\"\"\
+      \",\n"
+    new:
+      "        f\"\"\"            PERFORM 1 FROM platform.tenants\n            WHERE id = v_tenant AND\
+      \ status IN ('active', 'locked')\n            FOR KEY SHARE;\n            IF NOT EXISTS {_OWNS} THEN\n\
+      \                RETURN NULL;\n            END IF;\"\"\",\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_last_owner_races.py::test_k3_two_owner_suspensions_waiting_on_a_third_removal_queue_without_deadlock
+  - name: K4 (a) FOR UPDATE instead of FOR KEY SHARE
+    file: db/migrations/versions/596062dfa2d0_a_suspension_waits_for_open_last_owner_checks.py
+    old: "                FOR KEY SHARE;
+
+      "
+    new: "                FOR UPDATE;
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_last_owner_races.py::test_k4_a_suspension_does_not_hold_up_a_foreign_key_to_the_tenant
+      - packages/python/dw_platform/tests/integration/test_last_owner_races.py::test_k4_a_suspension_beside_a_fall_below_two_adds_no_deadlock
+  - name: K4 (b) FOR NO KEY UPDATE instead of FOR KEY SHARE
+    file: db/migrations/versions/596062dfa2d0_a_suspension_waits_for_open_last_owner_checks.py
+    old: "                FOR KEY SHARE;
+
+      "
+    new: "                FOR NO KEY UPDATE;
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_last_owner_races.py::test_k4_a_suspension_beside_a_fall_below_two_adds_no_deadlock

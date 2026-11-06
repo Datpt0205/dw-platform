@@ -1,6 +1,6 @@
 # 13 — Chủ sở hữu cuối dưới lần đình chỉ người vừa thành chủ
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 12
 Area: studio
 Yêu cầu: R6.7, RB20
@@ -140,23 +140,23 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
 
 ## Tiêu chí chấp nhận
 
-- [ ] R6.7 (RB20): K1, lần đổi M (của chủ `active` cuối Q) sang P `active` và lần đình chỉ P đồng thời, ở tenant `active`
+- [x] R6.7 (RB20): K1, lần đổi M (của chủ `active` cuối Q) sang P `active` và lần đình chỉ P đồng thời, ở tenant `active`
       và `locked`, cả hai thứ tự, cho đúng bên thứ hai 23514 `ck_role_assignments_last_owner`, không `40P01`, và tenant
       còn một chủ `active`; ca đình chỉ người không phải chủ cạnh lần đổi nhận cả hai; sai nếu cả hai bên được nhận, ca
       đối chứng bị từ chối, hay một trong hai đột biến của K1 vẫn xanh. Ở commit gốc (sau ticket 12) cả hai thứ tự nhận
       cả hai bên và tenant còn 0 chủ `active`.
-- [ ] R6.7 (RB20): K2, lần trao chủ hai câu (gán P, gỡ Q) và lần đình chỉ P đồng thời cho đúng bên thứ hai 23514 ở cả hai
+- [x] R6.7 (RB20): K2, lần trao chủ hai câu (gán P, gỡ Q) và lần đình chỉ P đồng thời cho đúng bên thứ hai 23514 ở cả hai
       thứ tự, không `40P01`; ở ca xen giữa đúng một bên bị hủy (23514 hay `40P01`) và tenant còn đúng một chủ `active`;
       sai nếu một ca kết thúc với 0 chủ `active`, hay đột biến của K2 vẫn xanh. Ở commit gốc thứ tự (i) và ca xen giữa nhận
       cả hai bên; thứ tự (ii) đã từ chối A ở commit gốc và giữ làm ca hồi quy.
-- [ ] R6.7 (RB20): K3, hai lần đình chỉ hai chủ đồng thời xếp hàng: ở ca hai bên, cả hai thứ tự, đúng bên thứ hai bị
+- [x] R6.7 (RB20): K3, hai lần đình chỉ hai chủ đồng thời xếp hàng: ở ca hai bên, cả hai thứ tự, đúng bên thứ hai bị
       từ chối với 23514; ở ca ba bên, sau lần commit của C, đúng một lần đình chỉ bị từ chối với 23514; không `40P01` ở ca
       nào; sai nếu một bên `40P01` hay cả hai nhận, hay đột biến của K3 vẫn xanh.
-- [ ] R6.7 (RB20): K4, lần đình chỉ người không phải chủ đang mở không chặn lần INSERT có khóa ngoại tới tenant, và
+- [x] R6.7 (RB20): K4, lần đình chỉ người không phải chủ đang mở không chặn lần INSERT có khóa ngoại tới tenant, và
       cạnh lần gỡ hạ người giữ `platform.roles.write` xuống dưới hai cả hai được nhận, 0 `40P01`, đúng một sự kiện
       `platform.tenant.owner_coverage_low`; sai nếu bên thứ hai chờ ở (i), có `40P01` ở (ii), hay một trong hai đột biến
       của K4 vẫn xanh.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_last_owner_races.py packages/python/dw_platform/tests/integration/test_role_administration_db.py packages/python/dw_platform/tests/integration/test_membership_change_of_person.py packages/python/dw_platform/tests/integration/test_role_write_races.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_last_owner_races.py packages/python/dw_platform/tests/integration/test_role_administration_db.py packages/python/dw_platform/tests/integration/test_membership_change_of_person.py packages/python/dw_platform/tests/integration/test_role_write_races.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py` xanh.
 
 ## Nguồn
 
@@ -220,3 +220,16 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
   lệnh nhiều dòng như (4) lượt trước. (e) Bên bị hủy `40P01` không có ánh xạ lỗi API vì không route nào đình chỉ; quyết
   định (7) lượt trước giữ. Sửa sau lượt này không được người đọc mới đọc lại; người dựng đọc K2, K4 trước.
 - 2026-11-06 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): dựng xong, `resolved`. Revision `596062dfa2d0` (trên `ade120c2a1b5`):
+  thân `refuse_losing_the_last_owner()` của ticket 12 sửa một neo bằng `_patched()`; câu hỏi của nhánh `tenant_members`
+  là một chuỗi Python dùng hai chỗ (`_OWNS`), khóa `FOR KEY SHARE` dòng tenant `active`/`locked` rồi đọc lại; downgrade
+  dựng lại thân ticket 12. Test: `packages/python/dw_platform/tests/integration/test_last_owner_races.py`, 13 ca (K1 năm:
+  hai thứ tự ở tenant `active` và `locked` cộng đối chứng; K2 ba: hai thứ tự và ca xen giữa; K3 ba; K4 hai), mọi bên dưới
+  `dw_migrator`; ca xen giữa của K2 khẳng định đúng một bên bị hủy (23514 hay `40P01`) và còn đúng một chủ. Gate nhanh:
+  ruff, format, mypy, integration của dòng Xong 251 xanh. Phá thử bằng tay cả 5 đột biến của `mutations/13.yaml`: cả 5
+  đỏ đúng lý do (K1 (a), (b) bên thứ hai được nhận; K3 (a) `40P01` thay vì 23514; K4 (a), (b) `40P01` cạnh lần kiểm hoãn
+  của ticket 08). K2 (a) là đột biến K1 (a), liệt kê một lần với test của cả hai. `reviewing-feature-security`: ranh giới
+  1 (khóa dòng tenant của chính `v_tenant`, ca K4 (i) cho thấy không chặn khóa ngoại), 2 (mọi người ghi kể cả
+  `dw_migrator`), 6 (lần đình chỉ là lối cuối, test ở tầng database); 3 và 5 không áp như ticket ghi; 4 không áp. Độ trễ:
+  câu khóa thêm chỉ chạy khi một thành viên không phải chủ rời `active`, không route nào làm việc đó, nên không có thao tác
+  nào để đo lúc đóng hàng đợi. Không khác gì so với ticket.
