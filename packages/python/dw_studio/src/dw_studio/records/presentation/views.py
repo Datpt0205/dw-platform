@@ -171,6 +171,13 @@ class FieldOut(BaseModel):
     api_name: str
     label: str
     access: str = Field(description="`edit`, `read` or `hidden`.")
+    field_id: uuid.UUID | None = Field(
+        default=None,
+        description=(
+            "The field's id, as `field_permissions[].field_id` of"
+            " `PUT /api/v1/admin/roles/{role_id}/permissions` takes it; absent on a hidden field."
+        ),
+    )
     type: str | None = None
     ai_description: str | None = Field(
         default=None, description="The company's own words, to be treated as untrusted data."
@@ -258,6 +265,7 @@ def description_view(description: Description) -> DescriptionView:
                 api_name=f.api_name,
                 label=f.label,
                 access=f.access,
+                field_id=f.field_id,
                 type=f.type,
                 ai_description=f.ai_description,
                 number_mode=f.number_mode,

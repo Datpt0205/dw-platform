@@ -1076,6 +1076,37 @@ async def test_r3_6_r3_7_the_schemas_hold_what_the_caller_may_see_and_write(worl
     assert made.create["properties"]["amount"]["anyOf"][0]["type"] == "string"
 
 
+async def test_r3_1_r3_2_co7_describe_gives_a_readable_field_its_id_and_a_hidden_one_none(
+    world: World,
+) -> None:
+    """custom-objects/12 K1 at the service: a reader without `phone`'s field
+    permission gets `phone` with no id; each readable field carries the id of
+    its `studio.field_defs` row, the one a role's field permission names."""
+    reader = await world.person({"read": "workspace"}, {"name": "read", "note": "edit"})
+    described = await world.service.describe(world.door(reader), LEAD)
+    async with world.migrator.connect() as conn:
+        rows = await conn.execute(
+            sa.text("SELECT api_name, id FROM studio.field_defs WHERE object_id = :o"),
+            {"o": world.lead},
+        )
+        ids = {row.api_name: row.id for row in rows}
+    fields = {f.api_name: f for f in described.fields}
+    assert fields["phone"].access == "hidden" and fields["phone"].field_id is None
+    assert fields["note"].field_id == ids["note"]
+    assert (fields["name"].access, fields["name"].field_id) == ("read", ids["name"])
+    for field in described.fields:
+        assert (field.field_id is None) == (field.access == "hidden")
+    # The creation form: a service account holding the create key does not
+    # see `cccd` (sensitive) there, and gets no id for it.
+    service = await world.person({"create": "workspace"}, EDIT_ALL, kind="service")
+    form = {
+        f.api_name: f
+        for f in (await world.service.describe(world.door(service), LEAD, "create")).fields
+    }
+    assert form["cccd"].access == "hidden" and form["cccd"].field_id is None
+    assert form["note"].field_id == ids["note"]
+
+
 # ---- the shared lock -----------------------------------------------------------
 
 

@@ -36,7 +36,7 @@ from dw_api.bootstrap.wiring import build_container
 from dw_api.main import create_app
 from dw_api.settings import ApiSettings
 from dw_platform.adapters.identity.dev_token import DevTokenVerifier
-from dw_platform.testing.rbac import PlantedTenant, plant_tenant
+from dw_platform.testing.rbac import PlantedTenant, assign, plant_role, plant_tenant, role_id
 from dw_studio.testing.objects import object_document, object_field, plant_manager
 from dw_studio.testing.record_world import holder, publish_object, sessions_of
 from dw_studio.testing.records import act_as_user
@@ -603,6 +603,106 @@ async def test_r3_1_r3_2_r3_7_co25_describe_says_what_the_caller_may_know(api: A
         {"key": "cu", "label": "Cũ", "position": 1, "active": False},
     ]
     assert fields["phone"].keys() == {"api_name", "label", "access"}
+
+
+async def _owner(api: Api, tenant: PlantedTenant) -> Person:
+    """A `tenant_owner` of ``tenant`` in its `main` workspace."""
+    async with api.migrator.begin() as conn:
+        who = await holder(conn, tenant, api.leads[tenant.tenant_id], {}, {})
+        membership = await conn.scalar(
+            sa.text(
+                "SELECT id FROM platform.memberships"
+                " WHERE tenant_id = :t AND workspace_id = :w AND user_id = :u"
+            ),
+            {"t": tenant.tenant_id, "w": tenant.main, "u": who.id},
+        )
+        owner = await role_id(conn, tenant.tenant_id, "tenant_owner")
+        await assign(conn, tenant.tenant_id, tenant.main, membership, owner)
+    return who
+
+
+async def _field_ids(api: Api, tenant: PlantedTenant) -> dict[str, str]:
+    async with api.migrator.connect() as conn:
+        rows = await conn.execute(
+            sa.text("SELECT api_name, id FROM studio.field_defs WHERE object_id = :o"),
+            {"o": api.leads[tenant.tenant_id]},
+        )
+        return {row.api_name: str(row.id) for row in rows}
+
+
+async def test_r3_1_k2_describe_gives_each_readable_field_the_id_a_role_takes(api: Api) -> None:
+    """custom-objects/12: an owner's describe carries the id of every field it
+    reads, which `PUT .../permissions` takes (202); company B's describe
+    carries B's ids, none of A's, and one of them sent to A's route is the
+    422 of an unknown id."""
+    a, b = api.a, api.b
+    owner = await _owner(api, a)
+    await _owner(api, a)  # who may confirm the proposal (R7.3)
+    async with api.migrator.begin() as conn:
+        target = await plant_role(conn, a.tenant_id, f"mkt_{uuid.uuid4().hex[:8]}", {})
+    ids_a, ids_b = await _field_ids(api, a), await _field_ids(api, b)
+    described = await api.call(owner, "GET", f"{BASE}/describe")
+    assert described.status_code == 200, described.text
+    fields = described.json()["fields"]
+    assert fields and all(f["access"] != "hidden" for f in fields)
+    assert {f["api_name"]: f["field_id"] for f in fields} == {
+        f["api_name"]: ids_a[f["api_name"]] for f in fields
+    }
+
+    async def put(field_id: str) -> httpx.Response:
+        role = await api.call(owner, "GET", f"/api/v1/admin/roles/{target}")
+        assert role.status_code == 200, role.text
+        return await api.call(
+            owner,
+            "PUT",
+            f"/api/v1/admin/roles/{target}/permissions",
+            json={"field_permissions": [{"field_id": field_id, "access": "read"}]},
+            headers={"If-Match": role.headers["ETag"]},
+        )
+
+    proposals = "SELECT count(*) FROM platform.role_change_requests WHERE tenant_id = :t"
+    before = await api.count(proposals, t=a.tenant_id)
+    foreign, random = await put(ids_b["phone"]), await put(str(uuid.uuid4()))
+    assert foreign.status_code == random.status_code == 422, foreign.text
+    assert foreign.json()["code"] == random.json()["code"] == "validation_failed"
+    errors = foreign.json()["details"]["errors"]
+    assert errors == random.json()["details"]["errors"]
+    assert [e["pointer"] for e in errors] == ["/field_permissions/0/field_id"]
+    assert await api.count(proposals, t=a.tenant_id) == before
+    proposed = await put(ids_a["phone"])
+    assert proposed.status_code == 202, proposed.text
+    assert proposed.json()["proposal"]["payload"]["field_permissions"] == [
+        {"field_id": ids_a["phone"], "access": "read"}
+    ]
+    theirs = await api.person(tenant=b)
+    seen = await api.call(theirs, "GET", f"{BASE}/describe")
+    readable = [f for f in seen.json()["fields"] if f["access"] != "hidden"]
+    assert readable and all(f["field_id"] == ids_b[f["api_name"]] for f in readable)
+    assert not any(i in seen.text for i in ids_a.values())
+
+
+async def test_r3_2_co7_k1_k3_a_hidden_field_and_a_refused_describe_carry_no_id(
+    api: Api,
+) -> None:
+    """A hidden field keeps `api_name`, `label` and `access` and its id is
+    nowhere in the body; the creation form gives its fields their ids; a
+    caller without the key describe asks gets a 403 with no id."""
+    ids = await _field_ids(api, api.a)
+    blind = await api.person({"read": "workspace"}, {"name": "read"})
+    described = await api.call(blind, "GET", f"{BASE}/describe")
+    phone = next(f for f in described.json()["fields"] if f["api_name"] == "phone")
+    assert phone == {"api_name": "phone", "label": "Trường phone", "access": "hidden"}
+    assert ids["phone"] not in described.text
+    create_only = await api.person({"create": "workspace"}, {"name": "edit"})
+    form = await api.call(create_only, "GET", f"{BASE}/describe?action=create")
+    assert form.status_code == 200, form.text
+    # This object has no field a creator does not see; the creation form's
+    # hidden field is the service test's (a service account and `cccd`).
+    shown = form.json()["fields"]
+    assert shown and all(f["field_id"] == ids[f["api_name"]] for f in shown)
+    nobody = await api.person({}, {})
+    refused = await api.call(nobody, "GET", f"{BASE}/describe")
+    assert refused.status_code == 403 and "field_id" not in refused.text
 
 
 async def test_r3_1_describe_for_creation_with_the_create_key_alone(api: Api) -> None:

@@ -194,3 +194,9 @@ untrusted` (giá trị bản ghi do người ngoài viết), `data_classificatio
   mutation trên `record_query.py` và `dw_kernel/filters.py` chưa bẻ tay), `make test-integration` đầy đủ, latency của
   lời gọi `obj_<api_name>__search`/`__get` qua executor và của `RecordService.readable` mỗi lời gọi model, và M3 (trang 20
   bản ghi so với trần 8 000 ký tự).
+- 2026-11-06 (agent): lỗi tìm ở lượt CI-parity của agent-builder/03: `ObjectToolCopy.description` gọi `.format` trên chữ
+  của `configs/copy/studio_object_tools.yaml`, mà phép quét của ADR-0114 quyết 1
+  (`dw_studio/tests/workflows/test_templates.py::test_studio_has_no_formatter_for_tenant_text`) cấm ở mọi chỗ trong
+  `dw_studio`; tệp quét nằm ở `tests/workflows`, ngoài các thư mục unit ticket này đã chạy, nên `a87908f2` để nó đỏ.
+  Sửa ở `ee83b292`: `_fill` thay `{tên}` một lượt, giá trị không bao giờ đọc như khuôn, chỗ trống thiếu giá trị là
+  `ConfigError`; mô tả công cụ không đổi.

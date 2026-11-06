@@ -1140,6 +1140,7 @@ def _description(obj: AppliedObject, access: FieldAccess) -> Description:
                 api_name=api_name,
                 label=label,
                 access=level,
+                field_id=storage.field_id,
                 type=definition.type,
                 ai_description=definition.ai_description,
                 number_mode=definition.number_mode,

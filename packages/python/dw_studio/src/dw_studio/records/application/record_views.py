@@ -87,11 +87,15 @@ class OptionView:
 @dataclass(frozen=True, slots=True)
 class FieldView:
     """One field as the caller may know it. A hidden field carries its name,
-    label and `access` only (R3.2): every other member stays None or empty."""
+    label and `access` only (R3.2): every other member stays None or empty,
+    `field_id` too, which a readable field carries (R3.1; custom-objects/12)."""
 
     api_name: str
     label: str
     access: str
+    # The `studio.field_defs` row's id, what a role's field permission names
+    # (tenant-rbac R9.13); present exactly when `access` is not `hidden`.
+    field_id: uuid.UUID | None = None
     type: str | None = None
     ai_description: str | None = None
     number_mode: str | None = None

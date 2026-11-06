@@ -1,6 +1,6 @@
 # 12 — Describe trả `field_id` của mỗi trường người gọi đọc được
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 03, 06, .claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md
 Area: studio
 Yêu cầu: R3.1, R3.2, CO7
@@ -73,7 +73,7 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.1: một chủ của A describe `mkt_lead` → mỗi trường có `access` `read` hay `edit` mang `field_id` bằng id dòng
+- [x] R3.1: một chủ của A describe `mkt_lead` → mỗi trường có `access` `read` hay `edit` mang `field_id` bằng id dòng
       `studio.field_defs` của A cùng `api_name` (so với dòng đọc dưới `dw_migrator`); gửi
       `{"field_permissions": [{"field_id": <id của phone>, "access": "read"}]}` tới `PUT /api/v1/admin/roles/{role_id}/permissions`
       với `If-Match` → 202 và một đề xuất mà `payload` mang đúng id đó; người của B describe → mỗi trường đọc được mang
@@ -82,10 +82,10 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
       `?action=create` → mỗi trường biểu mẫu không Đã ẩn mang `field_id`; người không giữ khóa mà describe hỏi → 403,
       không `field_id` (K3). Sai nếu một trường đọc được thiếu `field_id`, id khác dòng `field_defs` của công ty người gọi,
       hay lần `PUT` của A không phải 202; ở commit gốc không trường nào có `field_id`.
-- [ ] R3.2 (CO7): K1, ở mức dịch vụ `FieldView` của trường Đã ẩn có `field_id` `None`, ở mức HTTP trường Đã ẩn trả đúng
+- [x] R3.2 (CO7): K1, ở mức dịch vụ `FieldView` của trường Đã ẩn có `field_id` `None`, ở mức HTTP trường Đã ẩn trả đúng
       `api_name`, `label`, `access` và id của nó không có trong văn bản phản hồi, ở describe thường và describe
       `?action=create`; sai nếu đột biến (a) (test mức dịch vụ) hay (b) (test đơn vị mức trình bày) của K1 vẫn xanh.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_studio/tests/unit/test_description_view.py packages/python/dw_studio/tests/integration/test_record_service.py apps/api/tests/integration/test_studio_records.py apps/api/tests/integration/test_record_privileges_api.py apps/api/tests/contract/test_openapi_snapshot.py` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_studio/tests/unit/test_description_view.py packages/python/dw_studio/tests/integration/test_record_service.py apps/api/tests/integration/test_studio_records.py apps/api/tests/integration/test_record_privileges_api.py apps/api/tests/contract/test_openapi_snapshot.py` xanh.
 
 ## Nguồn
 
@@ -137,3 +137,17 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
   đó). LOW, sửa: (3) "mọi trường" thành mọi trường describe liệt kê (không `owner`, `workspace`). Sửa sau lượt này không
   được người đọc mới đọc lại (hai lượt mỗi phiên bản); người dựng đọc bước 4 và cột "Đột biến" của K1 trước.
 - 2026-11-06 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): làm khác ticket. Ở fixture của `test_studio_records.py` không có trường
+  nào Đã ẩn ở nhánh `create` với một người (không trường bảo mật nào không duy nhất, và trường duy nhất lên `read` cho
+  người tạo), nên ca "trường Đã ẩn ở `?action=create`" của K1 thử ở mức dịch vụ: một tài khoản dịch vụ giữ khóa `create`
+  không thấy `cccd` (nhạy cảm, duy nhất) ở biểu mẫu tạo, `field_id` của nó `None` (`test_record_service.py`); ở mức HTTP,
+  biểu mẫu tạo của người chỉ giữ khóa `create` mang `field_id` đúng dòng `field_defs` cho mọi trường. Lỗi 422 của id công ty
+  B so bằng đúng `errors` của một UUID ngẫu nhiên và con trỏ `/field_permissions/0/field_id`. Nếu sai thì: thêm một trường
+  bảo mật không duy nhất vào fixture HTTP và thử ca Đã ẩn ở nhánh `create` qua HTTP.
+- 2026-11-06 (agent): resolved. Test: `test_description_view.py` 1 (unit), `test_record_service.py` +1 (29 xanh),
+  `test_studio_records.py` +2 (R3.1/K2 với `PUT .../permissions` 202 và 422, R3.2/K1/K3), cùng
+  `test_record_privileges_api.py` (37 xanh ở ba tệp); `field_id` của `FieldOut` đã vào ảnh chụp OpenAPI ở `f4a56a0a`, vì lane 1 sinh lại ảnh chụp trên cây có thay đổi của ticket này, nên lần sinh lại của ticket không đổi gì. `reviewing-feature-security`
+  ranh giới 1 (id đọc dưới RLS của công ty đang gắn; describe của B không có id nào của A; id của B vào route của A là 422
+  như id ngẫu nhiên, 0 đề xuất), 2 (403 của R3.4 không mang `field_id`; trường Đã ẩn không lộ id ở hai lớp), 6 (không truy
+  vấn thêm, không cache); 3, 4, 5 không áp. `mutations/12.yaml` 4 mutation, chưa chạy ((a), (b) bẻ tay, đỏ). Chờ lúc đóng
+  hàng: `mutate.py`, P50/P95/P99 của `GET /api/v1/studio/objects/{api_name}/describe`. Không migration.

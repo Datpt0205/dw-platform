@@ -1,0 +1,34 @@
+# Mutation check of custom-objects ticket 12: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). K1's two layers each have their own test
+# (failure-modes #3, a rule held twice): the service's hidden branch by
+# test_record_service.py, the presentation's by test_description_view.py; (a)
+# and (b) were broken by hand while writing the tests (6/11/2026), each red.
+# K2 and K3 carry no mutation of their own (the ticket's table): the id is read
+# under the caller's company's RLS, and the 403 of R3.4 predates this ticket.
+mutations:
+  - name: K1 (a) the service gives a hidden field its id
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_service.py
+    old: "            views.append(FieldView(api_name=api_name, label=label, access=HIDDEN))"
+    new: "            views.append(FieldView(api_name=api_name, label=label, access=HIDDEN, field_id=obj.storage[api_name].field_id))"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_service.py::test_r3_1_r3_2_co7_describe_gives_a_readable_field_its_id_and_a_hidden_one_none
+  - name: K1 (b) the presentation passes a hidden field's id
+    file: packages/python/dw_studio/src/dw_studio/records/presentation/views.py
+    old: "            fields.append(FieldOut(api_name=f.api_name, label=f.label, access=f.access))"
+    new: "            fields.append(FieldOut(api_name=f.api_name, label=f.label, access=f.access, field_id=f.field_id))"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_description_view.py
+  - name: R3.1 a readable field carries no id
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_service.py
+    old: "                field_id=storage.field_id,\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_service.py::test_r3_1_r3_2_co7_describe_gives_a_readable_field_its_id_and_a_hidden_one_none
+      - apps/api/tests/integration/test_studio_records.py::test_r3_1_k2_describe_gives_each_readable_field_the_id_a_role_takes
+  - name: R3.1 the presentation drops a readable field's id
+    file: packages/python/dw_studio/src/dw_studio/records/presentation/views.py
+    old: "                field_id=f.field_id,\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/unit/test_description_view.py
+      - apps/api/tests/integration/test_studio_records.py::test_r3_1_k2_describe_gives_each_readable_field_the_id_a_role_takes
