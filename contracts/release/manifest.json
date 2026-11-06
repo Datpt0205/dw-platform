@@ -33,9 +33,9 @@
       "version": "1.1.0"
     },
     {
-      "checksum": "5cd2208962b123878685d0b73cdea3e2f8f76e70bdf9814de9091dbdd9667d06",
+      "checksum": "cbcb12dd35ff3cb0c20b70ea12111a49d485e98f19daad0b4d854972ba46cd7e",
       "copy_id": "platform.audit_actions.usage_and_limits",
-      "version": "1.0.0"
+      "version": "1.1.0"
     },
     {
       "checksum": "fc229b16779e65fce795ee379916be3fe9e093993f1fd9325aa6710865358606",
@@ -100,7 +100,7 @@
       "version": "1.0.0"
     }
   ],
-  "git_sha": "5cb1074b80d45b2101dbd75ced290eceec520319",
+  "git_sha": "8abdc7f8d6db03119557b92e3d6e693c165781b7",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "model_profiles": [
@@ -165,9 +165,9 @@
   ],
   "price_books": [
     {
-      "checksum": "68f34df362bafd2f7ab68f27d9bac51ee45e66ab8a2b1afe6f4b1b18ad95836f",
+      "checksum": "1de08a7d8d8782077de90f290123b3fd1602433f0d7865af72411d1268c14643",
       "price_book_id": "platform",
-      "version": "1.0.0"
+      "version": "1.1.0"
     }
   ],
   "prompt_bundles": [
