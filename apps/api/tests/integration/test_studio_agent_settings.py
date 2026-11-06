@@ -132,9 +132,14 @@ class Api:
         )
 
     async def audits(self, artifact_id: str) -> list[Any]:
+        """Oldest first. Without the ORDER BY the rows came back in heap
+        order, which is not write order: in the whole suite a small patch row
+        fitted the free space of a page the larger create row had not, so
+        `[-1]` read the create (ctid (14,2) before (15,1))."""
         return await self.sql(
             "SELECT tenant_id, actor_id, details FROM platform.audit_events"
-            " WHERE action = 'studio.agent.settings_changed' AND resource_id = :a",
+            " WHERE action = 'studio.agent.settings_changed' AND resource_id = :a"
+            " ORDER BY occurred_at, id",
             a=artifact_id,
         )
 
