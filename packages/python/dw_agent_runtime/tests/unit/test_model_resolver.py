@@ -532,9 +532,13 @@ async def test_a_manifest_is_read_once_and_the_cache_is_bounded() -> None:
 _SOURCES = ("apps", "packages/python", "scripts")
 # Where the platform layer may be read unfiltered: composition roots and scripts
 # (ticket 02 step 1), and compaction's build-time check of its summary route.
+# `bootstrap/studio.py` is a composition root (CLAUDE.md): it reads where each
+# route of the default profile processes, for a workflow's capability analysis
+# at submit (compliance-pdpl/05, R2.6).
 PLATFORM_READERS = frozenset(
     {
         "apps/api/src/dw_api/bootstrap/knowledge.py",
+        "apps/api/src/dw_api/bootstrap/studio.py",
         "apps/worker/src/dw_worker/composition.py",
         "packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/chat_model.py",
         "packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/context_compaction.py",

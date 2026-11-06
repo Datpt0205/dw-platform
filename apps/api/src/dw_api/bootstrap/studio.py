@@ -70,7 +70,7 @@ import dataclasses
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -86,6 +86,7 @@ from dw_agent_runtime.wflite.validate import ToolSpecLookup
 from dw_api.bootstrap.models import model_provider_config
 from dw_api.bootstrap.paths import MODEL_PROFILES_DIR, TOOL_SPECS_DIR, release_manifest_ref
 from dw_api.settings import ApiSettings
+from dw_kernel.errors import NotFoundError
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_platform.adapters.persistence.audience_workspaces import SqlAudienceWorkspaces
 from dw_platform.adapters.persistence.config_versions_repo import SqlConfigVersionStore
@@ -148,6 +149,7 @@ from dw_studio.records.adapters.user_session import user_session
 from dw_studio.records.application.record_service import RecordDoor, RecordService
 from dw_studio.records.application.schema_projector import ObjectSchemaProjector
 from dw_studio.records.domain.document import OBJECT_KIND
+from dw_studio.submit_checks import workflow_capability_check
 from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
 
 if TYPE_CHECKING:
@@ -232,6 +234,21 @@ class StudioContainer:
     resume_checks: ResumeCheckService
 
 
+def _profile_locations(models: Any) -> Callable[[str], tuple[str | None, ...] | None]:
+    """Where each route of a platform model profile processes (ADR-0123
+    decision 5), from the process's one resolver; None for a profile it does
+    not register, which the analysis reads as foreign."""
+
+    def locations(profile_id: str) -> tuple[str | None, ...] | None:
+        try:
+            profile = models.platform_profile(profile_id)
+        except NotFoundError:
+            return None
+        return tuple(route.get("data_location") for route in profile.pinned_routes().values())
+
+    return locations
+
+
 def build_studio(
     container: ApiContainer,
     settings: ApiSettings,
@@ -306,12 +323,27 @@ def build_studio(
     usability = container.connection_usability
     binding_types = platform_binding_types(usability)
     binding_status = BindingStatus(store, binding_types)
+    # A workflow's capability analysis at its submit (compliance-pdpl R4,
+    # ticket 05), over this process's step registry and tool register, a model
+    # step on the deployment's default profile.
+    submit_checks: Mapping[str, Sequence[SubmitCheck]] = {
+        **_SUBMIT_CHECKS,
+        WORKFLOW_KIND: (
+            workflow_capability_check(
+                registry=node_types,
+                tools=tools,
+                ids=ids,
+                profile_locations=_profile_locations(models),
+                default_profile=getattr(models, "default_profile", None),
+            ),
+        ),
+    }
     lifecycle = LifecycleService(
         SqlLifecycleStore(store),
         artifacts,
         container.run_control,
         # The platform kinds' checks: a test's own kinds (`kinds=`) are not them.
-        _SUBMIT_CHECKS if kinds is None else {},
+        submit_checks if kinds is None else {},
         clock,
         bindings=binding_status,
     )

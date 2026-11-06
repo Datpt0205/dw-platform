@@ -1,6 +1,6 @@
 # 05 — Phân tích bộ ba nguy hiểm và năng lực của quy trình khi gửi kiểm định
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 03, .claude/plans/studio/workflow-engine/issues/01-tai-lieu-workflow-va-kiem-xuat-ban.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/tenant-config/issues/02-vo-phien-ban-va-chi-muc-phu-thuoc.md
 Area: studio
 Yêu cầu: R2.6, R4.1, R4.2, R4.4, R4.5, R4.6, R4.7, R4.8, R5.5, CP6, CP12, CP14, CP15, CP21, CP26
@@ -220,3 +220,41 @@ phân tích của loại `agent` ở `.claude/plans/studio/compliance-pdpl/issue
   đổi; (d) phân tích lấy lớp công ty lúc gửi kiểm định; công ty nới lớp sau đó (W2) cần phân tích lại.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (B:compliance-pdpl/05~tools-and-skills/03, HIGH): giá trị `data_classification` ngoài tập đóng cho nhãn B, không bỏ qua; ticket này là bên đọc của trường mà field-security/01 từng định gỡ (ADR-0106 (Accepted) bổ sung 4/11/2026 giữ trường). Nếu sai thì: giá trị lạ làm gửi kiểm định trả 422 `tool_unclassified`.
+- 2026-11-06 (agent): dựng xong.
+    - Đã làm: module thuần `dw_studio/workflows/application/capability.py` (`capability_analysis`, `LabelTable`,
+      `CapabilityFacts`, ba kiểm theo thứ tự `tool_unclassified`, `residency_refused`, `trifecta_path_unapproved`,
+      `ANALYSER_VERSION` "1"); `paths_to` vào `wflite/ir.py` (tổ tiên gồm cạnh quay lui của vòng lặp);
+      `capability_check.py` (`platform_label_table` cho mọi loại của `build_node_registry()` cộng
+      `flow.subworkflow@1`, `WorkflowCapabilityCheck`, `VersionAssessmentLookup`, `CapabilityFactsPort`,
+      `AssessmentWriterPort`); adapter `workflows/adapters/capability.py` (`SqlCapabilityFacts` đọc trong giao dịch
+      gửi kiểm định dưới RLS, `SqlVersionAssessments` vừa là lookup vừa là bên ghi `ON CONFLICT DO NOTHING`);
+      `dw_studio/submit_checks.py` biến nó thành `SubmitCheck` (workflows và lifecycle không import nhau), đăng ký cho
+      `workflow` ở `_SUBMIT_CHECKS` của API; `SubmitRefusal.details` mang `paths`; revision `c240f5261ec5`
+      (`studio.version_assessments`, FK ghép CASCADE, UNIQUE có `analyser_version`, RLS, INSERT cho `dw_app`), dòng
+      `STUDIO_EXCLUSIONS`, dòng bảng toàn tenant, dòng `test_privileges`, `Table` ở `core/adapters/tables.py`.
+    - (agent, theo ủy quyền 31/10/2026) `ToolSpec` của nền tảng chưa có `output_trust` (connections-and-vault/05 thêm
+      cho Hành động); facts đọc `getattr(spec, "output_trust", None)`, nên một `tool.call@1` dùng công cụ nền tảng
+      hôm nay là `tool_unclassified` đúng chữ bước 1, 3. Nếu sai thì: thêm `ToolSpec.output_trust` và khai cho mọi
+      tệp `configs/tools`.
+    - (agent, theo ủy quyền 31/10/2026) mô hình của trường cá nhân: một phiên bản ghim (đối tượng, nguồn của trigger)
+      "có dữ liệu cá nhân" khi tài liệu của nó có một `pd_category` khác `none` ở bất kỳ đâu; khóa theo id thành phần,
+      id phiên bản và `api_name`; thiếu trong bao đóng → B. Bước quy trình con đọc `config.version_id` của loại nằm
+      trong `LabelTable.child_types`. Bước model ở W1 chạy trên hồ sơ mặc định của triển khai (loại `workflow` không
+      khai hồ sơ), nên R2.6 xét mọi tuyến của hồ sơ đó. Nếu sai thì: đổi `_personal`, `child_types`, `profile_of` ở
+      bảng, một chỗ mỗi thứ.
+    - (agent) check của loại `workflow` chỉ nối ở bảng kiểm của các loại nền tảng (`kinds is None`), như
+      `object_live_check`; test API dùng loại riêng nên không chạy nó; test của ticket chạy qua `LifecycleService` thật
+      với `workflow_capability_check` và bảng nhãn của test.
+    - (agent) case eval bảo mật của bước 7 chưa thêm: grader của bộ eval nằm ở `dw_studio.testing` và
+      `scripts/run_evals.py`, của lane khác đang sửa; fixture quy trình thí điểm có ở
+      `test_r4_2_the_pilot_workflow_without_its_approval_is_refused` (unit), sẵn cho bộ eval khi thêm (MEDIUM (e)).
+    - Test: `test_capability.py` 32 (unit), `test_capability_db.py` 8 (Postgres: một dòng, gửi lại không thêm, bị từ
+      chối không dòng, `dw_app` không UPDATE, FK chéo công ty 23503, xóa phiên bản kéo dòng, lookup dưới RLS của công
+      ty khác rỗng, lookup lỗi thì gửi thất bại); `test_rls_coverage`, `test_privileges`, `test_offboarding_coverage`,
+      `test_metadata_matches_catalog` xanh.
+    - `mutations/05.yaml` 15 đột biến, chưa chạy `mutate.py`; chạy tay 1 (bỏ "A, B là tổ tiên của H"), đỏ.
+    - MEDIUM: (a) ở gate vẫn đúng: `dw_app` INSERT được một dòng ngoài giao dịch gửi kiểm định; (b) Bước quy trình
+      con mang C của con dù con đã tự gác; (f) `tool.call@1` dùng công cụ nền tảng bị `tool_unclassified` tới khi
+      công cụ khai `output_trust`.
+    - Còn ở lúc đóng hàng đợi: `mutate.py`; `make test-integration`; P50/P95/P99 của `POST .../submit` của loại
+      `workflow` (thêm phân tích và một dòng) so với commit bắt đầu hàng đợi.

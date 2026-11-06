@@ -853,6 +853,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
     ("studio", "artifact_versions"): (
         "a version of an artifact, reached only through it; its workspace is the artifact's"
     ),
+    ("studio", "version_assessments"): (
+        "đánh giá đi theo phiên bản toàn tenant của nó: phân tích năng lực của một phiên bản,"
+        " FK ghép CASCADE tới studio.artifact_versions (compliance-pdpl ticket 05, DO-01)"
+    ),
     ("studio", "dependencies"): (
         "where one version uses another artifact, a child of the version; workspaces apart"
         " on purpose (a dependent in ws2 counts against deleting an artifact of ws1)"

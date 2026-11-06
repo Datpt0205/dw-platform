@@ -831,6 +831,10 @@ _STUDIO_WRITES: dict[str, tuple[frozenset[str], frozenset[str]]] = {
         frozenset({"INSERT"}),
         frozenset({"audience", "owner_user_id", "enabled", "row_version", "updated_at"}),
     ),
+    # A version's capability analysis (compliance-pdpl ticket 05): written once
+    # in its submit's transaction, never changed or deleted by dw_app (the
+    # version's CASCADE does).
+    "version_assessments": (frozenset({"INSERT"}), frozenset()),
     # A step's `wf:` keys (custom-objects ticket 03): inserted with the write,
     # deleted by offboarding and the purge, never rewritten.
     "record_write_keys": (frozenset({"INSERT", "DELETE"}), frozenset()),

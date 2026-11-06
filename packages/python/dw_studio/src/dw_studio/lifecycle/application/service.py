@@ -98,13 +98,14 @@ class SubmitRefusedError(DocumentInvalidError):
 
     def __init__(self, refusal: SubmitRefusal) -> None:
         super().__init__(refusal.detail, refusal.errors)
+        self.details.update(refusal.details)
         self.details["reason_code"] = refusal.reason_code
 
 
 def _refused(refusal: SubmitRefusal) -> DWError:
     if refusal.errors:
         return SubmitRefusedError(refusal)
-    return _reason(DomainError, refusal.detail, refusal.reason_code)
+    return _reason(DomainError, refusal.detail, refusal.reason_code, **refusal.details)
 
 
 def _reason(error: type[DWError], message: str, reason: str, **details: Any) -> DWError:

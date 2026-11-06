@@ -12,10 +12,10 @@ may become is `studio.guard_version_stage()`'s.
 from __future__ import annotations
 
 import uuid
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from contextlib import AbstractAsyncContextManager
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.authorization import ApprovalAudience
@@ -157,6 +157,9 @@ class SubmitRefusal:
     reason_code: str
     detail: str
     errors: tuple[DocumentProblem, ...] = ()
+    # What the 422's `details` carries beside `reason_code` (the capability
+    # analysis's `paths`, compliance-pdpl R4.2).
+    details: Mapping[str, Any] = field(default_factory=dict)
 
 
 class SubmitCheck(Protocol):

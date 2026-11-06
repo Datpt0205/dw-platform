@@ -1,0 +1,110 @@
+# Mutation check of compliance-pdpl ticket 05: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the
+# ticket's criteria: the labels (the unknown-type net, the tool's three
+# classifications, an object's fields), the trifecta rule and its gate (dominates,
+# the approved lane, the data before the gate, a loop's back edge), the
+# unclassified tool, the residency check, a child version's labels, and the
+# table's composite key and grants. The migration's mutations apply in place,
+# so their tests recreate the database from the mutated revision.
+#
+# Left out, with why: the registry-coverage test of R4.1 compares two sets the
+# test reads (`build_node_registry()` and `platform_label_table().rules`), so
+# its mutation is deleting a table entry: `tool.call@1` below.
+mutations:
+  # ---- R4.1: the labels ---------------------------------------------------------------
+  - name: R4.1 an unknown type carries no label
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/capability.py
+    old: "    if spec is None or rule is None:\n        return EVERY_LABEL\n"
+    new: "    if spec is None or rule is None:\n        return frozenset()\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r4_1_an_unknown_type_carries_every_label
+  - name: R4.1 a platform type loses its entry
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/capability_check.py
+    old: "            \"tool.call@1\": tool_labels,\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r4_1_every_platform_type_has_an_entry_in_the_platform_table
+  - name: R4.1 a strange data classification is not private
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/capability.py
+    old: "        if not classes or classes & PRIVATE_CLASSES or not classes <= DATA_CLASSES:\n"
+    new: "        if classes & PRIVATE_CLASSES:\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r4_1_a_tool_steps_labels_are_its_tools_three_classifications
+  # ---- R4.2: the trifecta and its gate ----------------------------------------------------
+  - name: R4.2 the gate need not dominate the effect
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/capability.py
+    old: "            and doms.dominates(gate.index, index)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r4_2_an_approval_on_one_lane_only_does_not_gate_the_join
+  - name: R4.2 the rejected lane gates too
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/capability.py
+    old: "            and _in_approved_lane(ir, gate.index, index)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r4_2_a_send_in_the_rejected_lane_is_not_gated
+  - name: R4.2 an approval before the data gates the effect
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/capability.py
+    old: "            and others <= _ancestors(ir, gate.index)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r4_2_an_approval_before_the_data_does_not_gate_the_send
+  - name: R4.1 a loop's back edge is not an ancestry
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/ir.py
+    old: "        found.add(node)\n        stack.extend(preds.get(node, ()))\n"
+    new: "        found.add(node)\n        stack.extend(p for p in preds.get(node, ()) if not (isinstance(p, int) and isinstance(target, int) and p > target))\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r4_1_a_loops_back_edge_makes_a_later_read_an_ancestor
+  # ---- R4.4: an unclassified tool ---------------------------------------------------------
+  - name: R4.4 an unclassified tool passes
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/capability.py
+    old: "            if classes is None or not classes.classified:\n"
+    new: "            if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r4_4_a_tool_missing_a_classification_refuses_the_submit_first
+  # ---- R2.6: a personal field on a route abroad -------------------------------------------
+  - name: R2.6 the residency check is not run
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/capability.py
+    old: "        if facts.route_class != \"vn_only\":\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r2_6_a_private_ancestor_of_a_foreign_model_step_is_refused
+  - name: R2.6 a fallback abroad is not foreign
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/capability.py
+    old: "    foreign = locations is None or not locations or any(loc != \"vn\" for loc in locations)\n"
+    new: "    foreign = locations is None or not locations or locations[0] != \"vn\"\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r2_6_any_route_not_declared_vn_is_foreign
+  # ---- R4.8: a child version's labels -----------------------------------------------------
+  - name: R4.8 a child carries no label instead of its row's
+    file: packages/python/dw_studio/src/dw_studio/workflows/application/capability_check.py
+    old: "    return EVERY_LABEL if found is None else found\n"
+    new: "    return frozenset()\n"
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r4_8_a_child_with_an_effect_after_a_and_b_needs_an_approval
+      - packages/python/dw_studio/tests/workflows/test_capability.py::test_r4_8_a_child_with_no_assessment_row_carries_every_label
+  # ---- R4.6, R4.7: the table --------------------------------------------------------------
+  - name: R4.7 the version key is a single column
+    file: db/migrations/versions/c240f5261ec5_studio_version_assessments.py
+    old: "            FOREIGN KEY (version_id, tenant_id)\n            REFERENCES studio.artifact_versions (id, tenant_id) ON DELETE CASCADE,\n"
+    new: "            FOREIGN KEY (version_id)\n            REFERENCES studio.artifact_versions (id) ON DELETE CASCADE,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_capability_db.py::test_r4_7_a_row_of_company_a_never_names_a_version_of_company_b
+  - name: R5.5 the version key restricts the delete
+    file: db/migrations/versions/c240f5261ec5_studio_version_assessments.py
+    old: "REFERENCES studio.artifact_versions (id, tenant_id) ON DELETE CASCADE,\n"
+    new: "REFERENCES studio.artifact_versions (id, tenant_id) ON DELETE RESTRICT,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_capability_db.py::test_r5_5_deleting_a_version_takes_its_assessment_and_spares_the_rest
+  - name: R4.6 dw_app may update an assessment
+    file: db/migrations/versions/c240f5261ec5_studio_version_assessments.py
+    old: "_APP_GRANTS = (\"GRANT INSERT ON studio.version_assessments TO dw_app;\",)\n"
+    new: "_APP_GRANTS = (\"GRANT INSERT, UPDATE ON studio.version_assessments TO dw_app;\",)\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_capability_db.py::test_r4_6_dw_app_cannot_update_an_assessment
+  - name: R4.6 a second submit of the same content fails on the key
+    file: packages/python/dw_studio/src/dw_studio/workflows/adapters/capability.py
+    old: "            .on_conflict_do_nothing()\n"
+    new: "\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_capability_db.py::test_r4_6_a_valid_submit_writes_one_row_and_a_second_adds_none

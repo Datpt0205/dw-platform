@@ -336,6 +336,27 @@ def reachable(ir: WorkflowIR) -> frozenset[Node]:
     return frozenset(_postorder(ir))
 
 
+def paths_to(ir: WorkflowIR, target: Node) -> frozenset[Node]:
+    """Every node with a path to `target` in the graph, `target` itself only
+    when a cycle returns to it (a loop's body). A loop's edge back to its step
+    is an edge like any other, so a step of a loop's body has every step of
+    the body before it (compliance-pdpl R4.2: the next round sees what the
+    last one read)."""
+    preds: dict[Node, list[Node]] = {}
+    for source, targets in ir.edges.items():
+        for node in targets:
+            preds.setdefault(node, []).append(source)
+    found: set[Node] = set()
+    stack = list(preds.get(target, ()))
+    while stack:
+        node = stack.pop()
+        if node in found:
+            continue
+        found.add(node)
+        stack.extend(preds.get(node, ()))
+    return frozenset(found)
+
+
 @dataclass(frozen=True)
 class Dominators:
     """Each reachable node's immediate dominator: a node `d` dominates `n`
@@ -409,6 +430,7 @@ __all__ = [
     "iter_lanes",
     "join_path",
     "lower",
+    "paths_to",
     "reachable",
     "segment",
 ]

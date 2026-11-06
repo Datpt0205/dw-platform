@@ -318,3 +318,28 @@ run_manifest_keys = sa.Table(
     sa.Index(None, "tenant_id", "artifact_version_id"),
     schema="platform",
 )
+
+# compliance-pdpl ticket 05 (revision c240f5261ec5): a version's capability
+# analysis at its submit; written once, read by the gate and by a parent
+# workflow's step on the version.
+version_assessments = sa.Table(
+    "version_assessments",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("id", UUID(as_uuid=True), primary_key=True),
+    sa.Column("version_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("definition_hash", sa.Text, nullable=False),
+    sa.Column("analyser_version", sa.Text, nullable=False),
+    sa.Column("signals", ARRAY(sa.Text), nullable=False),
+    sa.Column("labels", JSONB, nullable=False),
+    sa.Column("verdict", sa.Text, nullable=False),
+    sa.Column("created_at", _TS, nullable=False, server_default=sa.text("now()")),
+    _composite("version_id", artifact_versions, ondelete="CASCADE"),
+    sa.UniqueConstraint(
+        "tenant_id",
+        "version_id",
+        "definition_hash",
+        "analyser_version",
+        name="uq_version_assessments_tenant_version_hash_analyser",
+    ),
+)
