@@ -1,6 +1,6 @@
 # 08 — Chi phí trigger quyền ở cỡ D12: kiểm chủ sở hữu mỗi giao dịch, luật giữ quyền theo neo, tách nhiệm bỏ khóa ngoài luật
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 02, 03, 04, 07
 Area: studio
 Yêu cầu: không (chi phí của ba trigger theo Phát hiện 2-4 của discovery/08; R3.12, R5.1, R6.1, R6.3, R9.5 và RB14, RB15, RB16, RB40 giữ bằng test hiện có cộng test vi sai ở đây, trừ đúng một câu trả lời đổi có chủ ý của R3.12 ở bước 1)
@@ -119,16 +119,16 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket; mỗi dòng mộ
 
 ## Tiêu chí chấp nhận
 
-- [ ] K1: test cảnh báo một lần mỗi lần xuống xanh với hai tenant trong một giao dịch và với lần ghi sau
+- [x] K1: test cảnh báo một lần mỗi lần xuống xanh với hai tenant trong một giao dịch và với lần ghi sau
       `SET CONSTRAINTS ALL IMMEDIATE`; sai nếu thiếu hay thừa một sự kiện, và đột biến của K1 làm test đỏ.
-- [ ] K2: test hai neo và test vai trò chưa ai giữ xanh; sai nếu một trong hai lần ghi đó được nhận, và đột biến của K2
+- [x] K2: test hai neo và test vai trò chưa ai giữ xanh; sai nếu một trong hai lần ghi đó được nhận, và đột biến của K2
       làm test đỏ.
-- [ ] K3: test vế phải và test vi phạm sẵn xanh; sai nếu một trong hai lần ghi đó được nhận, và đột biến của K3 làm test
+- [x] K3: test vế phải và test vi phạm sẵn xanh; sai nếu một trong hai lần ghi đó được nhận, và đột biến của K3 làm test
       đỏ.
-- [ ] Vi sai (bước 5): hai danh sách kết quả bằng nhau từng dòng; sai nếu một lần ghi của tập cho kết quả khác giữa hai
+- [x] Vi sai (bước 5): hai danh sách kết quả bằng nhau từng dòng; sai nếu một lần ghi của tập cho kết quả khác giữa hai
       database (nhận hay từ chối, ràng buộc, mã lý do, khóa thiếu, cột, số sự kiện) ngoài dòng "xuống rồi lên trong một
       giao dịch" của bước 1, hay nếu dòng đó không đổi đúng như bước 1 ghi (một sự kiện trước, không sự kiện nào sau).
-- [ ] Số đo: `q2` của `make bench-rbac` trước (bản `git archive` của commit ngay trước commit đầu của ticket này) và sau,
+- [x] Số đo: `q2` của `make bench-rbac` trước (bản `git archive` của commit ngay trước commit đầu của ticket này) và sau,
       cùng máy, ở `RESULTS.md` và Comments: lần gán 1.000 người, "thêm 10 khóa, 10 lệnh", "bỏ 10 khóa", "thêm 5 quyền
       object", trung vị ba lần chạy mỗi bên, mỗi lần kèm số lần gọi từ `pg_stat_xact_user_functions` (bench đặt
       `track_functions = 'all'`, `db/bench/rbac/bench_rbac.py:516`; `check_owner_coverage` và `holder_covers_grant` đếm 0 là
@@ -215,3 +215,42 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket; mỗi dòng mộ
   đổi. Sửa sau lượt này không được người đọc mới đọc lại; người dựng đọc bước 1-3 và các MEDIUM trước. Nếu sai thì: lỗi
   lộ ra khi dựng, ghi ở Comments.
 - 2026-11-05 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): dựng xong, `resolved`. Revision `a7ca12c36ec7` (trên `fece6611d786`)
+  thay ba thân hàm bằng `_earlier()`/`_patched()` (thân `rbac_refusals` của `ef68083f2905`), bỏ 12 trigger theo câu lệnh,
+  thêm bốn trigger ràng buộc `trg_<bảng>_owner_coverage`; tập anchor của bước 2 là CTE `MATERIALIZED` (không thì hàm
+  STABLE bị đẩy xuống dưới DISTINCT và lại chạy mỗi lần gán, đo được). Khác ticket: (1) `db/migrations/env.py` đặt
+  `SET CONSTRAINTS ALL IMMEDIATE` cho lần chạy migration: mọi revision chung một giao dịch, nên sự kiện hoãn của một
+  backfill làm `ALTER TABLE` sau đó của cùng bảng hỏng ("pending trigger events"), chỉ trên database có dữ liệu; test
+  `test_a_revision_may_alter_a_role_table_a_backfill_wrote_on_a_populated_database` giữ. Hai test sửa `ALTER TABLE` sau
+  lần ghi (`test_privileges.py`, `test_service_principals_db.py`) cũng bắn sự kiện hoãn trước. (2) Harness bench bắn
+  trigger hoãn bằng `SET CONSTRAINTS ALL IMMEDIATE` trước khi đọc bộ đếm và luôn liệt kê ba hàm đếm (0 là "không gọi").
+  (3) Test của bước 5 và K1-K3: `packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py` (hai
+  database `dw_test_trbac08_before`/`_after` mang hậu tố làn). (4) Hai test của `test_tenant_roles.py` đỏ vì
+  agent-lifecycle/04 (`0353c313569f`) đăng ký `studio.publish.approve` (khóa `workspace`): giả định "chỉ khóa của ticket
+  03 có trong danh mục" và "khóa chủ là khóa `tenant`" sai. `test_the_guard_and_the_coverage_name_the_same_two_keys` bỏ
+  phép khẳng định loại khóa (guard và lần đếm không đọc độ sâu, loại khóa là của danh mục);
+  `test_no_warning_while_an_owner_key_is_not_in_the_catalogue` dựng ca thay vì giả định: một giao dịch rút mọi khóa chủ
+  trừ khóa đầu khỏi danh mục, gỡ, bắn lần kiểm hoãn, đọc, rồi ROLLBACK; phá thử (đếm khóa chủ không qua danh mục) đỏ.
+  `apps/worker/tests/integration/test_owner_coverage_db.py` đọc khóa chủ có trong danh mục rồi chỉ đăng ký khóa thiếu
+  (hết lỗi setup), đọc sau commit. Số đo `q2` (trước `0721f156`, sau `cce36795` cộng tệp ticket, trung vị ba lần, ms):
+  gán 1.000 người một mình 41.268 → 21.016, thêm 10 khóa 10 lệnh 20.089 → 5.804, bỏ 10 khóa 9.876 → 501, thêm 5 quyền
+  object 5.093 → 698; `check_owner_coverage` 1.000 → 1 mỗi giao dịch, `holder_covers_grant` 10.000 → 10 (người làm ở
+  mức `tenant`: một lần mỗi dòng), `sod_violation` 10.000 → 0 cho khóa ngoài luật; bảng ở `db/bench/rbac/RESULTS.md`
+  (mục "Đo lại sau tenant-rbac/08"). Gate nhanh: ruff, format, mypy (962 tệp; 951 trong container 3.12.16), unit
+  `dw_platform` + worker 531 xanh, integration của ticket và ba test migration 202 + 42 xanh; unit trên bản xuất sạch
+  trong `python:3.12-slim-bookworm` đỏ đúng các test cần `.git`, uid 0 hay rlimit của máy (docgen, release manifest,
+  compose policy, retention manifest, CEL memory bomb), như lần chạy trước ticket. `reviewing-feature-security`: ranh giới
+  1 (hàm SECURITY DEFINER lọc theo `tenant_id` của dòng, dấu mang id tenant, test hai tenant trong một giao dịch), 2 (mọi
+  lần từ chối giữ nguyên, test vi sai), 5 (cùng hàm cho mọi người ghi, `dw_migrator` cũng qua trigger), 6 (dấu hết cùng
+  giao dịch, test cùng kết nối sau commit); 3 và 4 không áp (không đường agent, không cache). `mutations/08.yaml` 16 đột
+  biến, chạy lúc đóng hàng đợi; phá thử bằng tay K3 (phép trả sớm bỏ qua người vi phạm sẵn): 3/4 ca K3 đỏ. Chưa:
+  `make test-integration` cả bộ (lúc đóng hàng đợi, wave-close.md).
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): từ gate ticket 12 (`cce36795`): lần kiểm hoãn ghi `platform.tenants`
+  (cột `owner_coverage_low_since`, chỉ khi xuống dưới hai hay lên lại) sau khi giao dịch đã giữ dòng
+  `platform.tenant_access_versions` (khóa ở chính lệnh ghi, `trg_z_bump_access_version`), còn
+  `refuse_losing_the_last_owner` lấy dòng tenant rồi dòng version, nên cạnh một lần đổi chủ sở hữu cuối hai giao dịch có
+  thể `40P01`: một bên bị hủy, không lọt (fail closed). Không sửa ở đây: dòng version đã khóa từ lệnh ghi, trước khi
+  trigger hoãn chạy, nên khóa dòng tenant đầu trigger không đổi thứ tự; thứ tự này cũng có trước ticket (trigger theo câu
+  lệnh bắn sau các trigger theo dòng của chính lệnh, `trg_z_bump_access_version` đã khóa dòng version). Tham chiếu: bước 1
+  của ticket 12. Nếu sai thì: lần ghi lấy dòng tenant (`FOR NO KEY UPDATE`) trước dòng version ở đầu mọi lệnh ghi bốn
+  bảng, đo bằng cuộc đua của ticket 11.

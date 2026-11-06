@@ -1431,6 +1431,9 @@ async def test_the_critical_role_check_names_a_planted_principal(db_urls: Databa
             assert await critical_principal_roles(conn) == []
 
             # The DW's fixed roles live on the assignments since tenant-rbac 03.
+            # The deferred owner coverage events of the writes above fire now
+            # (tenant-rbac/08): a table with pending events cannot be altered.
+            await conn.execute(sa.text("SET CONSTRAINTS ALL IMMEDIATE"))
             await conn.execute(
                 sa.text(
                     "ALTER TABLE platform.role_assignments"

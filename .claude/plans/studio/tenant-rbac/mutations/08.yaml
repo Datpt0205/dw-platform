@@ -1,0 +1,167 @@
+# Mutation check of tenant-rbac ticket 08: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control of the ticket
+# (K1-K3) and per way each of the three triggers could quietly lose it or its
+# saving (failure-modes #3). Each is in a migration, mutated in place, taking
+# effect when the module's own fixture builds its two databases.
+mutations:
+  - name: K1 the mark says checked, not the version it was checked at
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old:
+      "            IF v_version IS NULL\n               OR current_setting(v_mark, true) IS DISTINCT\
+      \ FROM v_version THEN\n"
+    new: "            IF coalesce(current_setting(v_mark, true), '') = '' THEN
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k1_a_fall_is_told_once_whether_alone_two_tenants_or_after_set_constraints
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_every_write_is_answered_as_before_but_a_fall_the_transaction_undoes
+  - name: K1 one mark for every tenant of the transaction
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old:
+      "            v_mark := 'dw_owner_coverage.t_' || replace(v_tenant::text, '-', '');\n          \
+      \  SELECT v.version::text INTO v_version\n            FROM platform.tenant_access_versions v WHERE\
+      \ v.tenant_id = v_tenant;\n            IF v_version IS NULL\n               OR current_setting(v_mark,\
+      \ true) IS DISTINCT FROM v_version THEN\n"
+    new:
+      "            v_mark := 'dw_owner_coverage.any_tenant';\n            SELECT v.version::text INTO\
+      \ v_version\n            FROM platform.tenant_access_versions v WHERE v.tenant_id = v_tenant;\n  \
+      \          IF coalesce(current_setting(v_mark, true), '') = '' THEN\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k1_a_fall_is_told_once_whether_alone_two_tenants_or_after_set_constraints
+  - name: K1 a checked mark outlives its transaction on a pooled connection
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old:
+      "            IF v_version IS NULL\n               OR current_setting(v_mark, true) IS DISTINCT\
+      \ FROM v_version THEN\n                PERFORM platform.check_owner_coverage(v_tenant);\n        \
+      \        SELECT v.version::text INTO v_version\n                FROM platform.tenant_access_versions\
+      \ v WHERE v.tenant_id = v_tenant;\n                PERFORM set_config(v_mark, coalesce(v_version,\
+      \ ''), true);\n"
+    new:
+      "            IF coalesce(current_setting(v_mark, true), '') = '' THEN\n                PERFORM\
+      \ platform.check_owner_coverage(v_tenant);\n                SELECT v.version::text INTO v_version\n\
+      \                FROM platform.tenant_access_versions v WHERE v.tenant_id = v_tenant;\n          \
+      \      PERFORM set_config(v_mark, coalesce(v_version, ''), false);\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k1_a_fall_after_a_committed_write_on_the_same_connection_is_told
+  - name: K1 a removed row is not checked
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old: '    f" AFTER INSERT OR UPDATE OR DELETE ON platform.{table}"
+
+      '
+    new: '    f" AFTER INSERT OR UPDATE ON platform.{table}"
+
+      '
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k1_a_fall_is_told_once_whether_alone_two_tenants_or_after_set_constraints
+  - name: K1 the old row's tenant is never read
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old: "                CASE WHEN TG_OP <> 'INSERT' THEN OLD.tenant_id END,
+
+      "
+    new: "                NULL::uuid,
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k1_a_fall_is_told_once_whether_alone_two_tenants_or_after_set_constraints
+  - name: K1 the check runs at every row again
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old: "            IF v_version IS NULL\n               OR current_setting"
+    new: "            IF true OR v_version IS NULL\n               OR current_setting"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k1_the_coverage_check_runs_once_per_tenant_per_transaction
+  - name: K2 the hold rule is asked at tenant depth only
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old: "                    ELSE EXISTS (
+
+      "
+    new: "                    ELSE false AND EXISTS (
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k2_an_anchor_the_actor_does_not_cover_is_refused_at_head_and_before
+  - name: K2 one anchor of the role is judged, not each
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old:
+      "                            WHERE a.tenant_id = p_tenant_id AND a.role_id = v_role\n         \
+      \               )\n                        SELECT 1 FROM w"
+    new:
+      "                            WHERE a.tenant_id = p_tenant_id AND a.role_id = v_role\n         \
+      \                   ORDER BY 1 LIMIT 1\n                        )\n                        SELECT\
+      \ 1 FROM w"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k2_an_anchor_the_actor_does_not_cover_is_refused_at_head_and_before
+  - name: K2 the tenant-depth shortcut takes a holding at any depth
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old:
+      "                    WHEN platform.holder_covers_grant(\n                        p_tenant_id, p_actor_id,\
+      \ v_key, v_depth, NULL\n                    ) THEN false"
+    new:
+      "                    WHEN EXISTS (\n                        SELECT 1 FROM platform.effective_grants(p_tenant_id,\
+      \ p_actor_id) h\n                        WHERE h.permission_key = v_key\n                    ) THEN\
+      \ false"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k2_an_anchor_the_actor_does_not_cover_is_refused_at_head_and_before
+  - name: K2 the anchors are read per assignment again
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old: "                        WITH w AS MATERIALIZED (
+
+      "
+    new: "                        WITH w AS NOT MATERIALIZED (
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k2_the_hold_rule_asks_once_per_anchor_and_once_at_tenant_depth
+  - name: K2 a role nobody holds reads as an empty set of anchors
+    file: db/migrations/versions/d2b57239ef50_role_administration_and_anti_escalation.py
+    old: "                ELSE NOT EXISTS (
+
+      "
+    new: "                ELSE false AND NOT EXISTS (
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k2_an_anchor_the_actor_does_not_cover_is_refused_at_head_and_before
+  - name: K3 the shortcut returns although a holder is already in breach
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old: "                WHERE platform.sod_rule_broken(s.key, h.keys)
+
+      "
+    new:
+      "                WHERE false AND platform.sod_rule_broken(s.key, h.keys)
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k3_a_holder_left_or_already_in_breach_is_refused_at_head_and_before
+  - name: K3 the question leaves the waivable rules out
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old: "                WHERE platform.sod_rule_broken(s.key, h.keys)
+
+      "
+    new:
+      "                WHERE NOT s.waivable AND platform.sod_rule_broken(s.key, h.keys)
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k3_a_holder_left_or_already_in_breach_is_refused_at_head_and_before
+  - name: K3 the question reads only what the changed role gives
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old: WHERE g.user_id = ANY (v_people) AND g.role_key <> 'tenant_owner'
+    new: WHERE g.user_id = ANY (v_people) AND g.role_key <> 'tenant_owner' AND g.role_id = NEW.role_id
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k3_a_holder_left_or_already_in_breach_is_refused_at_head_and_before
+  - name: K3 a key on the right side reads as in no rule
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old:
+      "                   OR EXISTS (SELECT 1 FROM jsonb_array_elements_text(s.right_scopes) r(key)\n\
+      \                              WHERE r.key = NEW.permission_key)\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k3_a_key_in_no_rule_asks_no_holder_and_a_key_in_one_still_does
+  - name: K3 a key on the left side reads as in no rule
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old:
+      "                WHERE EXISTS (SELECT 1 FROM jsonb_array_elements_text(s.left_scopes) l(key)\n\
+      \                              WHERE l.key = NEW.permission_key)\n                   OR EXISTS"
+    new: "                WHERE EXISTS"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py::test_k3_a_key_in_no_rule_asks_no_holder_and_a_key_in_one_still_does

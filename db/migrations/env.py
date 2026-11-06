@@ -39,9 +39,19 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+# Every revision runs in one transaction. A deferred constraint trigger (the
+# owner coverage check of a7ca12c36ec7, the access-version bumps of 2f177d264a27
+# and ef68083f2905) would otherwise hold its events until the commit, and any
+# later ALTER TABLE of a table a backfill wrote fails with "pending trigger
+# events": on a deployed database only, since a test database is migrated empty.
+# Immediate, each fires at the end of its statement, as statement triggers did.
+MIGRATION_CONSTRAINTS = "SET CONSTRAINTS ALL IMMEDIATE"
+
+
 def _run_migrations(connection: Connection) -> None:
     context.configure(connection=connection, target_metadata=target_metadata)
     with context.begin_transaction():
+        connection.exec_driver_sql(MIGRATION_CONSTRAINTS)
         context.run_migrations()
 
 

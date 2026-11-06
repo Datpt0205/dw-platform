@@ -923,7 +923,10 @@ async def test_an_owner_key_reaches_no_operator_and_no_owner_becomes_an_operator
 
 async def test_the_guard_and_the_coverage_name_the_same_two_keys(migrator: AsyncEngine) -> None:
     """One place for the two keys (step 16): `platform.owner_permission_keys()`,
-    which both functions read, and each key, once registered, is a tenant key."""
+    which both functions read. A key's kind is the catalogue's to decide
+    (agent-lifecycle 04 registered `studio.publish.approve` as a `workspace`
+    key): the guard and the count read no depth, so a holder at any depth is
+    refused to an operator and counted for the tenant alike."""
     async with migrator.connect() as conn:
         keys = await conn.scalar(sa.text("SELECT platform.owner_permission_keys()"))
         bodies = {
@@ -935,20 +938,11 @@ async def test_the_guard_and_the_coverage_name_the_same_two_keys(migrator: Async
                 ("coverage", "platform.check_owner_coverage(uuid)"),
             )
         }
-        registered: dict[str, str] = {
-            row[0]: row[1]
-            for row in (
-                await conn.execute(
-                    sa.text("SELECT key, scope_kind FROM platform.permissions WHERE key = ANY(:k)"),
-                    {"k": list(keys)},
-                )
-            ).all()
-        }
+    # R3.11 and R3.12 name the two keys; the function is their one spelling.
     assert sorted(keys) == ["platform.roles.write", "studio.publish.approve"]
     for name, body in bodies.items():
         assert "owner_permission_keys()" in str(body), name
         assert not any(key in str(body) for key in keys), f"{name} spells a key out itself"
-    assert all(kind == "tenant" for kind in registered.values())
 
 
 # ---- separation of duties across workspaces (R5.1, R5.2) ---------------------
@@ -1149,21 +1143,14 @@ async def test_no_warning_while_an_owner_key_is_not_in_the_catalogue(
 ) -> None:
     """R3.12 (RB40): a key not registered yet is held by nobody and counted by
     nobody, so revoking an assignment in an active tenant sets nothing.
-    `platform.roles.write` is registered since tenant-rbac ticket 03, so the
-    tenant holds it twice over (two owners); `studio.publish.approve`, held by
+
+    Both owner keys are in the catalogue since agent-lifecycle 04, so the case
+    is built rather than assumed: one transaction takes every registered owner
+    key but the first out of the catalogue, revokes, fires the deferred check
+    (tenant-rbac/08) with `SET CONSTRAINTS ALL IMMEDIATE`, reads, and rolls
+    back. The kept key is held twice over (two owners); a taken one, held by
     nobody, is the key that must not warn."""
     async with migrator.begin() as conn:
-        registered = (
-            await conn.execute(
-                sa.text(
-                    "SELECT key FROM platform.permissions"
-                    " WHERE key = ANY(platform.owner_permission_keys())"
-                )
-            )
-        ).scalars()
-        assert list(registered) == ["platform.roles.write"], (
-            "the premise: only the ticket-03 key is registered"
-        )
         t = await plant_tenant(conn)
         owner_role = await role_id(conn, t.tenant_id, "tenant_owner")
         for _ in range(2):
@@ -1180,13 +1167,38 @@ async def test_no_warning_while_an_owner_key_is_not_in_the_catalogue(
     )
     since_sql = sa.text("SELECT owner_coverage_low_since FROM platform.tenants WHERE id = :t")
     async with migrator.connect() as conn:
-        # Two holders of the registered key once both owners are in: no fall.
+        # Two holders of every registered key once both owners are in: no fall.
         assert await conn.scalar(since_sql, {"t": t.tenant_id}) is None
         before = await conn.scalar(events_sql, {"t": t.tenant_id})
-    async with migrator.begin() as conn:
+    async with migrator.connect() as conn:
+        written = await conn.begin()
+        registered = sorted(
+            await conn.scalars(
+                sa.text(
+                    "SELECT key FROM platform.permissions"
+                    " WHERE key = ANY(platform.owner_permission_keys())"
+                )
+            )
+        )
+        owner_keys = await conn.scalar(sa.text("SELECT platform.owner_permission_keys()"))
+        for key in registered[1:]:
+            await unregister_key(conn, key)
+        left = await conn.scalars(
+            sa.text(
+                "SELECT key FROM platform.permissions"
+                " WHERE key = ANY(platform.owner_permission_keys())"
+            )
+        )
+        assert list(left) == registered[:1] and len(owner_keys) > 1, (
+            "the premise: one owner key catalogued, another not"
+        )
         await conn.execute(
             sa.text("DELETE FROM platform.role_assignments WHERE id = :a"), {"a": assignment}
         )
+        # The check is deferred to the commit (tenant-rbac/08); fired here, so
+        # the read below sees what a commit would have written.
+        await conn.execute(sa.text("SET CONSTRAINTS ALL IMMEDIATE"))
         since = await conn.scalar(since_sql, {"t": t.tenant_id})
         events = await conn.scalar(events_sql, {"t": t.tenant_id})
+        await written.rollback()
     assert (since, events) == (None, before)

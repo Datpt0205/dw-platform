@@ -408,6 +408,32 @@ Còn lại: `_HOLDERS` cả workspace 5.000 người P95 966 ms sau sửa (6.358
 duy nhất của `holding` là một lane của worker (`SqlHeldRunAlerts.binding_needs_review` của workflow-engine/04, `c0eca510`),
 không phải route; ghi ở đây và ở Comments của ticket 10, không mở ticket (lý do ở đó).
 
+## Đo lại sau tenant-rbac/08: chủ sở hữu mỗi giao dịch, luật giữ quyền theo neo, tách nhiệm bỏ khóa ngoài luật
+
+Ticket: [`tenant-rbac/08`](../../../.claude/plans/studio/tenant-rbac/issues/08-chi-phi-trigger-quyen-o-co-d12.md). Đo
+ngày 5-6/11/2026, cùng máy và cấu hình như trên, `setup q2 drop` ba lần mỗi bên (`DW_TEST_DB_SUFFIX=_lane1b`, database
+xóa sau mỗi lần). **Trước** là `git archive` của `0721f156` (commit gốc của ticket), **sau** là `git archive` của
+`cce36795` cộng các tệp của ticket (revision `a7ca12c36ec7`); cả hai chạy harness đã sửa của ticket này: lần ghi bắn các
+trigger hoãn bằng `SET CONSTRAINTS ALL IMMEDIATE` trước khi đọc `pg_stat_xact_user_functions` (cột "hoãn"), và ba hàm đếm
+luôn được liệt kê, nên 0 là "không gọi". Lần "sau" chạy cùng lúc với bộ integration của làn này; cả hai bên dùng chung
+PostgreSQL với một làn khác.
+
+| Lần ghi (trung vị ba lần, ms: ghi + hoãn + commit) | Trước    | Sau      | `check_owner_coverage` trước → sau | `holder_covers_grant` | `sod_violation` |
+| -------------------------------------------------- | -------- | -------- | ---------------------------------- | --------------------- | --------------- |
+| Gán 1.000 người, một mình                          | 41.268,0 | 21.015,5 | 1.000 → 1                          | 0 → 0                 | 1.000 → 1.000   |
+| Gán 1.000 người, cạnh `/me`                        | 70.899,8 | 48.328,2 | 1.000 → 1                          | 0 → 0                 | 1.000 → 1.000   |
+| Thêm 1 khóa                                        | 2.520,8  | 699,9    | 2 → 1                              | 1.000 → 1             | 1.000 → 0       |
+| Thêm 10 khóa, 10 lệnh                              | 20.088,9 | 5.803,5  | 20 → 1                             | 10.000 → 10           | 10.000 → 0      |
+| Bỏ 10 khóa                                         | 9.875,6  | 500,7    | 11 → 1                             | 10.000 → 10           | 0 → 0           |
+| Thêm 5 quyền object                                | 5.092,8  | 697,9    | 5 → 1                              | 5.000 → 5             | 0 → 0           |
+
+Mỗi lần chạy, cùng thứ tự: gán một mình trước 37.195 / 44.765 / 41.268, sau 22.185 / 21.016 / 13.063; thêm 10 khóa trước
+17.901 / 20.089 / 20.215, sau 4.714 / 5.804 / 7.451. Số lần gọi giống nhau ở cả ba lần mỗi bên. Người làm của `q2` giữ khóa ở
+mức `tenant`, nên `holder_covers_grant` đúng một lần mỗi dòng quyền (phép tắt neo NULL); mức `workspace` (một lần mỗi neo
+riêng cộng một) có test ở `test_role_trigger_cost_db.py`, không ở bench. `sod_violation` của lần gán giữ 1.000: dòng
+`role_assignments` giữ đường cũ (bước 3 của ticket), và đó là phần lớn của 21 giây còn lại. Cột "hoãn" sau là 0,1-0,5
+giây: một lần `check_owner_coverage` của cả giao dịch, chạy lúc commit ngoài bench.
+
 ## Chưa đo, và vì sao
 
 - **Máy tham chiếu.** Mọi số là của máy dev ở trên, PostgreSQL của compose không giới hạn và dùng chung với một làn khác.
@@ -417,4 +443,4 @@ không phải route; ghi ở đây và ở Comments của ticket 10, không mở
 - **Ngưỡng riêng cho `effective_grants`** do Đạt chốt; ở đây chỉ ghi số.
 - **Lần hỏi trước của service** (`rbac_refusals` với `p_lock = false`, `_check_still_true`) và audit của mỗi lần xác nhận
   không nằm trong lần gán đo ở đây: lần gán đi thẳng vào bảng như lệnh ghi cuối của service.
-- **Bản sửa của phát hiện 2-4** chưa có (tenant-rbac/08); phát hiện 1 và 5 đo lại ở mục trên.
+- **Bản sửa của phát hiện 2-4** đo ở mục tenant-rbac/08 trên; phát hiện 1 và 5 đo lại ở mục tenant-rbac/07.

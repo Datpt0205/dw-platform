@@ -1,14 +1,16 @@
 """A tenant whose owners fell below two, told once per fall (tenant-rbac R3.12; RB40).
 
-On a migrated Postgres: the statement triggers of migration b5677d345bc1 set
-`platform.tenants.owner_coverage_low_since` and write one
+On a migrated Postgres: the coverage check of migration b5677d345bc1, run at
+commit since tenant-rbac/08 (a7ca12c36ec7), sets
+`platform.tenants.owner_coverage_low_since` and writes one
 `platform.tenant.owner_coverage_low` event per fall; the handler wired in
 `dw_worker.main` delivers one notification to each tenant-depth holder of
 `platform.members.write`, in the workspace that anchors their holding.
 
-`platform.roles.write` is in the catalogue since tenant-rbac ticket 03;
-`studio.publish.approve` comes with its Studio cluster, so this registers that
-one for the test, as the cluster will, and removes it.
+`platform.roles.write` is in the catalogue since tenant-rbac ticket 03 and
+`studio.publish.approve` since agent-lifecycle 04 (0353c313569f); an owner key
+the catalogue lacks is registered for the test and removed after it, one it
+holds is left alone.
 """
 
 from __future__ import annotations
@@ -47,19 +49,24 @@ from dw_worker.consumers.owner_coverage import OWNER_COVERAGE_LOW, build_owner_c
 pytestmark = pytest.mark.integration
 
 _OWNER_KEYS = ("platform.roles.write", "studio.publish.approve")
-# The owner keys the catalogue does not carry yet, registered for the test.
-_UNCATALOGUED = ("studio.publish.approve",)
 
 
 @pytest.fixture
 async def migrator(worker_db: DatabaseUrls) -> AsyncIterator[AsyncEngine]:
     engine = create_async_engine(worker_db.migrator, poolclass=NullPool)
     async with engine.begin() as conn:
-        for key in _UNCATALOGUED:
+        held = set(
+            await conn.scalars(
+                sa.text("SELECT key FROM platform.permissions WHERE key = ANY(:k)"),
+                {"k": list(_OWNER_KEYS)},
+            )
+        )
+        uncatalogued = [key for key in _OWNER_KEYS if key not in held]
+        for key in uncatalogued:
             await register_key(conn, key, scope_kind="tenant")
     yield engine
     async with engine.begin() as conn:
-        for key in _UNCATALOGUED:
+        for key in uncatalogued:
             await unregister_key(conn, key)
     await engine.dispose()
 
@@ -166,8 +173,10 @@ async def test_a_fall_below_two_tells_each_member_admin_once_where_they_are_anch
         assert await _since(conn, w) is None
     expected = sorted(w.told.items())
 
+    # Every read follows its write's commit: the check runs there.
     async with migrator.begin() as conn:
         await _revoke(conn, w.admins[0][1])
+    async with migrator.connect() as conn:
         assert await _since(conn, w) is not None
         [event] = await _events(conn, w)
     await handle(event)
@@ -178,6 +187,7 @@ async def test_a_fall_below_two_tells_each_member_admin_once_where_they_are_anch
     # Still below two: another revocation announces nothing.
     async with migrator.begin() as conn:
         await _revoke(conn, w.admins[1][1])
+    async with migrator.connect() as conn:
         assert len(await _events(conn, w)) == 1
 
     # Back to two: the column clears; the next fall is a new notification.
@@ -186,9 +196,11 @@ async def test_a_fall_below_two_tells_each_member_admin_once_where_they_are_anch
             await assign(conn, w.tenant.tenant_id, w.tenant.main, membership, w.admin_role)
             for membership, _ in w.admins
         ]
+    async with migrator.connect() as conn:
         assert await _since(conn, w) is None
     async with migrator.begin() as conn:
         await _revoke(conn, again[0])
+    async with migrator.connect() as conn:
         events = await _events(conn, w)
         assert len(events) == 2
     await handle(events[1])

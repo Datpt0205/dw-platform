@@ -351,6 +351,9 @@ async def test_no_critical_role_reaches_a_service_account_even_from_the_migrator
             sa.text("UPDATE platform.tenant_roles SET deleted_at = now() WHERE id = :r"),
             {"r": world.std_role},
         )
+        # The deferred owner coverage events of the writes above fire now
+        # (tenant-rbac/08): a table with pending events cannot be altered.
+        await conn.execute(sa.text("SET CONSTRAINTS ALL IMMEDIATE"))
         await conn.execute(
             sa.text(
                 "ALTER TABLE platform.tenant_role_permissions"

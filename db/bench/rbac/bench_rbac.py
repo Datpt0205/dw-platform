@@ -781,10 +781,14 @@ WAITING = (
     " left(a.query, 80) FROM pg_locks l JOIN pg_stat_activity a ON a.pid = l.pid"
     " WHERE NOT l.granted"
 )
+# The three functions tenant-rbac/08 counts are listed whatever their time: a
+# count of 0 must mean "not called", never "under a millisecond".
+COUNTED = ("check_owner_coverage", "holder_covers_grant", "sod_violation")
 FUNCTIONS = (
     "SELECT schemaname || '.' || funcname, calls, round(total_time::numeric, 1),"
     " round(self_time::numeric, 1) FROM pg_stat_xact_user_functions"
-    " WHERE total_time > 1 ORDER BY total_time DESC LIMIT 15"
+    " WHERE total_time > 1 OR funcname IN ('" + "', '".join(COUNTED) + "')"
+    " ORDER BY total_time DESC LIMIT 25"
 )
 
 
@@ -927,6 +931,12 @@ async def write_with_watch(
             await body(conn, wrote)
             wrote.set()
             result["write_ms"] = round(ms(start), 1)
+            # Deferred constraint triggers (the owner coverage check since
+            # tenant-rbac/08) fire at commit; fired here instead, timed on their
+            # own, so their calls show in this transaction's counters.
+            flush_start = time.perf_counter()
+            await run(conn, "SET CONSTRAINTS ALL IMMEDIATE")
+            result["flush_ms"] = round(ms(flush_start), 1)
             result["functions"] = [list(r) for r in await run(conn, FUNCTIONS)]
             await looker
             commit_start = time.perf_counter()
@@ -935,7 +945,7 @@ async def write_with_watch(
             result["commit_ms"] = round(ms(commit_start), 1)
             result["same_tenant_writer_waited_ms"] = round(await same, 1)
             result["other_tenant_writer_waited_ms"] = round(await other, 1)
-            print(label, result["write_ms"], "ms", flush=True)
+            print(label, result["write_ms"], "+", result["flush_ms"], "ms", flush=True)
     finally:
         await asyncio.sleep(0.3)
         for lane in lanes.values():
