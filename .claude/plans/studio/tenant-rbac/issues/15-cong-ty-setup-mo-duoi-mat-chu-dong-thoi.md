@@ -1,6 +1,6 @@
 # 15 — Công ty `setup` mở với ít hơn hai chủ dưới lần mất chủ đồng thời
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 14
 Area: studio
 Yêu cầu: R3.10, R6.7, RB20, RB38
@@ -176,30 +176,30 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.10 (RB38): K1, lần mất chủ O1 (đình chỉ, gỡ lần gán) đang mở rồi lần kích hoạt O2 cho tenant còn `setup` sau khi
+- [x] R3.10 (RB38): K1, lần mất chủ O1 (đình chỉ, gỡ lần gán) đang mở rồi lần kích hoạt O2 cho tenant còn `setup` sau khi
       cả hai commit, và lần `UPDATE platform.tenants SET status = 'active'` cạnh lần đình chỉ O1 đang mở bị từ chối với
       23514 `ck_tenants_status_transition`; thứ tự ngược nhận cả hai và để tenant `active` với một chủ; không `40P01`; sai
       nếu tenant `active` sau một ca "bên mất chủ trước", ca đối chứng bị từ chối, hay đột biến (a) của K1 vẫn xanh; K1
       (d) cho ít nhất một bên bị hủy với `40P01` và tenant `active` chỉ khi P1, P2 đều là chủ `active`, sai nếu đột biến
       (c) của K1 vẫn xanh. Ở commit gốc (sau ticket 14) (a), (b), (c) để tenant `active` với một chủ `active`, và (d) nhận
       mọi bên với 0 chủ.
-- [ ] R3.10 (RB38): K2 (a), (b), lần mất người mà lần kích hoạt sắp làm thành chủ, đang mở trước lần kích hoạt, cho tenant
+- [x] R3.10 (RB38): K2 (a), (b), lần mất người mà lần kích hoạt sắp làm thành chủ, đang mở trước lần kích hoạt, cho tenant
       còn `setup`; sai nếu tenant `active`, hay đột biến (a), (b) của K2 vẫn xanh. Ở commit gốc hai ca đó để tenant
       `active` với một chủ `active`.
-- [ ] R6.7 (RB20): K3 (i), lần đình chỉ O1 chờ giao dịch đã kích hoạt rồi đình chỉ O2 bị từ chối với 23514
+- [x] R6.7 (RB20): K3 (i), lần đình chỉ O1 chờ giao dịch đã kích hoạt rồi đình chỉ O2 bị từ chối với 23514
       `ck_role_assignments_last_owner` sau khi giao dịch đó commit, tenant `active` với O1; sai nếu B được nhận, hay đột
       biến của K3 vẫn xanh. Ở commit gốc B được nhận và tenant `active` với 0 chủ `active`.
-- [ ] R6.7 (RB20): K2 (c), lần xóa dòng công ty của P chờ giao dịch đã gán chủ cho P (mở công ty) rồi đình chỉ O1 bị từ
+- [x] R6.7 (RB20): K2 (c), lần xóa dòng công ty của P chờ giao dịch đã gán chủ cho P (mở công ty) rồi đình chỉ O1 bị từ
       chối với 23514 `ck_role_assignments_last_owner`, tenant `active` với P; sai nếu B được nhận. Ca hồi quy: đã đúng
       sau ticket 14.
-- [ ] R6.7 (RB20): K3 (ii), ba bên quanh một lần kích hoạt đang mở cho đúng một lần đình chỉ bị từ chối với 23514
+- [x] R6.7 (RB20): K3 (ii), ba bên quanh một lần kích hoạt đang mở cho đúng một lần đình chỉ bị từ chối với 23514
       `ck_role_assignments_last_owner` và tenant `active` với đúng một chủ `active`, không `40P01`; sai nếu tenant `active`
       với 0 chủ hay một bên `40P01`. Ở commit gốc ca này để tenant `active` với 0 chủ khi C đếm trước khi B commit (cuộc
       đua, nên không là bằng chứng đỏ; bằng chứng là K3 (i)).
-- [ ] R3.10 (RB38): K4, hai lần kích hoạt đồng thời vẫn mở công ty, và ở tenant `setup` không có lần kích hoạt mở lần
+- [x] R3.10 (RB38): K4, hai lần kích hoạt đồng thời vẫn mở công ty, và ở tenant `setup` không có lần kích hoạt mở lần
       đình chỉ chủ `active` duy nhất và lần gỡ lần gán chủ được mời được nhận, tenant còn `setup`; sai nếu một trong các
       ca đó bị từ chối, hay đột biến của K4 vẫn xanh.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_setup_activation_races.py packages/python/dw_platform/tests/integration/test_tenant_roles.py packages/python/dw_platform/tests/integration/test_owner_count_races.py packages/python/dw_platform/tests/integration/test_last_owner_races.py packages/python/dw_platform/tests/integration/test_role_administration_db.py packages/python/dw_platform/tests/integration/test_membership_change_of_person.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_setup_activation_races.py packages/python/dw_platform/tests/integration/test_tenant_roles.py packages/python/dw_platform/tests/integration/test_owner_count_races.py packages/python/dw_platform/tests/integration/test_last_owner_races.py packages/python/dw_platform/tests/integration/test_role_administration_db.py packages/python/dw_platform/tests/integration/test_membership_change_of_person.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py` xanh.
 
 ## Nguồn
 
@@ -276,3 +276,20 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
   này; K2 (c) thành ca hồi quy của ticket 14. Sửa sau lượt này không được người đọc mới đọc lại (hai lượt chạy lại mỗi
   phiên bản đã dùng); người dựng đọc bước 1 (gạch `guard_tenant_setup`) và K1 (d) trước.
 - 2026-11-06 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): dựng xong, `resolved`. Revision `cae9cc86159c` (trên `a6b8f3702570`):
+  thân `refuse_losing_the_last_owner()` của ticket 14 sửa bốn neo bằng `_patched()` (V1, V2, câu trả sớm đầu của V3 thêm
+  `setup`; câu đọc lại trạng thái tenant sau `FOR UPDATE`), `guard_tenant_setup()` từ phần tử của `_SETUP` của
+  `b5677d345bc1` (chọn theo tên) thêm `FOR UPDATE` ở lần `setup` → `active`; downgrade dựng lại hai thân. Test:
+  `packages/python/dw_platform/tests/integration/test_setup_activation_races.py`, 12 ca, harness của
+  `dw_platform.testing.races`. Khác ticket, theo số đo: K2 (b) (gỡ lần gán chủ của Q `suspended` trước lần kích hoạt lại
+  Q) đã đóng ở chỗ khác: lệnh UPDATE `tenant_members` của lần kích hoạt lại chờ một dòng mà giao dịch gỡ đang giữ (đo bằng
+  `pg_locks`: `transactionid` `ShareLock`) trước khi `complete_tenant_setup` đếm, nên dưới đột biến K2 (b) (bỏ `setup` khỏi
+  V2) ca đó vẫn để tenant `setup`; đột biến đó tương đương, không vào `mutations/15.yaml` (5 đột biến), đầu tệp ghi lý do;
+  vế `setup` của V2 giữ như ticket ghi. Nếu sai thì: một đường kích hoạt lại không chờ dòng đó (một trigger đổi thứ tự) thì
+  thêm lại đột biến (b). Gate nhanh: ruff, format, mypy, integration của dòng Xong 311 xanh. Phá thử bằng tay 5 đột biến:
+  cả 5 đỏ đúng lý do (K1 (a) tenant mở với một chủ, K1 (c) không bên nào bị hủy ở K1 (d), K2 (a) tenant `active`, K3 (a)
+  lần đình chỉ thứ hai được nhận, K4 (a) lần đình chỉ ở tenant `setup` bị từ chối). `reviewing-feature-security`: ranh giới
+  1 (khóa đúng dòng tenant của `v_tenant`/`NEW.id`), 2 (mọi người ghi kể cả `dw_migrator`), 6 (lần mất chủ và lần mở ở
+  tenant `setup` là lối cuối, test ở tầng database); 3, 5 không áp như ticket 14; 4 không áp. Độ trễ: câu đọc lại sau
+  `FOR UPDATE` chạy ở mọi lần mất chủ của tenant `active`, `locked` (route gỡ lần gán `tenant_owner`), đo P50/P95/P99 lúc
+  đóng hàng đợi như bước 3 ghi.

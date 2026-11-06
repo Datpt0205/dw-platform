@@ -1,0 +1,64 @@
+# Mutation check of tenant-rbac ticket 15: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per row of the ticket's
+# "Đột biến" column (K1 a, c; K2 a; K3 a; K4 a; K2 (c) is ticket 14's K1 (a))
+# but K2 (b), an equivalent mutant: the reactivation's UPDATE waits on a row the
+# removal's transaction holds (measured: a transactionid ShareLock) before
+# `complete_tenant_setup` counts, so V2 without `setup` still leaves the tenant
+# in `setup`; the ticket's Comments say so.
+mutations:
+  - name: K1 (a) no 'setup' in V3's first early return
+    file: db/migrations/versions/cae9cc86159c_setup_tenant_opens_only_after_an_owner_loss_commits.py
+    old: '            WHERE t.id = v_tenant AND t.status IN (''setup'', ''active'', ''locked'')"""'
+    new: '            WHERE t.id = v_tenant AND t.status IN (''active'', ''locked'')"""'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_setup_activation_races.py::test_k1_an_activation_waiting_on_an_owner_loss_leaves_the_tenant_in_setup
+      - packages/python/dw_platform/tests/integration/test_setup_activation_races.py::test_k1_the_update_way_to_open_waits_on_an_owner_loss_and_is_refused
+  - name: K1 (c) no FOR UPDATE in guard_tenant_setup
+    file: db/migrations/versions/cae9cc86159c_setup_tenant_opens_only_after_an_owner_loss_commits.py
+    old:
+      "                PERFORM 1 FROM platform.tenants WHERE id = NEW.id FOR UPDATE;
+
+      "
+    new: "                NULL;
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_setup_activation_races.py::test_k1_moves_then_an_update_beside_suspending_the_new_owners_aborts_a_side
+  - name: K2 (a) no 'setup' in V1
+    file: db/migrations/versions/cae9cc86159c_setup_tenant_opens_only_after_an_owner_loss_commits.py
+    old:
+      "                -- UPDATE until it commits: wait for it, then read again.\n                PERFORM\
+      \ 1 FROM platform.tenants\n                WHERE id = v_tenant AND status IN ('setup', 'active', 'locked')\"\
+      \"\""
+    new:
+      "                -- UPDATE until it commits: wait for it, then read again.\n                PERFORM\
+      \ 1 FROM platform.tenants\n                WHERE id = v_tenant AND status IN ('active', 'locked')\"\
+      \"\""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_setup_activation_races.py::test_k2_suspending_p_before_an_owner_assignment_to_p_keeps_the_tenant_in_setup
+  - name: K3 (a) the read of the tenant's status before the FOR UPDATE
+    file: db/migrations/versions/cae9cc86159c_setup_tenant_opens_only_after_an_owner_loss_commits.py
+    old:
+      "        PERFORM 1 FROM platform.tenants WHERE id = v_tenant FOR UPDATE;\n        -- Read after\
+      \ the lock: a loss that waited for an activation is judged\n        -- in the tenant now `active`;\
+      \ a `setup` tenant may lose its last owner.\n        IF NOT EXISTS (\n            SELECT 1 FROM platform.tenants\
+      \ t\n            WHERE t.id = v_tenant AND t.status IN ('active', 'locked')\n        ) THEN\n    \
+      \        RETURN NULL;\n        END IF;\n"
+    new:
+      "        IF NOT EXISTS (\n            SELECT 1 FROM platform.tenants t\n            WHERE t.id\
+      \ = v_tenant AND t.status IN ('active', 'locked')\n        ) THEN\n            RETURN NULL;\n    \
+      \    END IF;\n        PERFORM 1 FROM platform.tenants WHERE id = v_tenant FOR UPDATE;\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_setup_activation_races.py::test_k3_suspending_o1_behind_an_activation_that_suspended_o2_is_refused
+  - name: K4 (a) the read after the lock counts a setup tenant too
+    file: db/migrations/versions/cae9cc86159c_setup_tenant_opens_only_after_an_owner_loss_commits.py
+    old:
+      "        IF NOT EXISTS (\n            SELECT 1 FROM platform.tenants t\n            WHERE t.id\
+      \ = v_tenant AND t.status IN ('active', 'locked')\n        ) THEN\n            RETURN NULL;\n    \
+      \    END IF;\n"
+    new:
+      "        IF NOT EXISTS (\n            SELECT 1 FROM platform.tenants t\n            WHERE t.id\
+      \ = v_tenant AND t.status IN ('setup', 'active', 'locked')\n        ) THEN\n            RETURN NULL;\n\
+      \        END IF;\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_setup_activation_races.py::test_k4_a_setup_tenant_may_lose_owners_with_no_activation_open
