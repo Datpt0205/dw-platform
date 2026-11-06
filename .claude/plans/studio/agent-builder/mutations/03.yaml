@@ -1,0 +1,121 @@
+# Mutation check of agent-builder ticket 03: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control of the ticket's
+# criteria (AB5, AB6, AB7, AB9, AB14, AB17) and per "sai nếu" / "gỡ ... → test đỏ",
+# each test calling the door where the effect happens: the runner's
+# `run_studio` over Postgres, the graph source's hash gate, the compiled stack.
+# Two were broken by hand while writing the tests (6/11/2026: the hash gate and
+# `pinned_hash` in the cache key), each red for its reason.
+#
+# Left out, unkillable by design (failure-modes #3, a guard held twice):
+# - `root.content_hash != taken.pinned_hash` in `StudioGraphSource.build`: `take`
+#   reads `pinned_hash` from the same manifest root, so no run reaches it unequal;
+#   it stays as a cheap refusal of a source handed a run of another manifest.
+# - either half of `_SETTLED` in `agent_threads.py` alone: the run that is the
+#   thread is also on it, so each half refuses a waiting run without the other;
+#   the mutation below drops both.
+mutations:
+  # ---- AB6 R3.1, R3.2: the cache key ---------------------------------------
+  - name: AB6 R3.1 the cache key loses the pinned hash
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_agent.py
+    old: "    return (AGENT_KIND, str(taken.tenant_id), str(taken.artifact_version_id), taken.pinned_hash)"
+    new: "    return (AGENT_KIND, str(taken.tenant_id), str(taken.artifact_version_id))"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_agent_runtime_stack.py::test_agent_runtime_the_cache_key_is_the_company_the_version_and_the_pinned_hash
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_1_a_draft_edited_between_two_simulations_runs_its_new_content
+  - name: AB6 R3.2 the cache key loses the company
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/studio_agent.py
+    old: "    return (AGENT_KIND, str(taken.tenant_id), str(taken.artifact_version_id), taken.pinned_hash)"
+    new: "    return (AGENT_KIND, str(taken.artifact_version_id), taken.pinned_hash)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_agent_runtime_stack.py::test_agent_runtime_the_cache_key_is_the_company_the_version_and_the_pinned_hash
+  - name: AB6 a graph serves a run of another company, version or hash
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_model_selection.py
+    old: "            or run_context.definition_hash != self._definition_hash\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_agent_runtime_stack.py::test_agent_runtime_a_graph_refuses_a_run_it_was_not_built_for
+  # ---- AB7 R3.3: the hash gate and the mode ---------------------------------
+  - name: AB7 R3.3 the hash gate compares nothing
+    file: packages/python/dw_studio/src/dw_studio/agents/adapters/graph_source.py
+    old: "            != taken.pinned_hash\n        ):\n            raise _mismatch(\"the agent version's content is not what the run pinned\")"
+    new: "            == \"never\"\n        ):\n            raise _mismatch(\"the agent version's content is not what the run pinned\")"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_3_a_sealed_version_edited_by_the_migrator_is_refused
+  - name: AB7 R3.3 a draft runs outside simulate
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: '            if built.draft and taken.run_mode != "simulate":'
+    new: "            if False:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_3_a_draft_in_a_run_that_does_not_simulate_is_refused
+  # ---- AB17 R3.8: `enabled` and a finished run's checkpoints -----------------
+  - name: AB17 R3.8 the runtime stops reading enabled
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            if taken.trigger_kind in ENABLED_TRIGGERS and not await agents.source.enabled("
+    new: "            if False and not await agents.source.enabled("
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_8_a_chat_run_of_an_agent_that_is_off_fails_before_any_call
+  - name: AB17 R3.8 a soft-deleted agent counts as on
+    file: packages/python/dw_studio/src/dw_studio/agents/adapters/graph_source.py
+    old: "    .where(artifacts.c.deleted_at.is_(None), artifacts.c.kind == AGENT_KIND)"
+    new: "    .where(artifacts.c.kind == AGENT_KIND)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_8_a_soft_deleted_agent_is_off
+  - name: AB17 R3.8 a finished run keeps its checkpoints
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "                    await agents.threads.forget(tenant_id, taken.thread_id)"
+    new: "                    pass"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_8_finished_runs_leave_no_checkpoint
+  - name: AB17 R3.8 a waiting run's checkpoints are deleted
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/agent_threads.py
+    old: |2-
+          "   WHERE r.id = :t AND r.status IN :terminal)"
+          " AND NOT EXISTS (SELECT 1 FROM platform.worker_runs r"
+          "   WHERE r.thread_id = :t AND r.status NOT IN :terminal)"
+    new: |2-
+          "   WHERE r.id = :t AND (r.status IN :terminal OR true))"
+          " AND NOT EXISTS (SELECT 1 FROM platform.worker_runs r"
+          "   WHERE r.thread_id = :t AND r.status NOT IN :terminal AND false)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_8_a_run_still_waiting_keeps_its_checkpoints
+  # ---- AB9 R3.5-R3.7: the model, the gate, the limits ------------------------
+  - name: AB9 R3.5 the call keeps the model the agent was compiled with
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_model_selection.py
+    old: "        return await handler(request.override(model=chosen))"
+    new: "        return await handler(request)"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_agent_runtime_stack.py::test_agent_runtime_a_call_reaches_the_pinned_route_and_never_the_compiled_model
+  - name: AB9 R3.6 R3.7 the selection stands after the limits
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/agent_factory.py
+    old: "        *([spec.model_selection] if spec.model_selection is not None else []),\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_agent_runtime_stack.py::test_agent_runtime_selection_stands_before_the_gate_and_the_gate_before_limits
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_agent_runtime_stack.py::test_agent_runtime_a_call_reaches_the_pinned_route_and_never_the_compiled_model
+  - name: R3.5 the agent kind pins no model profile
+    file: packages/python/dw_studio/src/dw_studio/kinds.py
+    old: "        model_profiles=agent_model_profiles,\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_5_the_version_profile_is_pinned_and_called
+  # ---- AB5, AB14 R3.4: the actor `agent` within the run's boundary ------------
+  - name: AB5 AB14 R3.4 a person's run is read as a Digital Worker's
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "    if run.run_as_principal_id is not None and run.run_as_principal_id == run.requested_by:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_4_a_draft_simulation_reads_the_testers_leads_and_only_them
+  - name: AB5 AB14 R3.4 the tool session binds no actor
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/record_session.py
+    old: '        await bind_actor(session, "agent", run_id=run.run_id)'
+    new: "        pass"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_4_a_draft_simulation_reads_the_testers_leads_and_only_them
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_4_a_live_run_binds_the_published_boundary
+  # ---- ADR-0117 decision 6: the reply never through the row ------------------
+  - name: the reply is not handed to its port
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            await agents.source.reply(taken, _final_text(state))"
+    new: "            pass"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_agent_runtime_db.py::test_agent_runtime_r3_1_a_draft_edited_between_two_simulations_runs_its_new_content

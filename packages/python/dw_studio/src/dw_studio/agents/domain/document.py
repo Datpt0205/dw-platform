@@ -139,6 +139,16 @@ def validate_agent(document: Any) -> list[DocumentProblem]:
     return problems
 
 
+def agent_model_profiles(document: Any) -> frozenset[str]:
+    """The registry's `model_profiles` for `agent` (model-connections/02 step
+    5; ADR-0118 Amendments 2026-11-04): the profile the version names, which
+    the run manifest pins by value (`engine.model_routes`); none for a
+    document without one, whose calls are then refused `key_not_pinned`."""
+    model = document.get("model") if isinstance(document, dict) else None
+    profile = model.get("profile") if isinstance(model, dict) else None
+    return frozenset({profile}) if isinstance(profile, str) and profile else frozenset()
+
+
 def extract_agent(document: Any) -> list[Reference]:
     """The registry's `extract` for `agent`: the toolset's references and the
     frame. `bindings[]` the envelope adds itself (`binding_references`)."""
@@ -159,6 +169,7 @@ __all__ = [
     "AGENT_FRAME_VERSION",
     "AGENT_KIND",
     "AgentDocument",
+    "agent_model_profiles",
     "extract_agent",
     "instruction_problems",
     "validate_agent",

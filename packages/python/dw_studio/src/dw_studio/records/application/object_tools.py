@@ -45,6 +45,7 @@ from dw_agent_runtime.contracts import DEFAULT_MAX_OUTPUT_CHARS, RunContext, Too
 from dw_agent_runtime.model.copy import CopyCodes
 from dw_agent_runtime.model.prompts import TRUNCATED_MARK, contain_untrusted
 from dw_agent_runtime.ports import ObjectDataPort, ObjectSearch, PinnedEntry, PinnedVersion
+from dw_agent_runtime.studio_agent import LoadedToolKinds
 from dw_agent_runtime.tool_kinds import CompiledTool, ToolBinding, ToolContract, ToolsetEntry
 from dw_agent_runtime.tool_schema import json_schema_behaviour
 from dw_agent_runtime.tools import FieldNarrowing, ModelView, ToolBehaviour
@@ -495,3 +496,22 @@ class ObjectToolGenerator:
             return await self.data.get(run, api_name, record_id, fields)
 
         return handler
+
+
+@dataclass(frozen=True)
+class ObjectToolKinds:
+    """`ToolKindsLoaderPort` for `object_crud` (agent-builder/03): a Studio
+    agent run's object tools, the generator loaded for the run's company and
+    standing as the kind's source and its factory. Built once at the worker's
+    composition root, where ``data`` is `RecordObjectData` over the one
+    `RecordService` with each call's door in `agent_record_session`."""
+
+    reader: ObjectDefinitionReader
+    data: ObjectDataPort
+    copy: ObjectToolCopy
+
+    async def load(self, tenant_id: uuid.UUID, entries: Sequence[ToolsetEntry]) -> LoadedToolKinds:
+        generator = await ObjectToolGenerator.load(
+            self.reader, tenant_id, entries, data=self.data, copy=self.copy
+        )
+        return LoadedToolKinds(sources={OBJECT_CRUD: generator}, factories={OBJECT_CRUD: generator})

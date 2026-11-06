@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any, Final
@@ -163,6 +163,11 @@ class ClosureItem:
             "version": self.version,
             "content_hash": self.content_hash,
         }
+
+    @classmethod
+    def from_json(cls, item: Mapping[str, Any]) -> ClosureItem:
+        """One item of a manifest body's `closure`, as `as_json` wrote it."""
+        return cls(item["kind"], item["key"], item["version"], item["content_hash"])
 
 
 def definition_body(

@@ -9,7 +9,7 @@ layer lives. Only the composition root imports concrete adapters
 from __future__ import annotations
 
 import os
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from dw_agent_runtime.adapters.agent_threads import SqlAgentThreads
 from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
 from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
@@ -31,10 +32,18 @@ from dw_agent_runtime.adapters.model_stack import (
     build_model_stack,
 )
 from dw_agent_runtime.adapters.pack_tools import build_leadcare_tools, register_leadcare_tools
+from dw_agent_runtime.adapters.record_session import agent_record_session
 from dw_agent_runtime.adapters.release_manifest import read_release_manifest_ref
+from dw_agent_runtime.adapters.run_names import SqlRunNames
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
 from dw_agent_runtime.adapters.run_waits import SqlRunWaits
 from dw_agent_runtime.adapters.span_step_recorder import TelemetryStepRecorder
+from dw_agent_runtime.adapters.studio_agents import StudioAgentCompiler
+from dw_agent_runtime.adapters.studio_model_selection import (
+    MockRouteModels,
+    OpenAICompatibleRouteModels,
+    RouteChatModelFactory,
+)
 from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
 from dw_agent_runtime.adapters.wflite_host import (
     build_run_starter,
@@ -45,12 +54,13 @@ from dw_agent_runtime.adapters.wflite_host import (
     register_workflows,
 )
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
-from dw_agent_runtime.model.copy import load_runtime_copy
+from dw_agent_runtime.model.copy import load_copy_codes, load_runtime_copy
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.resolver import StaticPlanModelProfiles
 from dw_agent_runtime.model.run_policy import load_worker_run_policy
 from dw_agent_runtime.ports import BindingReviewPort, LimitsPort, RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.studio_agent import StudioAgentPorts
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.wflite.catalog import PackCatalog, ShippedToolSpecs
@@ -59,6 +69,7 @@ from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_agent_runtime.wflite.starter import WorkflowRunStarter
 from dw_agent_runtime.wflite.waits import WorkQueueRunWaits
 from dw_connectors.egress import EgressClient, NoCatalogueHosts
+from dw_kernel.net_guard import ensure_allowed_outbound_url
 from dw_kernel.ports import IdGenerator, SystemClock, UtcClock, Uuid7Generator
 from dw_kernel.residency import Destination, ResidencyGate
 from dw_knowledge.adapters.api_parsers import (
@@ -90,19 +101,31 @@ from dw_platform.adapters.persistence.plan_model_profiles import (
 from dw_platform.adapters.persistence.residency import SqlRouteClasses
 from dw_platform.adapters.persistence.uow import SqlPlatformUnitOfWorkFactory
 from dw_platform.application.connections import ConnectionUsability, NoConnectorCatalog
+from dw_platform.application.rate_limit import RateLimiterPort
 from dw_platform.application.work_queue import WorkQueue
+from dw_studio.agents.adapters.graph_source import StudioGraphSource
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
 from dw_studio.core.adapters.cel.engine import CelCppEngine
+from dw_studio.core.adapters.field_security_inputs import SqlFieldSecurityInputs
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestEngines
 from dw_studio.core.adapters.studio_runs import SqlStudioRunStore
 from dw_studio.core.application.bindings import BindingStatus, platform_binding_types
+from dw_studio.core.application.field_access import FieldAccessService
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
 from dw_studio.core.application.service import ArtifactService
 from dw_studio.kinds import platform_kinds
 from dw_studio.lifecycle.adapters.store import SqlLifecycleStore
 from dw_studio.lifecycle.application.service import LifecycleService
 from dw_studio.records.adapters.actor_boundaries import SqlActorBoundaries
-from dw_studio.records.adapters.definition_store import object_store_of
+from dw_studio.records.adapters.definition_store import (
+    SqlObjectDefinitionReader,
+    object_store_of,
+)
+from dw_studio.records.adapters.record_store import SqlRecordStore
+from dw_studio.records.application.object_tools import ObjectToolCopy, ObjectToolKinds
+from dw_studio.records.application.record_service import RecordDoor, RecordService
+from dw_studio.records.application.schema_projector import ObjectSchemaProjector
+from dw_studio.records.presentation.object_data import RecordObjectData
 from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
 from dw_usage.adapters.limits_sql import SqlLimits
 from dw_usage.adapters.metering import SqlUsageMeter
@@ -125,6 +148,8 @@ WORKER_RUN_POLICY = "worker_runs@1.0.0.yaml"
 WFLITE_HANDOFF_COPY = "wflite_handoff.yaml"
 # The platform's copy, the API's pin (`dw_api.bootstrap.paths.RUNTIME_COPY_CONFIG`).
 RUNTIME_COPY = "runtime@1.6.0.yaml"
+# The fixed words of a Studio agent's object tools (tools-and-skills/03).
+OBJECT_TOOLS_COPY = "studio_object_tools.yaml"
 
 
 @dataclass
@@ -424,6 +449,9 @@ class WfLiteRuntime:
     # The process's one limits port, which the Studio runner admits with too
     # (workflow-engine/04).
     limits: LimitsPort
+    # The process's model doors, which a Studio agent's calls go through
+    # (agent-builder/03).
+    models: ModelStack
 
 
 def build_wflite_runtime(
@@ -533,6 +561,7 @@ def build_wflite_runtime(
         ),
         tools=tools,
         limits=stack.limits,
+        models=stack,
     )
 
 
@@ -545,6 +574,7 @@ def build_studio_runner(
     clock: UtcClock,
     ids: IdGenerator,
     telemetry: TelemetryPort,
+    agents: Callable[[SqlAlchemyCheckpointSaver], StudioAgentPorts | None] | None = None,
 ) -> LangGraphWorkflowRunner:
     """The runner the `studio_runs` lane runs Studio runs on (workflow-engine
     R5.1): the one step registry the API validates against, the run store and
@@ -552,8 +582,12 @@ def build_studio_runner(
     switches, the one `ExpressionEngine` for `outcomes[]`, and who is told of a
     held run. No effect door is wired yet: each joins with the ticket that
     builds it (workflow-nodes 04-08), and a step that needs one ends its run
-    `effect_door_unwired` until then, never a send through a guess."""
+    `effect_door_unwired` until then, never a send through a guess. A
+    Studio agent's run is compiled by what `agents` builds over the same
+    checkpoint saver (`build_studio_agents`); without it such a run ends
+    `agent_runtime_unwired`."""
     graphs = GraphRegistry()
+    saver = SqlAlchemyCheckpointSaver(sessions, checkpoint_serializer())
     policy = load_worker_run_policy(CONFIGS / "policies" / WORKER_RUN_POLICY)
     nodes = StudioNodePorts(
         doors={},
@@ -570,7 +604,7 @@ def build_studio_runner(
     return LangGraphWorkflowRunner(
         worker_registry=WorkerRegistry(graph_registry=graphs),
         graph_registry=graphs,
-        checkpoint_saver=SqlAlchemyCheckpointSaver(sessions, checkpoint_serializer()),
+        checkpoint_saver=saver,
         run_store=SqlWorkerRunStore(
             sessions, stale_run_after_seconds=policy.stale_run_after_seconds
         ),
@@ -591,6 +625,106 @@ def build_studio_runner(
             # The run's principal's scopes now, at every take (R6.12).
             live_scopes=SqlLiveScopes(sessions),
         ),
+        studio_agents=None if agents is None else agents(saver),
+    )
+
+
+def build_route_chat_models(settings: WorkerSettings) -> RouteChatModelFactory | None:
+    """The chat model of each route a Studio agent's run pinned (agent-builder
+    R3.5): the fixture model under the mock provider, which a deployed profile
+    refuses as the gateway does, the OpenAI-compatible endpoint otherwise;
+    None when no provider is configured, and no agent run is taken here."""
+    copy = load_runtime_copy(CONFIGS / "copy" / RUNTIME_COPY)
+    if settings.model_provider == "mock":
+        if settings.is_deployed:
+            raise RuntimeError(f"the mock model provider is forbidden in {settings.profile}")
+        return MockRouteModels(mock_reply=copy.mock_reply)
+    if not (settings.openai_api_key and settings.openai_base_url):
+        return None
+    return OpenAICompatibleRouteModels(
+        base_url=ensure_allowed_outbound_url(
+            settings.openai_base_url,
+            allow_private=not settings.is_deployed,
+            allowed_hosts=tuple(settings.outbound_allowed_hosts),
+        ),
+        api_key=settings.openai_api_key,
+    )
+
+
+def build_studio_agents(
+    settings: WorkerSettings,
+    sessions: async_sessionmaker[AsyncSession],
+    *,
+    stack: ModelStack,
+    checkpointer: SqlAlchemyCheckpointSaver,
+    run_control: RunControlPort,
+    rate_limiter: RateLimiterPort,
+    clock: UtcClock,
+    ids: IdGenerator,
+    telemetry: TelemetryPort,
+) -> StudioAgentPorts | None:
+    """What the `studio_runs` lane runs a Studio agent's run with
+    (agent-builder/03): `StudioGraphSource` behind the hash gate, compiling
+    with `StudioAgentCompiler` over the runner's own checkpoint saver and the
+    process's model doors (the resolver reading the run's pinned routes, the
+    limits, the price book, the usage recorders, the residency gate). The
+    object tools (tools-and-skills/03) are `ObjectToolKinds` over the one
+    `RecordService`, each call's transaction opened by `agent_record_session`
+    as the actor `agent` within the run's boundary. No turn port is registered
+    yet (agent-builder/04 brings `chat`, agent-lifecycle the trials), so every
+    agent run ends `agent_turn_unwired` until one is: closed, never a run with
+    no question. None when no model provider is configured."""
+    chat_models = build_route_chat_models(settings)
+    if chat_models is None:
+        return None
+    records = RecordService(
+        SqlRecordStore(),
+        FieldAccessService(SqlFieldSecurityInputs()),
+        rate_limiter,
+        ObjectSchemaProjector(SqlObjectDefinitionReader(sessions)),
+        clock,
+        ids,
+    )
+    data = RecordObjectData(
+        records,
+        lambda run: RecordDoor(lambda: agent_record_session(sessions, run), run_id=run.run_id),
+    )
+    prompts = PromptRegistry()
+    prompts.load_directory(CONFIGS / "prompts" / "studio")
+    gateway = stack.gateway
+    compiler = StudioAgentCompiler(
+        checkpointer=checkpointer,
+        executor=build_tool_executor(
+            tools=ToolRegistry(),
+            session_factory=sessions,
+            uow_factory=SqlPlatformUnitOfWorkFactory(sessions),
+            approval_policy=AutonomyApprovalPolicy(),
+            telemetry=telemetry,
+            clock=clock,
+            ids=ids,
+            # A Studio agent's W1 tools read; no send reaches this executor.
+            send_admission=None,
+            run_control=run_control,
+        ),
+        tool_kinds=ObjectToolKinds(
+            SqlObjectDefinitionReader(sessions),
+            data,
+            ObjectToolCopy.of(load_copy_codes(CONFIGS / "copy" / OBJECT_TOOLS_COPY)),
+        ),
+        object_fields=data,
+        copy=load_runtime_copy(CONFIGS / "copy" / RUNTIME_COPY),
+        prompts=prompts,
+        names=SqlRunNames(sessions),
+        models=gateway.models,
+        chat_models=chat_models,
+        limits=stack.limits,
+        usage_recorder=stack.usage_recorder,
+        pricing=gateway.pricing,
+        residency=gateway.residency,
+    )
+    return StudioAgentPorts(
+        source=StudioGraphSource(sessions, compiler, turns={}, replies={}),
+        threads=SqlAgentThreads(sessions),
     )
 
 

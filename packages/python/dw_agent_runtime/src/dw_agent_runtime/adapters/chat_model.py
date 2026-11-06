@@ -82,9 +82,14 @@ class LimitedChatModelFactory:
     inner: ChatModelFactory
 
     def resolve(self, profile_id: str) -> BaseChatModel:
-        model = self.inner.resolve(profile_id)
-        model.callbacks = [*_handlers(model.callbacks), PermitRequired()]
-        return model
+        return require_permit(self.inner.resolve(profile_id))
+
+
+def require_permit(model: BaseChatModel) -> BaseChatModel:
+    """``model`` refusing every call made without a permit in force (R6.2):
+    `LimitedChatModelFactory`'s models and a Studio agent's per-route ones."""
+    model.callbacks = [*_handlers(model.callbacks), PermitRequired()]
+    return model
 
 
 def _handlers(callbacks: Any) -> list[Any]:

@@ -143,6 +143,18 @@ class DeclaredLimits(BaseModel):
     max_tokens: int | None = Field(default=None, ge=1)
 
 
+class RunArtifact(BaseModel):
+    """The Studio version a run runs (agent-builder R3.1; ADR-0117 decision 5),
+    stamped from its row where the run is taken. The hash it pinned is
+    `RunContext.definition_hash`, never a second copy here."""
+
+    model_config = ConfigDict(frozen=True)
+
+    kind: str
+    artifact_id: UUID
+    version_id: UUID
+
+
 class RunContext(BaseModel):
     """Per-run trusted context, created at the boundary and passed explicitly."""
 
@@ -175,6 +187,10 @@ class RunContext(BaseModel):
     # other run. `RunControlPort` asks about its kill at every door, so no
     # door has to name it (agent-lifecycle R8.1, R8.5).
     artifact_id: UUID | None = None
+    # The version a Studio run runs, read from its row where it is taken; a
+    # Studio agent's model selection refuses a run whose version is not the
+    # one its graph was built for (agent-builder/03). None for any other run.
+    artifact: RunArtifact | None = None
     worker_id: str
     worker_version: str = Field(pattern=_RUN_VERSION_PATTERN)
     channel: str

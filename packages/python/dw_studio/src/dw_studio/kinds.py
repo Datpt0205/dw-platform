@@ -28,6 +28,7 @@ from dw_studio.agents.application.settings import AGENTS_AUTHOR_SCOPE
 from dw_studio.agents.domain.document import (
     AGENT_DOCUMENT_SCHEMA,
     AGENT_KIND,
+    agent_model_profiles,
     extract_agent,
     validate_agent,
 )
@@ -145,7 +146,8 @@ def agent_kind() -> ArtifactKindEntry:
     """The `agent` kind (agent-builder R1.8; ADR-0117 decisions 2, 4): the
     author key reads and writes the definition, the submit key is the one the
     workflow kind shares, and the hook is the kind's (agent-builder/05 gives it
-    its task). A gated kind: its versions reach approval through the gate."""
+    its task). A gated kind: its versions reach approval through the gate. Its
+    runs pin the model profile its document names (agent-builder R3.5)."""
     return ArtifactKindEntry(
         kind=AGENT_KIND,
         document_schema=AGENT_DOCUMENT_SCHEMA,
@@ -156,6 +158,7 @@ def agent_kind() -> ArtifactKindEntry:
         validate=validate_agent,
         extract=extract_agent,
         compare=None,
+        model_profiles=agent_model_profiles,
     )
 
 

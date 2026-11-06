@@ -34,16 +34,21 @@ request, and never from anything the model or a user wrote.
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-from typing import Any, cast
+from datetime import UTC, datetime, timedelta, timezone
+from typing import Any, Final, cast
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.messages import SystemMessage
 
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.prompts import PromptRegistry
+from dw_agent_runtime.model.prompts import PromptRegistry, assemble_system_prompt
+from dw_agent_runtime.studio_agent import RunNamesPort
 from dw_kernel.errors import ConfigError, TenantContextMissingError
 
-__all__ = ["WorkerSystemPrompt"]
+__all__ = ["ContainedAgentPrompt", "WorkerSystemPrompt"]
+
+# The frame's clock reads Vietnam's time, which keeps no daylight saving.
+_VIETNAM: Final = timezone(timedelta(hours=7))
 
 
 class WorkerSystemPrompt(AgentMiddleware[Any, Any]):
@@ -95,3 +100,73 @@ class WorkerSystemPrompt(AgentMiddleware[Any, Any]):
             content_blocks=[cast(Any, {"type": "text", "text": self._render(request)}), *appended]
         )
         return await handler(request.override(system_message=message))
+
+
+class ContainedAgentPrompt(AgentMiddleware[Any, Any]):
+    """A Studio agent's system message, per model call (agent-builder R2.1-R2.3,
+    R1.12; ADR-0117 decision 4): the containment frame `frame_id@version`
+    assembled at the platform layer with the company's instructions in their
+    block (`assemble_system_prompt`), never a company's override of the frame.
+
+    The frame's values are the run's: today's date and time from `clock`, the
+    agent's name from its version, and the asking person's and workspace's
+    names read for the run (`RunNamesPort`), each contained by the assembler.
+    Placed above whatever the harness wrote, as `WorkerSystemPrompt` is."""
+
+    def __init__(
+        self,
+        prompts: PromptRegistry,
+        frame_id: str,
+        frame_version: str,
+        *,
+        instructions: str,
+        agent_name: str,
+        names: RunNamesPort,
+        clock: Callable[[], datetime],
+    ) -> None:
+        super().__init__()
+        # At build: a frame nobody registered is a version that cannot answer.
+        prompts.platform_artifact(frame_id, frame_version)
+        self._prompts = prompts
+        self._frame = (frame_id, frame_version)
+        self._instructions = instructions
+        self._agent_name = agent_name
+        self._names = names
+        self._clock = clock
+
+    async def _render(self, request: ModelRequest[Any]) -> str:
+        run_context = getattr(request.runtime, "context", None)
+        if not isinstance(run_context, RunContext):
+            raise TenantContextMissingError("an agent prompt is rendered for a run's tenant")
+        names = await self._names.names(run_context)
+        now = self._clock().astimezone(_VIETNAM)
+        return assemble_system_prompt(
+            self._prompts,
+            *self._frame,
+            instructions=self._instructions,
+            variables={
+                "current_date": now.date().isoformat(),
+                "current_time": now.strftime("%H:%M"),
+                "agent_name": self._agent_name,
+                "user_display_name": names.person,
+                "workspace_name": names.workspace,
+                "locale": run_context.locale,
+            },
+        )
+
+    async def awrap_model_call(
+        self,
+        request: ModelRequest[Any],
+        handler: Callable[[ModelRequest[Any]], Awaitable[ModelResponse[Any]]],
+    ) -> ModelResponse[Any]:
+        appended = list(request.system_message.content_blocks) if request.system_message else []
+        text = await self._render(request)
+        message = SystemMessage(
+            content_blocks=[cast(Any, {"type": "text", "text": text}), *appended]
+        )
+        return await handler(request.override(system_message=message))
+
+
+def utc_now() -> datetime:
+    """The frame's clock where nothing pins one."""
+    return datetime.now(UTC)

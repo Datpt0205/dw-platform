@@ -33,6 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from dw_agent_runtime.adapters.checkpoint_retention import SqlCheckpointRetention
 from dw_agent_runtime.adapters.killed_runs import SqlKilledRuns
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
+from dw_agent_runtime.adapters.model_stack import ModelStack
 from dw_agent_runtime.adapters.run_control import SqlRunControl
 from dw_agent_runtime.adapters.run_waits import SqlRunWaits
 from dw_agent_runtime.adapters.studio_run_queue import SqlStudioRunQueue
@@ -182,6 +183,7 @@ from dw_worker.composition import (
     build_ingest_components,
     build_object_storage,
     build_residency_gate,
+    build_studio_agents,
     build_studio_kinds,
     build_studio_lifecycle,
     build_studio_runner,
@@ -451,6 +453,8 @@ def build_studio_lanes(
     handlers: dict[str, EventHandler],
     sessions: async_sessionmaker[AsyncSession],
     *,
+    settings: WorkerSettings,
+    models: ModelStack,
     limits: LimitsPort,
     run_control: RunControlPort,
     clock: UtcClock,
@@ -468,7 +472,10 @@ def build_studio_lanes(
     one tenant's RLS, and the reads across tenants are the three definer
     functions that return tenant ids. The `BindingReviewPort` is
     `UnwiredBindingReview` until workflow-triggers/03 answers it: every
-    trigger's run is held, none let through (R5.25)."""
+    trigger's run is held, none let through (R5.25). A Studio agent's run
+    is compiled by `build_studio_agents` (agent-builder/03), its records
+    read through this process's one rate limiter."""
+    rate_limiter = build_rate_limiter(settings, clock)
     runner = build_studio_runner(
         sessions,
         limits=limits,
@@ -477,6 +484,17 @@ def build_studio_lanes(
         clock=clock,
         ids=ids,
         telemetry=telemetry,
+        agents=lambda saver: build_studio_agents(
+            settings,
+            sessions,
+            stack=models,
+            checkpointer=saver,
+            run_control=run_control,
+            rate_limiter=rate_limiter,
+            clock=clock,
+            ids=ids,
+            telemetry=telemetry,
+        ),
     )
     queue = SqlStudioRunQueue(sessions, ids, clock)
     lane = StudioRunsLane(
@@ -771,6 +789,8 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
             registry,
             handlers,
             sessions,
+            settings=settings,
+            models=wflite.models,
             limits=wflite.limits,
             run_control=run_control,
             clock=clock,

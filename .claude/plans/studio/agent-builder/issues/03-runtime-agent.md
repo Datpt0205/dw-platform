@@ -1,6 +1,6 @@
 # 03 — Runtime agent: nguồn graph, cache, middleware, actor
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 01, 02, .claude/plans/studio/tools-and-skills/issues/03-cong-cu-du-lieu-doi-tuong.md, .claude/plans/studio/workflow-engine/issues/02-cot-run-va-cua-nhan-run.md, .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md, .claude/plans/studio/record-access/issues/04-ngu-canh-actor-o-moi-cua.md, .claude/plans/studio/model-connections/issues/02-model-resolver-theo-tenant.md, .claude/plans/studio/compliance-pdpl/issues/03-tuyen-du-lieu-o-model-gateway.md, .claude/plans/studio/agent-lifecycle/issues/01-dong-bang-va-kiem-o-moi-cua.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md
 Area: studio
 Yêu cầu: R3.1, R3.2, R3.3, R3.4, R3.5, R3.6, R3.7, R3.8, AB5, AB6, AB7, AB9, AB14, AB17
@@ -21,18 +21,18 @@ Dựng và chạy một phiên bản agent trong runner hiện có theo (công t
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.1 (AB6): nạp một phiên bản dựng graph theo khóa `(tenant_id, agent_version_id, pinned_hash)` trong cache LRU có trần; hai lượt `simulate` của cùng bản Nháp trước và sau một lần sửa → hai mục cache, lượt sau chạy graph của nội dung mới; gỡ `pinned_hash` khỏi khóa → lượt sau chạy graph cũ, test đỏ; sai nếu cache không có trần.
-- [ ] R3.2 (AB6): hai công ty dùng cùng `api_name` và cùng số phiên bản cho hai mục cache tách biệt; gỡ `tenant_id` khỏi khóa cache → test đỏ.
-- [ ] R3.3 (AB7): sửa `document` của một phiên bản đã niêm phong bằng role migrator làm runtime từ chối biên dịch khi băm lệch; sửa bản Nháp sau khi lượt `simulate` của nó được nhận → biên dịch từ chối, không bước nào chạy; một lượt khác `simulate` trỏ tới bản Nháp, dựng thẳng không qua `RunRequestService` → biên dịch từ chối; gỡ kiểm băm hay kiểm chế độ → test đỏ.
-- [ ] R3.4 (AB5): một lead người kích hoạt không đọc được không có trong câu trả lời; giao dịch thiếu actor context trả 0 bản ghi; gỡ gán actor `agent` và `app.boundary_id` → test đỏ.
-- [ ] R3.4 (AB14): với bộ dẫn giả của loại `agent` đăng ký trong test, trả `mkt_lead` với `can_read`, một lượt `simulate` có gốc là bản Nháp chỉ ghim công cụ đọc `mkt_lead`, như một lần thử của Kiểm định thử, do một người thử chỉ đọc được lead của mình xin qua `RunRequestService` → phiên công cụ gắn `app.boundary_id` của giới hạn dữ liệu tạm của lượt, lượt đọc được lead của người thử và chỉ chúng, đọc `mkt_campaign` → 0 dòng; lượt `live` của phiên bản đã phát hành của cùng agent gắn giới hạn của phiên bản, không bao giờ giới hạn tạm; gắn `app.boundary_id` của một giới hạn tạm cho một lượt `live` → 0 bản ghi (record-access:R6.13); bỏ gắn giới hạn tạm ở lượt bản Nháp → lượt đọc 0 bản ghi, test đỏ; cùng ca với một lần thử của Lượt kiểm định trên một Bản ứng viên agent cùng Bộ công cụ, xin dưới danh nghĩa người gửi → phiên công cụ gắn `app.boundary_id` của giới hạn dữ liệu tạm dưới `(version_id, definition_hash)`, lần thử đọc lead của người gửi và chỉ chúng; bỏ gắn giới hạn tạm khi gốc là Bản ứng viên → lần thử đọc 0 bản ghi, test đỏ.
-- [ ] R3.3 (AB7): cache trúng cho khóa `(tenant_id, agent_version_id, pinned_hash)` rồi role migrator sửa `document` → lượt kế trúng cache chạy graph của nội dung đã khớp `pinned_hash`; xóa cache rồi chạy lại → nạp, băm lệch, lượt `failed` với `definition_mismatch`, không bước nào chạy.
-- [ ] R3.8 (AB17): một lượt `chat` (W1; `agent_node` là W2 và cửa W1 từ chối nó `trigger_kind_unsupported`) của agent `enabled = false`, hay chưa có dòng cài đặt → `failed` `agent_disabled`, 0 lời gọi model; một lượt `simulate` của cùng agent chạy; bỏ đọc `enabled` → test đỏ. Một lượt `failed` và một lượt `cancelled` → không còn checkpoint nào của chúng; lượt chờ phê duyệt → checkpoint còn. Một lượt `simulate` của bản Nháp đứt giữa chừng, bản Nháp đổi, lượt được nhận lại ở tiến trình khác → `blocked` `incompatible_resume`, không `definition_mismatch`. Lần thử của Lượt kiểm định do lane xin bằng `LaneRequester(studio_gate, tenant_id)`, với `requested_by` và chủ thể là người gửi theo workflow-engine/02 (c) → `app.user_id` là người gửi; mở phiên công cụ với `app.user_id` là một người khác chủ thể của dòng lượt → `bind_actor` từ chối, 0 bản ghi đọc.
-- [ ] R3.5: lượt chạy agent gọi đúng route model đã ghim trong bản kê, và model mặc định nhận 0 lượt gọi; sai nếu đọc route ngoài bản kê.
-- [ ] R3.5: hồ sơ mà agent khai (bước 6) có trong `engine.model_routes` của bản kê lượt; gỡ đăng ký `model_profiles` của loại `agent` → lời gọi `key_not_pinned`, test đỏ; hồ sơ ghim đổi `content_hash` giữa lượt → lượt `failed` `model_profile_unavailable`, 0 lời gọi model.
-- [ ] R3.6 (AB9): mọi lời gọi model của lượt chịu trần chi phí của lượt; đảo thứ tự bước chọn model và bước ngân sách → test chi phí đỏ.
-- [ ] R3.7 (AB9): lượt chạy agent dưới lộ trình `vn_only` gọi một route có `data_location` `foreign` ở cửa vòng agent → lời gọi bị `ResidencyGate` từ chối, không lease nào được giữ, không Bản ghi sử dụng nào được ghi; đặt `ResidencyGate` sau `LimitsMiddleware` → test đỏ.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_studio/tests -k "agent_runtime"` xanh.
+- [x] R3.1 (AB6): nạp một phiên bản dựng graph theo khóa `(tenant_id, agent_version_id, pinned_hash)` trong cache LRU có trần; hai lượt `simulate` của cùng bản Nháp trước và sau một lần sửa → hai mục cache, lượt sau chạy graph của nội dung mới; gỡ `pinned_hash` khỏi khóa → lượt sau chạy graph cũ, test đỏ; sai nếu cache không có trần.
+- [x] R3.2 (AB6): hai công ty dùng cùng `api_name` và cùng số phiên bản cho hai mục cache tách biệt; gỡ `tenant_id` khỏi khóa cache → test đỏ.
+- [x] R3.3 (AB7): sửa `document` của một phiên bản đã niêm phong bằng role migrator làm runtime từ chối biên dịch khi băm lệch; sửa bản Nháp sau khi lượt `simulate` của nó được nhận → biên dịch từ chối, không bước nào chạy; một lượt khác `simulate` trỏ tới bản Nháp, dựng thẳng không qua `RunRequestService` → biên dịch từ chối; gỡ kiểm băm hay kiểm chế độ → test đỏ.
+- [x] R3.4 (AB5): một lead người kích hoạt không đọc được không có trong câu trả lời; giao dịch thiếu actor context trả 0 bản ghi; gỡ gán actor `agent` và `app.boundary_id` → test đỏ.
+- [x] R3.4 (AB14): với bộ dẫn giả của loại `agent` đăng ký trong test, trả `mkt_lead` với `can_read`, một lượt `simulate` có gốc là bản Nháp chỉ ghim công cụ đọc `mkt_lead`, như một lần thử của Kiểm định thử, do một người thử chỉ đọc được lead của mình xin qua `RunRequestService` → phiên công cụ gắn `app.boundary_id` của giới hạn dữ liệu tạm của lượt, lượt đọc được lead của người thử và chỉ chúng, đọc `mkt_campaign` → 0 dòng; lượt `live` của phiên bản đã phát hành của cùng agent gắn giới hạn của phiên bản, không bao giờ giới hạn tạm; gắn `app.boundary_id` của một giới hạn tạm cho một lượt `live` → 0 bản ghi (record-access:R6.13); bỏ gắn giới hạn tạm ở lượt bản Nháp → lượt đọc 0 bản ghi, test đỏ; cùng ca với một lần thử của Lượt kiểm định trên một Bản ứng viên agent cùng Bộ công cụ, xin dưới danh nghĩa người gửi → phiên công cụ gắn `app.boundary_id` của giới hạn dữ liệu tạm dưới `(version_id, definition_hash)`, lần thử đọc lead của người gửi và chỉ chúng; bỏ gắn giới hạn tạm khi gốc là Bản ứng viên → lần thử đọc 0 bản ghi, test đỏ.
+- [x] R3.3 (AB7): cache trúng cho khóa `(tenant_id, agent_version_id, pinned_hash)` rồi role migrator sửa `document` → lượt kế trúng cache chạy graph của nội dung đã khớp `pinned_hash`; xóa cache rồi chạy lại → nạp, băm lệch, lượt `failed` với `definition_mismatch`, không bước nào chạy.
+- [x] R3.8 (AB17): một lượt `chat` (W1; `agent_node` là W2 và cửa W1 từ chối nó `trigger_kind_unsupported`) của agent `enabled = false`, hay chưa có dòng cài đặt → `failed` `agent_disabled`, 0 lời gọi model; một lượt `simulate` của cùng agent chạy; bỏ đọc `enabled` → test đỏ. Một lượt `failed` và một lượt `cancelled` → không còn checkpoint nào của chúng; lượt chờ phê duyệt → checkpoint còn. Một lượt `simulate` của bản Nháp đứt giữa chừng, bản Nháp đổi, lượt được nhận lại ở tiến trình khác → `blocked` `incompatible_resume`, không `definition_mismatch`. Lần thử của Lượt kiểm định do lane xin bằng `LaneRequester(studio_gate, tenant_id)`, với `requested_by` và chủ thể là người gửi theo workflow-engine/02 (c) → `app.user_id` là người gửi; mở phiên công cụ với `app.user_id` là một người khác chủ thể của dòng lượt → `bind_actor` từ chối, 0 bản ghi đọc.
+- [x] R3.5: lượt chạy agent gọi đúng route model đã ghim trong bản kê, và model mặc định nhận 0 lượt gọi; sai nếu đọc route ngoài bản kê.
+- [x] R3.5: hồ sơ mà agent khai (bước 6) có trong `engine.model_routes` của bản kê lượt; gỡ đăng ký `model_profiles` của loại `agent` → lời gọi `key_not_pinned`, test đỏ; hồ sơ ghim đổi `content_hash` giữa lượt → lượt `failed` `model_profile_unavailable`, 0 lời gọi model.
+- [x] R3.6 (AB9): mọi lời gọi model của lượt chịu trần chi phí của lượt; đảo thứ tự bước chọn model và bước ngân sách → test chi phí đỏ.
+- [x] R3.7 (AB9): lượt chạy agent dưới lộ trình `vn_only` gọi một route có `data_location` `foreign` ở cửa vòng agent → lời gọi bị `ResidencyGate` từ chối, không lease nào được giữ, không Bản ghi sử dụng nào được ghi; đặt `ResidencyGate` sau `LimitsMiddleware` → test đỏ.
+- [x] Xong: `uv run python -m pytest packages/python/dw_studio/tests -k "agent_runtime"` xanh.
 
 ## Nguồn
 
@@ -53,3 +53,57 @@ Dựng và chạy một phiên bản agent trong runner hiện có theo (công t
 - 2026-11-04 (agent): MEDIUM để lại: (a) lời gọi bị `ResidencyGate` từ chối kết thúc lượt với mã của compliance-pdpl/03, ticket này chỉ thử lớp middleware; (b) ba mã mới `definition_mismatch`, `draft_outside_simulate`, `agent_disabled` vào danh sách của workflow-engine:R5.9, và ticket 04 ánh xạ chúng sang tin `notice` `run_failed`; (c) D15 không đổi ticket này.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio, ba HIGH sửa ở đây: (B:agent-builder/03~~record-access/04) bước 4 không đọc `RunContext.boundary_id` mà record-access/04 không thêm, phiên công cụ gắn bằng `bind_actor` qua helper của record-access/04 bước 5, chủ thể là `coalesce(run_as_principal_id, requested_by)` của dòng lượt; (B:agent-builder/03~~workflow-engine/02) R3.8 thử `enabled` bằng lượt `chat`, vì `agent_node` là W2 và lần thử của Lượt kiểm định mang `requested_by` là người gửi theo workflow-engine/02 (c), không là actor của lane; (B:agent-builder/03~model-connections/02) bước 6 mới đăng ký `model_profiles` của loại `agent`. Nếu sai thì: `RunContext` thêm `boundary_id` do cửa nhận lượt đặt và record-access/04 đọc nó thay `studio.boundary_chain`; `agent_node` vào W1 ở workflow-engine/02 và R3.8 thử bằng nó.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): làm khác ticket. (1) Nguồn graph theo dòng kết luận của ticket 01 (một trần
+  cho graph agent lẫn graph quy trình): graph agent vào đúng LRU `_compiled` của runner (trần `GRAPH_CACHE_SIZE` 256, mà
+  workflow-engine/03 đã dựng), khóa `agent_cache_key` = `(agent, tenant_id, agent_version_id, pinned_hash)`; không cài
+  `RunGraphsPort` (cổng đó chỉ đăng ký graph cho `start`/`resume` của worker mã, lượt Studio đi `run_studio`).
+  `StudioGraphSource` (`dw_studio.agents.adapters.graph_source`) cài `StudioAgentPort` mới của
+  `dw_agent_runtime.studio_agent`; phần LangChain là `StudioAgentCompiler` (`adapters/studio_agents.py`) tiêm vào nguồn ở
+  root, vì `dw_studio` không được import LangChain kể cả gián tiếp. (2) Cổng mã băm chạy ở lần trượt cache
+  (`pinned_content_hash` = `definition_hash(definition_body(...))` trên bao đóng mà bản kê ghim); kiểm bản Nháp ngoài
+  `simulate` chạy ở MỌI lần nhận, cả lần trúng, vì cờ bản Nháp đi cùng graph trong cache: một lượt `live` trúng graph mà lượt
+  `simulate` dựng vẫn bị từ chối. DB không cho một lượt `live` trỏ bản kê `simulate` (`run mode is not the one its manifest
+  pinned`), nên test dựng một bản kê `live` riêng ghim bản Nháp. (3) `StudioModelSelection` đứng ngay trước
+  `ResidencyGateMiddleware` (sau `RunControlMiddleware` của agent-lifecycle/01, không dời), qua `AgentSpec.model_selection`;
+  nó giữ `(tenant, version, pinned_hash)` mà graph dựng từ và từ chối lượt khác (`graph_mismatch`), là bên đọc của
+  `RunContext.artifact` và `RunContext.definition_hash` mới đặt ở `_studio_run_context`. Mô hình `create_agent` nhận là
+  `UnselectedChatModel` từ chối mọi lời gọi. Chi phí không phụ thuộc thứ tự chọn/ngân sách vì cả hai cổng cùng hỏi một
+  `ModelResolver` cho route ghim (một chủ); test "đảo thứ tự" là test cấu trúc của ngăn xếp cùng test R3.7 (gate sau limits
+  → có lease). (4) Prompt agent dựng bằng `ContainedAgentPrompt` (`assemble_system_prompt`, chỉ lớp nền tảng) thay
+  `WorkerSystemPrompt`, qua `AgentSpec.system_prompt`; `user_display_name`, `workspace_name` đọc mỗi lời gọi model qua
+  `RunNamesPort` (`SqlRunNames`, một câu dưới tenant của lượt). (5) Vào/ra: `AgentTurnPort`, `AgentReplyPort` ở
+  `dw_studio.agents.application.runtime`, đăng ký theo `trigger_kind`; root worker đăng ký rỗng, nên tới ticket 04 và
+  agent-lifecycle/06 mọi lượt agent ở worker kết thúc `agent_turn_unwired` (đóng khi thiếu). Kết quả lượt `result` để trống.
+  (6) Lượt của chính một người không là lượt Digital Worker: `agent_run_context` bỏ `run_as_principal_id` khi nó bằng
+  `requested_by`, vì `ToolExecutor.step_dw_boundary` đọc mọi `run_as_principal_id` như ranh giới DW và từ chối mọi công cụ
+  `dw_not_operating`; lượt do lane xin dưới tên một principal dịch vụ giữ nó. Cùng chỗ này sẽ chạm workflow-nodes khi bước
+  quy trình gọi công cụ qua executor. (7) Xóa checkpoint ở mọi trạng thái cuối mà runner ghi (`completed`, `failed`,
+  `cancelled`) qua `SqlAgentThreads.forget`, câu DELETE tự canh (lượt là luồng đã kết thúc và không lượt nào trên luồng chưa
+  xong); `dead_lettered` do reaper ghi nên để lane `checkpoint_retention`. (8) Lời gọi công cụ cần người duyệt (W1: mọi lời
+  gọi đọc ở mức tự chủ trống, vì compliance-pdpl/07 mới đặt mức ở cửa) kết thúc lượt `approval_wait_unavailable`, tới khi
+  workflow-engine/05 có chờ của lượt Studio cho agent; tiêu chí "lượt chờ phê duyệt giữ checkpoint" thử ở lớp canh của câu
+  xóa (dòng `waiting_approval` giữ checkpoint), không qua một lượt chờ thật. (9) Agent là loại có Cổng chất lượng nên W1 chưa
+  có đường hợp lệ lên `live` (agent-lifecycle/06): test trồng phiên bản `live` bằng migrator tắt `guard_version_stage` trong
+  một giao dịch, và sửa tài liệu đã niêm phong tắt `refuse_sealed_content_change` (chính là "role migrator" của R3.3).
+  (10) R3.2 hai công ty không thể có cùng `agent_version_id` (UUID), nên phần "gỡ tenant khỏi khóa" thử ở test đơn vị của
+  khóa, cùng chốt `graph_mismatch`. (11) Thư mục `tests/prototype/` của ticket 01 đã xóa cùng hai dòng của nó trong
+  `pyproject.toml`; `tests/unit/test_library_contracts.py` giữ. Nếu sai thì: (1) cache riêng trong nguồn với trần riêng;
+  (2) chỉ kiểm chế độ ở lần trượt; (5) kết quả trả lời ghi vào `result` có che; (6) executor phân biệt DW bằng loại
+  principal (`service`) thay vì có `run_as_principal_id`; (8) thêm chờ phê duyệt của agent trước khi đóng ticket.
+- 2026-11-06 (agent): bàn giao cho lane khác: `adapters/checkpoint.py::adelete_thread` (lane 1) nói chỉ `compact` và lane
+  retention xóa checkpoint; nay `SqlAgentThreads` là bên xóa thứ ba, câu chú thích đó cần sửa khi file sạch. `lint-imports`
+  đỏ một hợp đồng của lane 1 (`dw_studio.core.application.resume_check -> dw_agent_runtime.wflite.resume -> langgraph`).
+- 2026-11-06 (agent): resolved. Test: `test_studio_agent_runtime_stack.py` 13 (unit runtime: route ghim, mô hình biên dịch 0
+  lời gọi, `key_not_pinned`, `model_profile_unavailable`, `graph_mismatch` bốn ca, thứ tự chọn → cổng → hạn mức, trần lượt,
+  `vn_only` + `foreign` 0 lease 0 bản ghi sử dụng, strict theo route ghim, khóa cache), `test_agent_runtime_db.py` 19
+  integration (`_lane2`; R3.1, R3.3 bốn ca, R3.4 bốn ca kể cả lần thử của Lượt kiểm định, R3.5 ba ca, R3.7, R3.8 năm ca);
+  unit `dw_agent_runtime` + `dw_studio` + worker 2775 xanh; mypy 998 tệp sạch; `lint-imports` 17 kept; ruff cả repo sạch.
+  `reviewing-feature-security` đã đọc: cách ly (khóa cache có tenant, graph từ chối lượt công ty khác, mọi đọc dưới tenant của
+  lượt, `forget` của tenant khác không xóa gì), quyền (bản ghi qua RecordService với actor `agent` trong giới hạn của lượt;
+  principal lệch dòng lượt → `bind_actor` từ chối), tự chủ (không tầm với mới: mức trống hỏi mọi thứ, chờ duyệt kết thúc lượt),
+  nội dung không tin cậy (chỉ dẫn trong khối chứa ở lớp nền tảng, tên người và workspace qua bộ chứa, đầu ra công cụ trong
+  `<tool_output>`; eval `studio_agent_frame` và `studio_object_tools` đã phủ), kiểm toán (kết thúc lượt và lời gọi công cụ
+  như cũ; `result` không chứa nội dung), vòng đời (một LRU graph, LRU 64 model theo route, checkpoint xóa khi lượt kết thúc,
+  thiếu cổng hay nhà cung cấp → từ chối). `mutations/03.yaml` 15 mutation, chưa chạy (2 bẻ tay, đỏ). Chờ lúc đóng hàng:
+  `mutate.py`, `make test-integration` đầy đủ, latency của một lượt agent qua `run_studio` (lần trượt cache gồm nạp bản kê và
+  `ObjectToolGenerator.load`, lần trúng) và của `SqlRunNames` mỗi lời gọi model. Không migration, route hay ảnh.

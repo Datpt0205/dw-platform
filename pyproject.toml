@@ -146,7 +146,7 @@ files = [
     "apps/worker/src",
     "scripts",
 ]
-exclude = ['db/migrations/versions', 'tests/(unit|integration|prototype)/conftest\.py$']
+exclude = ['db/migrations/versions', 'tests/(unit|integration)/conftest\.py$']
 mypy_path = [
     "packages/python/dw_kernel/src",
     "packages/python/dw_platform/src",
@@ -166,8 +166,6 @@ mypy_path = [
     "packages/python/dw_platform/tests/integration",
     "packages/python/dw_agent_runtime/tests/integration",
     "packages/python/dw_agent_runtime/tests/unit",
-    # agent-builder 01's measured prototype; ticket 03 deletes the directory and this line.
-    "packages/python/dw_agent_runtime/tests/prototype",
     "packages/python/dw_usage/tests/integration",
 ]
 explicit_package_bases = true

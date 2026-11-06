@@ -57,10 +57,7 @@ def _current_hash(row: Any, root: Mapping[str, Any], closure: list[ClosureItem])
 
 
 def _closure(body: Mapping[str, Any]) -> list[ClosureItem]:
-    return [
-        ClosureItem(item["kind"], item["key"], item["version"], item["content_hash"])
-        for item in body["closure"]
-    ]
+    return [ClosureItem.from_json(item) for item in body["closure"]]
 
 
 @dataclass(frozen=True)

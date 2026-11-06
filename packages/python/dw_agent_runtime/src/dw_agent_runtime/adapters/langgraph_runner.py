@@ -7,7 +7,8 @@ Responsibilities:
 - resume a durable run from its checkpoint after approval — including after a
   full process restart, since all state lives in PostgreSQL;
 - run a Studio run taken from its `queued` row (`run_studio`, workflow-engine/03),
-  its graph compiled from the document its manifest pinned.
+  its graph compiled from the document its manifest pinned; a Studio agent's
+  run past dispatch goes its own way (`_run_agent`, agent-builder/03).
 
 Every compiled graph of the process, a code worker's, a tenant's wf-lite
 version's and a Studio version's, sits in one LRU of `GRAPH_CACHE_SIZE`
@@ -47,7 +48,7 @@ from dw_agent_runtime.adapters.run_store import (
 from dw_agent_runtime.adapters.studio_resume import build_facts, parked_interrupts
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy, lower_autonomy
 from dw_agent_runtime.context import access_context_from_run
-from dw_agent_runtime.contracts import RunContext, WorkerDefinition
+from dw_agent_runtime.contracts import RunArtifact, RunContext, WorkerDefinition
 from dw_agent_runtime.leases import LEASE_BEAT_SECONDS, beating, run_holder
 from dw_agent_runtime.ports import (
     LimitsPort,
@@ -61,6 +62,19 @@ from dw_agent_runtime.ports import (
 )
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.run_control import HOLDING_REASONS, RunControlDoor, RunHaltedError
+from dw_agent_runtime.studio_agent import (
+    AGENT_DISABLED,
+    AGENT_KIND,
+    AGENT_RECURSION_LIMIT,
+    APPROVAL_WAIT_UNAVAILABLE,
+    DRAFT_OUTSIDE_SIMULATE,
+    ENABLED_TRIGGERS,
+    AgentRefusedError,
+    BuiltAgent,
+    StudioAgentPort,
+    StudioAgentPorts,
+    agent_cache_key,
+)
 from dw_agent_runtime.studio_dispatch import (
     RUN_DEADLINE,
     TEMPORARY_HOLD,
@@ -87,6 +101,7 @@ from dw_agent_runtime.wflite.resume import ResumeVerdict, check_resume
 from dw_kernel.errors import (
     ConfigError,
     ConflictError,
+    EntitlementDeniedError,
     InfrastructureError,
     NotFoundError,
 )
@@ -195,6 +210,10 @@ class LangGraphWorkflowRunner:
     # What a Studio run needs (workflow-engine/03); None for a runner that runs
     # none, whose `run_studio` refuses.
     studio: StudioRunPorts | None = None
+    # What a Studio agent's run needs (agent-builder/03): its graph source and
+    # its finished thread's checkpoints. None refuses such a run
+    # `agent_runtime_unwired`.
+    studio_agents: StudioAgentPorts | None = None
     _compiled: OrderedDict[tuple[str, ...], Any] = field(default_factory=OrderedDict)
     # Holds a reference to every in-flight streamed run; without one the task is
     # garbage-collectable mid-run.
@@ -575,6 +594,8 @@ class LangGraphWorkflowRunner:
             )
             return RunStatus(verdict.status)
         lease = verdict.lease
+        if taken.artifact_kind == AGENT_KIND:
+            return await self._run_agent(taken, run, lease, lease_token, durability)
         resume = ResumeVerdict()
         if again:
             resume = await self._resume_verdict(studio, taken)
@@ -748,6 +769,120 @@ class LangGraphWorkflowRunner:
                 extra={"run_id": str(taken.run_id)},
             )
             return None
+
+    async def _run_agent(
+        self,
+        taken: StudioRun,
+        run: RunContext,
+        lease: RunLease,
+        lease_token: str,
+        durability: str,
+    ) -> RunStatus:
+        """A Studio agent's run past dispatch (agent-builder/03; spec R3).
+
+        Before any model or tool call: a `chat` run (and W2's agent node and
+        linked agent) of an agent that is off ends `agent_disabled` (R3.8);
+        the graph comes from the one cache under `(tenant, version, pinned
+        hash)`, built behind the hash gate on a miss (`definition_mismatch`,
+        R3.1-R3.3); a draft's graph runs only in `simulate`, asked at every
+        take (`draft_outside_simulate`). The turn goes in and the reply out
+        through the source, by run id, never through the row (ADR-0117
+        decision 6). A tool call that waits for a person ends the run
+        `approval_wait_unavailable` until a Studio agent's wait exists. On
+        every way the run ends here its thread's checkpoints go
+        (`AgentThreadsPort`); a run taken over by another worker, or shut
+        down, keeps them for its next holder."""
+        assert self.studio is not None  # `run_studio` refuses a runner without it
+        runs = self.studio.nodes.runs
+        run = agent_run_context(run)
+        agents = self.studio_agents
+        tenant_id, run_id = taken.tenant_id, taken.run_id
+
+        async def end(
+            status: Literal["completed", "failed", "cancelled"],
+            error: dict[str, Any] | None = None,
+        ) -> RunStatus:
+            await self._release(run, run_id, status)
+            await runs.finish(tenant_id, run_id, status, lease_token=lease_token, error=error)
+            if agents is not None:
+                try:
+                    await agents.threads.forget(tenant_id, taken.thread_id)
+                except Exception:
+                    # The retention lane deletes them on its term.
+                    logger.warning(
+                        "a finished agent run's checkpoints stayed",
+                        exc_info=True,
+                        extra={"run_id": str(run_id)},
+                    )
+            return RunStatus(status)
+
+        if agents is None:
+            return await end("failed", {"code": "agent_runtime_unwired"})
+        try:
+            if taken.trigger_kind in ENABLED_TRIGGERS and not await agents.source.enabled(
+                tenant_id, taken.artifact_id
+            ):
+                raise AgentRefusedError(AGENT_DISABLED, "the agent is off")
+            built = await self._agent_graph(agents.source, taken)
+            if built.draft and taken.run_mode != "simulate":
+                raise AgentRefusedError(DRAFT_OUTSIDE_SIMULATE, "a draft runs only simulated")
+        except AgentRefusedError as refused:
+            return await end("failed", {"code": refused.code})
+        await runs.admitted(tenant_id, run_id, lease_token=lease_token, deadline=RUN_DEADLINE)
+        graph = built.graph
+        config: dict[str, Any] = {
+            "recursion_limit": AGENT_RECURSION_LIMIT,
+            "configurable": {
+                "thread_id": str(taken.thread_id),
+                "tenant_id": str(tenant_id),
+                "workspace_id": str(taken.workspace_id),
+                FENCE_RUN_ID: str(run_id),
+                FENCE_TOKEN: lease_token,
+            },
+        }
+        try:
+            snapshot = await graph.aget_state(config)
+            payload: dict[str, Any] | None = None
+            if not snapshot.next:
+                turn = await agents.source.turn(taken)
+                payload = {"messages": [{"role": m.role, "content": m.content} for m in turn]}
+            async with self._beating(lease, run):
+                state = await graph.ainvoke(payload, config, context=run, durability=durability)
+            if isinstance(state, dict) and state.get("__interrupt__"):
+                return await end("failed", {"code": APPROVAL_WAIT_UNAVAILABLE})
+            await agents.source.reply(taken, _final_text(state))
+        except (StudioLeaseLostError, asyncio.CancelledError):
+            raise
+        except AgentRefusedError as refused:
+            return await end("failed", {"code": refused.code})
+        except RunHaltedError as halted:
+            return await end("cancelled", {"code": halted.reason.value, "door": halted.door.value})
+        except ResidencyRefusedError:
+            return await end("failed", {"code": RESIDENCY_REFUSED})
+        except LimitExceededError as stopped:
+            await self._lane_audit(run, LIMIT_STOPPED, details=_limit_stopped(stopped))
+            return await end("failed", {**stopped.details, "code": LIMIT_EXCEEDED})
+        except EntitlementDeniedError as denied:
+            # `model_profile_unavailable` (model-connections R1.5), before a send.
+            return await end("failed", {"code": str(denied.details.get("reason_code", "denied"))})
+        except ConfigError as exc:
+            # `key_not_pinned`, `graph_mismatch`: closed on a gap, never a guess.
+            return await end("failed", {"code": str(exc.details.get("reason", "config_error"))})
+        except Exception as exc:
+            logger.exception("a Studio agent run failed", extra={"run_id": str(run_id)})
+            return await end("failed", {"code": "step_failed", "type": type(exc).__name__})
+        return await end("completed")
+
+    async def _agent_graph(self, source: StudioAgentPort, taken: StudioRun) -> BuiltAgent:
+        """The agent of `(tenant, version, pinned hash)` from the one cache;
+        on a miss, built by the source behind its hash gate (R3.1, R3.3)."""
+        key = agent_cache_key(taken)
+        cached = self._compiled.get(key)
+        if cached is not None:
+            self._compiled.move_to_end(key)
+            return cast(BuiltAgent, cached)
+        built = await source.build(taken)
+        return cast(BuiltAgent, self._cached(key, lambda: built))
 
     async def _hold_studio(
         self,
@@ -1408,6 +1543,31 @@ def _loop_prompt(worker: WorkerDefinition) -> tuple[str, str]:
     return f"graph:{worker.worker_id}", worker.graph_version
 
 
+def agent_run_context(run: RunContext) -> RunContext:
+    """A Studio agent's run as its tools see it: a person's own run (the
+    principal is whoever asked) is no Digital Worker's, so it carries no
+    `run_as_principal_id`, which `ToolExecutor` reads as a DW's boundary
+    (digital-worker R6.1); a run a lane asks for in a service principal's
+    name keeps it. Whom the run acts as is unchanged (`actor_id`, and
+    `run_principal` for the record session)."""
+    if run.run_as_principal_id is not None and run.run_as_principal_id == run.requested_by:
+        return run.model_copy(update={"run_as_principal_id": None})
+    return run
+
+
+def _final_text(state: Any) -> str:
+    """The agent's last message, the turn's answer."""
+    messages = state.get("messages") if isinstance(state, dict) else None
+    if not messages:
+        return ""
+    content = getattr(messages[-1], "content", "")
+    if isinstance(content, str):
+        return content
+    return "".join(
+        str(part.get("text", "")) if isinstance(part, dict) else str(part) for part in content
+    )
+
+
 def _studio_run_context(taken: StudioRun) -> RunContext:
     """The run's context from its row: who it acts as, its mode, its manifest
     and its tenant's plan read where it was taken, never a caller's."""
@@ -1425,6 +1585,14 @@ def _studio_run_context(taken: StudioRun) -> RunContext:
         run_as_principal_id=taken.run_as_principal_id,
         run_manifest_hash=taken.run_manifest_hash,
         artifact_id=taken.artifact_id,
+        # The version and the hash it pinned, stamped here at every take; a
+        # Studio agent's model selection reads both (agent-builder R3.1).
+        artifact=RunArtifact(
+            kind=taken.artifact_kind,
+            artifact_id=taken.artifact_id,
+            version_id=taken.artifact_version_id,
+        ),
+        definition_hash=taken.pinned_hash.removeprefix("sha256:"),
         # A child spends its root's lease; a root its own (usage-and-limits R5.6).
         root_run_id=taken.root_run_id,
         worker_id=f"studio:{taken.artifact_kind}:{taken.artifact_version_id}",

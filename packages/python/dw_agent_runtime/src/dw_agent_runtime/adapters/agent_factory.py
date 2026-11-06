@@ -65,6 +65,7 @@ from dw_agent_runtime.adapters.model_retry import ModelRetryMiddleware
 from dw_agent_runtime.adapters.recalled_memory import MemoryRecallPort, RecalledMemoryMiddleware
 from dw_agent_runtime.adapters.residency_middleware import ResidencyGateMiddleware
 from dw_agent_runtime.adapters.run_control_middleware import RunControlMiddleware
+from dw_agent_runtime.adapters.studio_model_selection import StudioModelSelection
 from dw_agent_runtime.adapters.studio_tools import (
     FIELD_NARROWING,
     FieldSecurityToolSchemaMiddleware,
@@ -72,7 +73,7 @@ from dw_agent_runtime.adapters.studio_tools import (
     StrictToolsMiddleware,
 )
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec, sub_agent_middleware
-from dw_agent_runtime.adapters.system_prompt import WorkerSystemPrompt
+from dw_agent_runtime.adapters.system_prompt import ContainedAgentPrompt, WorkerSystemPrompt
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
 from dw_agent_runtime.executor import ToolExecutor
 from dw_agent_runtime.model.copy import RuntimeCopy
@@ -190,6 +191,14 @@ class AgentSpec:
     # object tools are narrowed to at every model call (tools-and-skills R6.3).
     # Required once a pinned tool lists an object's fields.
     object_fields: ObjectFieldsPort | None = None
+    # A Studio agent's system message: the containment frame around its
+    # company's instructions, at the platform layer only (agent-builder R1.12,
+    # R2.1), in place of `WorkerSystemPrompt`.
+    system_prompt: ContainedAgentPrompt | None = None
+    # A Studio agent's model, chosen per call from what its run pinned
+    # (agent-builder R3.5): directly before the residency gate and the limits,
+    # its outer layers' order being the spec's (ADR-0117 decision 5).
+    model_selection: StudioModelSelection | None = None
 
 
 def offered_definitions(spec: AgentSpec) -> list[ToolDefinition]:
@@ -230,7 +239,9 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
     """
     offered = offered_definitions(spec)
     stack: list[AgentMiddleware[Any, Any]] = [
-        WorkerSystemPrompt(
+        spec.system_prompt
+        if spec.system_prompt is not None
+        else WorkerSystemPrompt(
             spec.prompts, spec.prompt_id, spec.prompt_version, spec.prompt_variables
         ),
         # Directly after the worker prompt: the prompt says what this worker is,
@@ -262,6 +273,9 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
         # The freeze at the model call (agent-lifecycle R7.1): the executor's
         # own port, the one instance this process asks at every door.
         RunControlMiddleware(spec.executor.run_control),
+        # A Studio agent's model for this call, which the gate and the limits
+        # below then check and price (agent-builder R3.5-R3.7): outer to both.
+        *([spec.model_selection] if spec.model_selection is not None else []),
         # The data route (compliance-pdpl R2.2, R2.3): after the freeze and
         # before the limits, so a refused call holds and spends nothing
         # (usage-and-limits R6.5).
