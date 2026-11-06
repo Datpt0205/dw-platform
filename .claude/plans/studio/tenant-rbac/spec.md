@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08, 09, 10, 11)
+Sẵn sàng: ĐẠT (6/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08, 09, 10, 11, 12)
 
 Quản trị viên công ty cần tự dựng vai trò cho các workspace của mình (vai Marketing và vai Sales của lát Marketing, D4) với
 quyền trên đối tượng do công ty định nghĩa (`obj.lead.read`, D3), điều mà danh mục vai toàn cục chỉ migration ghi không
@@ -478,6 +478,20 @@ Không còn câu hỏi mở.
   ticket 08, 09 vì cùng thay thân hàm đó. `Yêu cầu: R5.1, RB14, R3.12`; `Mục tiêu` không đổi: R5.1 nay đúng cho cả hai
   lần ghi đồng thời, như ADR-0104 (Accepted) Amendments 2026-11-05 mục 9 ghi. Nếu sai thì: số đo `q2` trượt thì lý do
   ghi cạnh số đo (không dấu theo giao dịch, vì GUC bỏ được khóa), và K4 tách thành ticket riêng của R3.12.
+- 5/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 12. Ticket 12 là chủ của MEDIUM (a) lượt đầu và (c) lượt
+  xác nhận của gate ticket 11: lần `dw_migrator` đổi `platform.memberships.user_id` qua các luật áp cho mọi người ghi
+  mà lần gán và lần gỡ phải qua: guard người vận hành và `support_staff` (R3.11, RB39), guard tài khoản dịch vụ và sự
+  kiện `platform.service_principal.grants_changed` (org-and-principals:R6.4, org-and-principals:R6.6, dẫn qua RB50, lối
+  mà RB50 để mở), chủ sở hữu cuối (R6.7, RB20) và cảnh báo dưới hai người (R3.12, RB40); bốn nhánh trên bốn hàm đã có,
+  bốn trigger trên `UPDATE OF user_id` và một trigger ràng buộc gọi hàm của ticket 08, một revision. Cùng ticket, từ
+  gate của nó: nhánh `role_assignments` của hai guard khóa membership `FOR KEY SHARE` trước khi đọc người, và guard
+  R3.11 khóa dòng vai trò khi thêm khóa chủ, khi người có trong danh sách và khi thêm người vào danh sách, để lần gán,
+  lần đổi người, lần thêm khóa hay lần thêm người đồng thời không cùng qua. Lần đổi người không mở công ty `setup` (R3.10): sai về phía đóng, ngoài ticket. Không
+  gộp vào ticket 11 (khác yêu cầu, khác hàm, 11 đã gate và sắp dựng); chờ ticket 11 vì cùng tập trigger trên
+  `memberships` và thứ tự khóa trước dòng version mà 11 lấy. `Yêu cầu: R3.11, R3.12, R6.7, RB20, RB39, RB40, RB50`;
+  `Mục tiêu` không đổi: R3.11 nay đúng cho cả lần đổi người và lần ghi đồng thời, R3.12 và R6.7 cho lần đổi người
+  (R6.7 dưới lần đổi người cạnh lần đình chỉ người mới còn nợ một ticket của R6.7). Nếu sai thì: K1-K4
+  thành một bước của ticket 11, hay K2 thành ticket của org-and-principals chờ ticket 12.
 
 ## Danh sách ticket
 
@@ -494,3 +508,4 @@ Không còn câu hỏi mở.
 | 09  | [Tách nhiệm khi khôi phục vai trò đã xóa mềm, và luật tách nhiệm không nêu khóa sinh](issues/09-tach-nhiem-khi-khoi-phuc-vai-tro.md)      |
 | 10  | [`scopes_in` của `_STANDING` và `_HOLDERS` ở cỡ D12](issues/10-scopes-in-cua-standing-va-holders.md)                                      |
 | 11  | [Tách nhiệm dưới hai lần ghi đồng thời, và lần đổi người của membership](issues/11-tach-nhiem-duoi-ghi-dong-thoi.md)                      |
+| 12  | [Lần đổi người của membership qua các guard mà lần gán và lần gỡ phải qua](issues/12-doi-nguoi-cua-membership-qua-guard-gan.md)           |

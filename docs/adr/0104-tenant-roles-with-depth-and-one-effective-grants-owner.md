@@ -416,3 +416,14 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   stays Accepted. If wrong: the earlier lock costs more than the budget, the reason is
   written beside the numbers, and the lock still runs at every firing, never behind a per-transaction setting a
   `dw_app` connection could preset.
+- Decision 10, a membership's change of person (Amendments 2026-11-04): "no update moves a person's assignments to
+  another person" holds for every writer but `dw_migrator`, whose update of `user_id` moves them. Such an update is
+  judged as a revocation from the old person plus an assignment to the new one by every rule that holds for every
+  writer: the separation of duties (tenant-rbac ticket 11), the operator rule of decision 10, the service-account rule
+  of ADR-0103 decision 2 and its `grants_changed` event, the last owner of decision 6 and the warning below two holders.
+  The two guards of an assignment read the membership `FOR KEY SHARE`, so an assignment beside a change of person is
+  judged against the new person, and the operator rule takes the role row before it reads on every path it guards, so
+  two concurrent writes do not both pass it. Recorded by the agent under Đạt's delegation of 2026-10-31 when cutting tenant-rbac
+  ticket 12 (`.claude/plans/studio/tenant-rbac/issues/12-doi-nguoi-cua-membership-qua-guard-gan.md`); the status
+  stays Accepted. If wrong: `dw_migrator` may not change the person of a membership that holds assignments, and its
+  scripts revoke and assign again.
