@@ -96,6 +96,11 @@ jobs:
         run: uv run python scripts/check_hygiene.py --base origin/${{ github.base_ref || 'main' }}
       - name: "Unit tests (coverage gate: fail_under in pyproject)"
         run: uv run pytest -m unit --cov --cov-report=term --cov-report=xml
+      - name: Contract tests (error envelope, OpenAPI walkers, event and tool schemas)
+        # `-m unit` does not select them, and until 6/11/2026 no step did: the
+        # error-envelope walker was red from custom-objects/04 on while every
+        # run stayed green.
+        run: uv run pytest -m contract
       - name: Repository invariants (RLS, unread fields, unhandled literals)
         run: uv run python scripts/verify_invariants.py
       - name: Planning documents (advisory until the existing plans are clean)

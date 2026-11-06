@@ -46,7 +46,7 @@ was written to remove (tenant-rbac/03, 4/11/2026). A test calling the route as
 database creates on its own. Where the truth lives in a running system, ask the
 running system — `test_rls_coverage.py` walks `pg_class`, partitions included.
 
-## 1. Declared, and nobody reads it (found 10×)
+## 1. Declared, and nobody reads it (found 11×)
 
 `autonomy_level` was declared, validated and read by **nothing** — a worker at A4
 paused exactly as often as one at A0. `approval_policy: conditional` was accepted
@@ -69,6 +69,13 @@ step failed as a corrupt archive while scanning nothing. It had been reported as
 "trivy is wired into CI" on the strength of reading the workflow file. The same
 question applies to a pipeline step as to a field — who runs this, and did you
 watch it run?
+
+The eleventh was a marker: `make test-contract` and `make ci` ran `pytest -m
+contract`, and no CI step did, since `-m unit` does not select it. The
+error-envelope walker went red with custom-objects/04 (`d5303d15`) while every
+CI run stayed green, and the commit was reported as having a green run
+(6/11/2026). A test marker is declared the way a field is: name the step that
+selects it.
 
 ## 2. One fact, two copies, and they drift (found 4×)
 
