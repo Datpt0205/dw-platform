@@ -1,0 +1,65 @@
+# Mutation check of tenant-rbac ticket 16: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per row of the ticket's
+# "Đột biến" column (K1-K6), each test calling the route over PostgreSQL in
+# test_member_placement_api.py. K4's two layers (the service passes the
+# assignee, the SQL drops it) each have one; the confirmation's own refusal is
+# `platform.rbac_refusals`'s, asserted in the same test (failure-modes #3).
+mutations:
+  - name: K1 (a) set_memberships stops asking platform.members.write
+    file: packages/python/dw_platform/src/dw_platform/application/role_assignments.py
+    old: |2-
+              has them revoked); a workspace left out loses its membership and every
+              role and permission set on it."""
+              await self.authz.require(context=context, action=MEMBERS_WRITE, resource_type="membership")
+    new: |2-
+              has them revoked); a workspace left out loses its membership and every
+              role and permission set on it."""
+    tests:
+      - apps/api/tests/integration/test_member_placement_api.py::test_r8_2_k1_a_binder_without_members_write_places_nobody
+  - name: K2 (a) a new membership's workspace is not checked against the tenant
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/role_assignments_repo.py
+    old: |2-
+          versions = {r.id: int(r.version) for r in locked}
+          await _require_workspaces(session, context, set(plan.new_memberships))
+    new: |2-
+          versions = {r.id: int(r.version) for r in locked}
+    tests:
+      - apps/api/tests/integration/test_member_placement_api.py::test_r3_3_k2_another_companys_person_or_workspace_is_not_found
+  - name: K3 (a) the caller may place themself in a new workspace
+    file: packages/python/dw_platform/src/dw_platform/application/role_assignments.py
+    old: "            if plan.user_id == context.principal_id:\n"
+    new: "            if False:\n"
+    tests:
+      - apps/api/tests/integration/test_member_placement_api.py::test_r6_4_k3_nobody_places_themself_in_a_new_workspace
+  - name: K4 (a) has_checker is not told the assignee
+    file: packages/python/dw_platform/src/dw_platform/application/role_assignments.py
+    old: "            context, ROLES_BIND, assignee=plan.user_id\n"
+    new: "            context, ROLES_BIND\n"
+    tests:
+      - apps/api/tests/integration/test_member_placement_api.py::test_r7_3_k4_a_grant_only_its_assignee_could_confirm_is_refused
+      - apps/api/tests/integration/test_member_placement_api.py::test_r7_1_two_owners_place_each_other_and_work_there
+  - name: K4 (b) the SQL keeps the assignee as a checker
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/role_assignments_repo.py
+    old: '    " WHERE c.id IS DISTINCT FROM CAST(:x AS uuid))"'
+    new: '    " WHERE CAST(:x AS uuid) IS NULL OR TRUE)"'
+    tests:
+      - apps/api/tests/integration/test_member_placement_api.py::test_r7_3_k4_a_grant_only_its_assignee_could_confirm_is_refused
+  - name: K5 (a) a digital worker's principal gets a new membership
+    file: packages/python/dw_platform/src/dw_platform/application/role_assignments.py
+    old: |2-
+                  if held.dw_principal:
+                      raise conflict(
+                          "the memberships of a digital worker's principal are fixed when it is made",
+    new: |2-
+                  if False:
+                      raise conflict(
+                          "the memberships of a digital worker's principal are fixed when it is made",
+    tests:
+      - apps/api/tests/integration/test_member_placement_api.py::test_r7_1_k5_a_digital_workers_principal_gets_no_new_membership
+  - name: K6 (a) an empty list drops the membership as before
+    file: packages/python/dw_platform/src/dw_platform/application/role_assignments.py
+    old: "            dropping = now is not None and not present\n"
+    new: "            dropping = now is not None and not desired.get(ws)\n"
+    tests:
+      - apps/api/tests/integration/test_member_placement_api.py::test_r7_6_k6_an_empty_list_keeps_the_membership_and_revokes_its_roles
+      - apps/api/tests/integration/test_member_placement_api.py::test_r7_1_role_keys_empty_places_the_person_with_no_role_and_no_proposal

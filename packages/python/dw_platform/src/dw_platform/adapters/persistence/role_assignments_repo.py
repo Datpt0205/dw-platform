@@ -28,7 +28,6 @@ from dw_platform.adapters.persistence import tables
 from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.role_admin_repo import (
-    HAS_CHECKER,
     ask_refusals,
     insert_proposal,
     scope_of,
@@ -61,6 +60,14 @@ _ACTION_MEMBERSHIP_GRANT = "platform.membership.grant"
 _ACTION_MEMBERSHIP_REVOKE = "platform.membership.revoke"
 _ACTION_INVITED = "platform.member.invited"
 
+# `platform.checker_candidates` stays the one owner of who may confirm; the
+# filter drops only the person placed, whom `platform.rbac_refusals` already
+# forbids to confirm their own grant (R6.4, R7.3; tenant-rbac/16).
+_HAS_CHECKER_FOR = sa.text(
+    "SELECT EXISTS (SELECT 1 FROM platform.checker_candidates("
+    "CAST(:t AS uuid), CAST(:k AS text), CAST(:a AS uuid)) AS c(id)"
+    " WHERE c.id IS DISTINCT FROM CAST(:x AS uuid))"
+)
 _HOLDINGS = sa.text(
     """
     SELECT m.id AS membership_id, m.workspace_id,
@@ -113,11 +120,18 @@ class SqlRoleAssignmentRepository:
         async with tenant_session(self.session_factory, scope_of(context)) as session:
             return await ask_refusals(session, context, changes)
 
-    async def has_checker(self, context: AccessContext, permission: str) -> bool:
+    async def has_checker(
+        self, context: AccessContext, permission: str, *, assignee: uuid.UUID | None = None
+    ) -> bool:
         async with tenant_session(self.session_factory, scope_of(context)) as session:
             found = await session.scalar(
-                HAS_CHECKER,
-                {"t": str(context.tenant_id), "k": permission, "a": str(context.principal_id)},
+                _HAS_CHECKER_FOR,
+                {
+                    "t": str(context.tenant_id),
+                    "k": permission,
+                    "a": str(context.principal_id),
+                    "x": None if assignee is None else str(assignee),
+                },
             )
             return bool(found)
 

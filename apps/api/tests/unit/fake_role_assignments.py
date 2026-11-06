@@ -93,11 +93,16 @@ class FakeRoleAssignments:
         roles: Sequence[FakeRole],
         *,
         checker: bool = True,
+        checkers: frozenset[uuid.UUID] | None = None,
     ) -> None:
         self.tenant_id = tenant_id
         self.workspaces = dict(workspaces)
         self.roles = {r.key: r for r in roles}
         self.checker = checker
+        # Who `platform.checker_candidates` would answer, when a test names
+        # them: then the caller and the person placed are dropped, as the SQL
+        # drops them (R6.4, R7.3). None keeps `checker`'s fixed answer.
+        self.checkers = checkers
         self.people: dict[uuid.UUID, FakePerson] = {}
         # (user, workspace) -> membership id
         self.memberships: dict[tuple[uuid.UUID, uuid.UUID], uuid.UUID] = {}
@@ -192,9 +197,13 @@ class FakeRoleAssignments:
             ]
         return found
 
-    async def has_checker(self, context: AccessContext, permission: str) -> bool:
+    async def has_checker(
+        self, context: AccessContext, permission: str, *, assignee: uuid.UUID | None = None
+    ) -> bool:
         self._bound(context)
-        return self.checker
+        if self.checkers is None:
+            return self.checker
+        return any(c not in (context.principal_id, assignee) for c in self.checkers)
 
     async def find_person(self, email: str) -> PersonRef | None:
         wanted = email.strip().lower()

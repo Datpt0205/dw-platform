@@ -7,9 +7,10 @@ services own every rule (`RoleAssignmentService`: scope, tenant RLS, the hold
 rule, two people, audit); a route shapes the request and the answer.
 
 Roles a request adds are proposals another holder of `platform.roles.bind`
-confirms (tenant-rbac R7.1): such a request answers 202 with `proposals`, and
-the roles it removed are in `applied`. A request that only removes answers as
-before. These routes are in `ROLE_ROUTES_WITHOUT_BYPASS`: the `platform_admin`
+confirms (tenant-rbac R7.1), never the person placed: such a request answers
+202 with `proposals`, and the roles it removed are in `applied`. A request that
+only removes answers as before. A membership with no role (`role_keys: []`) is
+written at once with `platform.members.write` alone (tenant-rbac/16). These routes are in `ROLE_ROUTES_WITHOUT_BYPASS`: the `platform_admin`
 bypass does not open them (R3.16).
 
 Refusals the web branches on: 409 with `details.reason_code`
@@ -307,10 +308,15 @@ async def set_memberships(
     response: Response,
     idempotency: SetMembershipsIdempotency,
 ) -> MemberMembershipsView:
-    """Replace the person's roles, workspace by workspace. A workspace in the
-    body without a membership gets one; one left out, or with no role, goes
-    with every role on it. A role the body drops is removed now (200); a role
-    it adds is a proposal (202). Permission sets stay
+    """Replace the person's roles, workspace by workspace. Each workspace in
+    the body is a membership the person has afterwards, its `role_keys` every
+    role on it: `[]` is a membership with no role (one without a membership
+    gets one; one with roles keeps the membership, its roles removed). A
+    workspace left out goes, with every role and permission set on it. A role
+    the body drops is removed now (200); a role it adds is a proposal (202),
+    refused 409 `no_checker_available` when nobody but the caller and the
+    person placed could confirm it. Nobody places themself in a new workspace
+    (403 `rbac_self_assignment`). Permission sets stay
     (`PUT .../permission-sets`)."""
     service = _assignments(container)
     command = SetMemberships(user_id=user_id, memberships=_rows(body.memberships))

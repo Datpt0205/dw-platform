@@ -219,6 +219,21 @@ async def test_grant_with_nobody_to_confirm_writes_nothing() -> None:
     _nothing_written(repo)
 
 
+async def test_grant_whose_only_other_checker_is_its_assignee_writes_nothing() -> None:
+    """tenant-rbac/16, R7.3: the person placed may not confirm their own
+    grant (R6.4), so they are no checker for it."""
+    repo = company()
+    repo.checkers = frozenset({TARGET})
+    body = {"email": "newhire@fpt.com", "workspace_id": str(WORKSPACE), "role_keys": ["sales"]}
+    response = await _post(make_container(repo, WRITE_AND_BIND), body)
+
+    assert response.status_code == 409
+    assert response.json()["details"]["reason_code"] == "no_checker_available"
+    _nothing_written(repo)
+    repo.checkers = frozenset({TARGET, uuid.uuid4()})
+    assert (await _post(make_container(repo, WRITE_AND_BIND), body)).status_code == 202
+
+
 async def test_revoke_removes_a_membership() -> None:
     revokes = RevokeRepo()
     response = await _delete(make_container(company(), WRITE_AND_BIND, revokes), TARGET)

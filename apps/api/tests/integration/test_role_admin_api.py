@@ -802,6 +802,9 @@ async def test_nobody_assigns_a_role_to_themselves(api: Api, keys: Keys) -> None
     t = await _tenant(api)
     first = await _who(api, t, admin(**{keys.one: "tenant"}))
     second = await _who(api, t, admin(**{keys.one: "tenant"}))
+    # A third holder, so the grant for `second` has someone who could confirm
+    # it (R7.3; tenant-rbac/16): `second` never can.
+    await _who(api, t, admin(**{keys.one: "tenant"}))
     role = await _plant_role(api, t, _key(), {keys.one: "workspace"})
     role_key = await _role_key(api, role)
 

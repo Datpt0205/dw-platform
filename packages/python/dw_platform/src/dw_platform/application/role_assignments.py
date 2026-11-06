@@ -12,7 +12,12 @@ unit is one assignment, one membership and one role:
   `platform.roles.bind` confirms it (R7.1), so an invited person holds nothing
   until then, `member` included;
 - a membership with no role grants nothing (R2.5), so the person, their company
-  row and their memberships are written at once.
+  row and their memberships are written at once: `role_keys: []` in
+  `PUT .../memberships` is a membership with no role, one person and an audit,
+  no proposal (tenant-rbac/16). A membership written beside a proposal stays
+  when the proposal is withdrawn or expires, granting nothing, as an
+  invitation's does; it goes with `DELETE .../members/{user_id}?workspace_id=`
+  or a `PUT .../memberships` without its workspace.
 
 Every check runs before the first write, and one refusal refuses the whole
 request with nothing written (ADR-0104 decision 10): unknown roles (404), the
@@ -20,8 +25,9 @@ hold rule and its siblings (`platform.rbac_refusals`: 403 `rbac_escalation`,
 `rbac_self_assignment`, 422 `rbac_not_grantable`), a critical role for a service
 account (422 `role_not_allowed_for_service`, the guard of org-and-principals 03
 decides again at the confirmation), a Digital Worker principal (409
-`dw_principal_roles_fixed`), and nobody else to confirm (409
-`no_checker_available`).
+`dw_principal_roles_fixed`, a new membership included), a new membership for
+the caller themself (403 `rbac_self_assignment`), and nobody but the caller
+and the person placed to confirm (409 `no_checker_available`, R7.3).
 """
 
 from __future__ import annotations
@@ -32,7 +38,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-from dw_kernel.errors import DomainError, NotFoundError
+from dw_kernel.errors import DomainError, NotFoundError, PermissionDeniedError
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.effect_keys import PendingEffect
@@ -176,7 +182,12 @@ class RoleAssignmentRepositoryPort(Protocol):
         self, context: AccessContext, changes: Sequence[Mapping[str, object]]
     ) -> list[Refusal]: ...
 
-    async def has_checker(self, context: AccessContext, permission: str) -> bool: ...
+    async def has_checker(
+        self, context: AccessContext, permission: str, *, assignee: uuid.UUID | None = None
+    ) -> bool:
+        """Someone active other than the caller, and other than ``assignee``
+        (who may not confirm their own grant, R6.4), holds ``permission``."""
+        ...
 
     async def find_person(self, email: str) -> PersonRef | None:
         """A human who has signed in, by lower-cased email."""
@@ -231,9 +242,11 @@ class RoleAssignmentService:
         *,
         effect: PendingEffect | None = None,
     ) -> AssignmentOutcome:
-        """Replace a person's roles workspace by workspace: a workspace in the
-        body without a membership gets one, a workspace left out (or with no
-        role) loses its membership and every role on it."""
+        """Replace a person's roles workspace by workspace: each workspace in
+        the body is a membership they have afterwards, `role_keys` every role
+        on it (`[]` none: a membership with no role, or the roles of one that
+        has them revoked); a workspace left out loses its membership and every
+        role and permission set on it."""
         await self.authz.require(context=context, action=MEMBERS_WRITE, resource_type="membership")
         held = await self.repo.holdings(context, command.user_id)
         if held is None:
@@ -252,7 +265,8 @@ class RoleAssignmentService:
             # Permission sets stay: they are `PUT .../permission-sets`'s; a
             # membership that goes takes them with it, each one a revocation.
             held_here = dict(now.roles) if now else {}
-            dropping = now is not None and not want
+            present = ws in desired
+            dropping = now is not None and not present
             current = {k: r for k, r in held_here.items() if dropping or r.kind == "role"}
             revokes += [
                 Revoke(r.assignment_id, r.role_id, r.key, ws)
@@ -262,9 +276,9 @@ class RoleAssignmentService:
             grants += [
                 GrantRole(roles[key].id, key, ws) for key in sorted(want) if key not in current
             ]
-            if now is None and want:
+            if now is None and present:
                 new.append(ws)
-            elif now is not None and not want:
+            elif dropping:
                 dropped.append(ws)
         plan = AssignmentPlan(
             user_id=command.user_id,
@@ -425,6 +439,19 @@ class RoleAssignmentService:
         roles: Mapping[str, TenantRole],
     ) -> None:
         """Every refusal before the first write (ADR-0104 decision 10)."""
+        if plan.new_memberships and held is not None:
+            if plan.user_id == context.principal_id:
+                # Nobody places themself in a new workspace (R6.4), as nobody
+                # gives themself a role: the refusal `rbac_refusals` makes.
+                raise PermissionDeniedError(
+                    "nobody places themself in a new workspace",
+                    details={"reason_code": "rbac_self_assignment"},
+                )
+            if held.dw_principal:
+                raise conflict(
+                    "the memberships of a digital worker's principal are fixed when it is made",
+                    "dw_principal_roles_fixed",
+                )
         if not plan.touches_roles:
             return
         await self.authz.require(
@@ -458,7 +485,9 @@ class RoleAssignmentService:
         error = rbac_refusal_error(await self.repo.refusals(context, changes))
         if error is not None:
             raise error
-        if plan.grants and not await self.repo.has_checker(context, ROLES_BIND):
+        if plan.grants and not await self.repo.has_checker(
+            context, ROLES_BIND, assignee=plan.user_id
+        ):
             raise conflict("nobody else here could confirm this change", "no_checker_available")
 
 

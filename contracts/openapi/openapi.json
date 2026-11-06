@@ -10189,7 +10189,7 @@
     },
     "/api/v1/admin/members/{user_id}/memberships": {
       "put": {
-        "description": "Replace the person's roles, workspace by workspace. A workspace in the\nbody without a membership gets one; one left out, or with no role, goes\nwith every role on it. A role the body drops is removed now (200); a role\nit adds is a proposal (202). Permission sets stay\n(`PUT .../permission-sets`).",
+        "description": "Replace the person's roles, workspace by workspace. Each workspace in\nthe body is a membership the person has afterwards, its `role_keys` every\nrole on it: `[]` is a membership with no role (one without a membership\ngets one; one with roles keeps the membership, its roles removed). A\nworkspace left out goes, with every role and permission set on it. A role\nthe body drops is removed now (200); a role it adds is a proposal (202),\nrefused 409 `no_checker_available` when nobody but the caller and the\nperson placed could confirm it. Nobody places themself in a new workspace\n(403 `rbac_self_assignment`). Permission sets stay\n(`PUT .../permission-sets`).",
         "operationId": "set_memberships_api_v1_admin_members__user_id__memberships_put",
         "parameters": [
           {

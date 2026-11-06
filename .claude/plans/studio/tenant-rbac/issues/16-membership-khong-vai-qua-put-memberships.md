@@ -1,6 +1,6 @@
 # 16 — Membership không vai trò qua `PUT .../memberships`, và không đề xuất nào chỉ người nhận xác nhận được
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 03, 04, 08, 11
 Area: studio
 Yêu cầu: R3.3, R6.4, R7.1, R7.3, R7.6, R8.2, RB8, RB17, RB21, RB22, RB24, RB32
@@ -117,7 +117,7 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
 
 ## Tiêu chí chấp nhận
 
-- [ ] R7.1 (RB21): người giữ `platform.members.write` mà không giữ `platform.roles.bind` gửi `PUT` thêm W với
+- [x] R7.1 (RB21): người giữ `platform.members.write` mà không giữ `platform.roles.bind` gửi `PUT` thêm W với
       `role_keys: []` cho người P của công ty (thân giữ nguyên các membership đang có) → 200, thân trả W với
       `role_keys: []`, `proposals` rỗng; một dòng `platform.memberships` mới, đúng một audit `platform.membership.grant`, 0
       dòng `platform.role_change_requests`, 0 dòng `platform.role_assignments` mới, `platform.effective_grants` của P không
@@ -126,21 +126,21 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
       xác nhận. Sai nếu W vắng sau lệnh (hành vi ở commit gốc), hay có đề xuất hay gán nào ở lệnh không vai. Ca của
       marketing-pilot/02: tenant hai chủ, O1 đặt O2 vào W và O2 đặt O1 vào W bằng `role_keys: []` (thân giữ `main`
       `tenant_owner`) → hai lần 200, rồi `GET /api/v1/me` của mỗi chủ dưới `X-Workspace-Id` W → 200.
-- [ ] R7.1 (RB21): K5, principal của DW nhận `PUT` thêm membership → 409 `dw_principal_roles_fixed`, 0 membership; sai nếu
+- [x] R7.1 (RB21): K5, principal của DW nhận `PUT` thêm membership → 409 `dw_principal_roles_fixed`, 0 membership; sai nếu
       đột biến (a) của K5 vẫn xanh.
-- [ ] R8.2 (RB24): K1, người không giữ `platform.members.write` → 403, 0 membership; sai nếu đột biến (a) của K1 vẫn xanh.
+- [x] R8.2 (RB24): K1, người không giữ `platform.members.write` → 403, 0 membership; sai nếu đột biến (a) của K1 vẫn xanh.
       Test gửi không `Idempotency-Key`. Ca hồi quy: đã 403 ở commit gốc; sau lát này nó là cửa duy nhất của membership không vai (không vai trò nào chạm
       tới, nên `platform.roles.bind` và `platform.rbac_refusals` không được hỏi).
-- [ ] R3.3 (RB8): K2, người của B hay workspace của B qua `PUT` của A → 404, 0 dòng đổi ở cả hai công ty; sai nếu đột biến
+- [x] R3.3 (RB8): K2, người của B hay workspace của B qua `PUT` của A → 404, 0 dòng đổi ở cả hai công ty; sai nếu đột biến
       (a) của K2 vẫn xanh.
-- [ ] R6.4 (RB17): K3, tự đặt mình vào workspace mới → 403 `rbac_self_assignment`, 0 dòng; đặt chủ kia → 200; sai nếu đột
+- [x] R6.4 (RB17): K3, tự đặt mình vào workspace mới → 403 `rbac_self_assignment`, 0 dòng; đặt chủ kia → 200; sai nếu đột
       biến (a) của K3 vẫn xanh. Ở commit gốc lần tự đặt trả 200 và không ghi gì (W bị bỏ lặng lẽ), nên đỏ.
-- [ ] R7.3 (RB22): K4, đề xuất mà chỉ người nhận xác nhận được → 409 `no_checker_available`, 0 đề xuất, 0 membership, qua
+- [x] R7.3 (RB22): K4, đề xuất mà chỉ người nhận xác nhận được → 409 `no_checker_available`, 0 đề xuất, 0 membership, qua
       `PUT .../memberships` và qua `PUT .../permission-sets`; có người thứ ba → 202 và xác nhận được; sai nếu đột biến (a) hay (b) của K4 vẫn xanh. Ở commit gốc lần đề xuất trả 202.
-- [ ] R7.6 (RB32): K6, `role_keys: []` trên membership đang có vai trò → 200, vai trò gỡ với một audit, membership ở lại;
+- [x] R7.6 (RB32): K6, `role_keys: []` trên membership đang có vai trò → 200, vai trò gỡ với một audit, membership ở lại;
       thiếu `platform.roles.bind` → 403; membership không vai ở workspace khác gửi lại nguyên `[]` thì ở lại; sai nếu đột
       biến (a) của K6 vẫn xanh.
-- [ ] Xong: `uv run python -m pytest apps/api/tests/integration/test_member_placement_api.py apps/api/tests/integration/test_role_admin_api.py apps/api/tests/integration/test_idempotent_operations.py apps/api/tests/unit/test_admin_members_endpoint.py apps/api/tests/unit/test_tenant_members_endpoint.py apps/api/tests/unit/test_idempotency_dependency.py apps/api/tests/contract/test_openapi_snapshot.py packages/python/dw_platform/tests/integration/test_tenant_members.py` xanh.
+- [x] Xong: `uv run python -m pytest apps/api/tests/integration/test_member_placement_api.py apps/api/tests/integration/test_role_admin_api.py apps/api/tests/integration/test_idempotent_operations.py apps/api/tests/unit/test_admin_members_endpoint.py apps/api/tests/unit/test_tenant_members_endpoint.py apps/api/tests/unit/test_idempotency_dependency.py apps/api/tests/contract/test_openapi_snapshot.py packages/python/dw_platform/tests/integration/test_tenant_members.py` xanh.
 
 ## Nguồn
 
@@ -219,3 +219,20 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
   thứ ba bị đình chỉ giữa `has_checker` và lần ghi đề xuất: đề xuất được ghi rồi hết hạn, như hôm nay. Sửa sau lượt này
   không được người đọc mới đọc lại (hai lượt mỗi phiên bản); người dựng đọc bước 4, bước 6 và K4 trước.
 - 2026-11-06 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): làm khác ticket. (1) Bước 2 đặt lần từ chối tự đặt mình và DW principal
+  trước câu trả sớm `not plan.touches_roles` của `_check`, chung cho mọi đường qua `_check`; lần từ chối DW nói
+  "memberships ... fixed" cùng mã `dw_principal_roles_fixed`. (2) Fake `FakeRoleAssignments` thêm `checkers` (tập ứng viên
+  khi test nêu): có tập thì trừ người gọi và người nhận như câu SQL, không có thì giữ `checker` cũ; một test đơn vị mới
+  (người nhận là ứng viên duy nhất → 409, thêm người khác → 202). (3) Vai trò "không trọng yếu" của test là vai trò rỗng:
+  `platform.roles.read` là khóa loại `tenant`, không giữ ở độ sâu `workspace` được. (4) Ngoài
+  `test_nobody_assigns_a_role_to_themselves` không test nào khác đổi vì bước 4 (đã chạy `test_role_admin_api.py`,
+  `test_record_privileges_api.py`, `test_service_principals_api.py`, `test_tenant_roles_api.py`,
+  `test_idempotent_operations.py`). Nếu sai thì: lần từ chối tự đặt mình chỉ ở `set_memberships`.
+- 2026-11-06 (agent): resolved. Test: `test_member_placement_api.py` 8 integration (`_lane2`; R7.1 hai ca kể cả ca hai chủ
+  của marketing-pilot/02 với `GET /api/v1/me` dưới workspace mới, K1-K6), `test_admin_members_endpoint.py` +1 unit, sửa
+  `test_role_admin_api.py::test_nobody_assigns_a_role_to_themselves` (thêm người giữ khóa thứ ba, không đổi khẳng định);
+  các tệp của dòng `Xong` xanh; ảnh chụp OpenAPI và kiểu TS sinh lại (docstring của route). `reviewing-feature-security`
+  ranh giới 1 (người và workspace của công ty khác → 404, 0 dòng ở hai bên), 2 (không `platform.members.write` → 403; tự
+  đặt mình → 403; người nhận không là người xác nhận, ở lần đề xuất và ở lần xác nhận), 6 (không cache, không truy vấn mới
+  ngoài vế lọc); 3, 4, 5 không áp. `mutations/16.yaml` 7 mutation, chưa chạy (K4 (a), K6 (a) bẻ tay, đỏ). Chờ lúc đóng hàng:
+  `mutate.py`, P50/P95/P99 của `PUT .../memberships` (một membership không vai; một vai trò thêm). Không migration.

@@ -132,10 +132,15 @@ export interface paths {
         get?: never;
         /**
          * Set Memberships
-         * @description Replace the person's roles, workspace by workspace. A workspace in the
-         *     body without a membership gets one; one left out, or with no role, goes
-         *     with every role on it. A role the body drops is removed now (200); a role
-         *     it adds is a proposal (202). Permission sets stay
+         * @description Replace the person's roles, workspace by workspace. Each workspace in
+         *     the body is a membership the person has afterwards, its `role_keys` every
+         *     role on it: `[]` is a membership with no role (one without a membership
+         *     gets one; one with roles keeps the membership, its roles removed). A
+         *     workspace left out goes, with every role and permission set on it. A role
+         *     the body drops is removed now (200); a role it adds is a proposal (202),
+         *     refused 409 `no_checker_available` when nobody but the caller and the
+         *     person placed could confirm it. Nobody places themself in a new workspace
+         *     (403 `rbac_self_assignment`). Permission sets stay
          *     (`PUT .../permission-sets`).
          */
         put: operations["set_memberships_api_v1_admin_members__user_id__memberships_put"];
