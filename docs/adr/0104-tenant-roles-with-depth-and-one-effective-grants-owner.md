@@ -427,3 +427,18 @@ by copying") and D3 (record-level access in four layers), and on the call on DO-
   ticket 12 (`.claude/plans/studio/tenant-rbac/issues/12-doi-nguoi-cua-membership-qua-guard-gan.md`); the status
   stays Accepted. If wrong: `dw_migrator` may not change the person of a membership that holds assignments, and its
   scripts revoke and assign again.
+
+## Amendments (2026-11-06)
+
+- Decision 6, the last owner, and the two-owner rule at setup (R3.10), under concurrent writes: the tenant row is the
+  one queue every judgement of the owner count waits on: the last-owner check at `active`/`locked` (R6.7), the
+  two-owner check when a `setup` tenant opens, by either path (`complete_tenant_setup` and an `UPDATE` of
+  `platform.tenants` through `guard_tenant_setup`), and a suspension of a person who is not yet an owner, which
+  takes the row `FOR KEY SHARE` and reads again. A delete of a person's company row locks that person's memberships
+  `FOR UPDATE ORDER BY id` before it removes their owner assignments. Every lock keeps the order "tenant row before
+  the access-version row"; the deadlocks this still allows are fail-closed (one transaction aborted, nothing
+  granted) and named in the tickets. Recorded by the agent under Đạt's delegation of 2026-10-31 when cutting
+  tenant-rbac tickets 13, 14 and 15 (`.claude/plans/studio/tenant-rbac/issues/13-chu-cuoi-duoi-dinh-chi-dong-thoi.md`,
+  `14-chu-cuoi-duoi-xoa-nguoi-nhan-va-kich-hoat-lai.md`, `15-cong-ty-setup-mo-duoi-mat-chu-dong-thoi.md`); the status
+  stays Accepted. If wrong: the checks take the tenant row `FOR UPDATE` on every path, and the wider `40P01` beside
+  ticket 08's commit-time write is recorded there.
