@@ -1,7 +1,7 @@
 # 02 — Tenant thí điểm, hai workspace, vai và object dựng qua API
 
 Status: ready-for-agent
-Blocked by: .claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md, .claude/plans/studio/custom-objects/issues/03-record-service.md, .claude/plans/studio/custom-objects/issues/04-truy-van-ban-ghi.md, .claude/plans/studio/custom-objects/issues/06-phat-hanh-doi-tuong-qua-vong-doi.md, .claude/plans/studio/tenant-rbac/issues/03-chong-leo-thang-va-api-quan-tri-vai.md, .claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/record-access/issues/03-policy-ban-ghi-va-mac-dinh-truy-cap.md, .claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md
+Blocked by: .claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md, .claude/plans/studio/custom-objects/issues/03-record-service.md, .claude/plans/studio/custom-objects/issues/04-truy-van-ban-ghi.md, .claude/plans/studio/custom-objects/issues/06-phat-hanh-doi-tuong-qua-vong-doi.md, .claude/plans/studio/tenant-rbac/issues/03-chong-leo-thang-va-api-quan-tri-vai.md, .claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/record-access/issues/03-policy-ban-ghi-va-mac-dinh-truy-cap.md, .claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/custom-objects/issues/12-describe-tra-field-id-cua-truong-doc-duoc.md, .claude/plans/studio/tenant-rbac/issues/16-membership-khong-vai-qua-put-memberships.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7
 
@@ -72,3 +72,26 @@ Người đặt yêu cầu cần một bộ cố định hai công ty cô lập 
     - (c) Hạ Hạn mức chỉ cần một người, nâng thì W1 trả 409 kể cả khi hai người đồng ý (usage-and-limits:R4.8, R4.9).
     - (d) "Hiện trạng" của spec ghi ở `ab33703`; phần đã dựng từ đó được dẫn trong từng ticket.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): build lane dừng ở hai chỗ hở của API công khai, đo trên API thật; mỗi chỗ
+  thành một ticket, thêm vào Blocked by, ticket này giữ `ready-for-agent` và chờ hai ticket đó:
+    - (1) Không route nào trả id của một trường, mà `PUT /api/v1/admin/roles/{role_id}/permissions` nhận
+      `field_permissions[].field_id`: describe, `GET /api/v1/admin/permissions` (không khóa `fld.*` nào) và chi tiết vai
+      trò đều không có, nên bước 3 không cấp được `fld.mkt_lead.*` chỉ qua API (R1.4). Ticket
+      `.claude/plans/studio/custom-objects/issues/12-describe-tra-field-id-cua-truong-doc-duoc.md`: describe trả `field_id`
+      của mỗi trường người gọi đọc được; chủ sở hữu đọc mọi trường nên lấy id từ describe dưới workspace của đối tượng.
+    - (2) Công ty đúng hai chủ không cho chủ nào membership ở workspace mới: `PUT .../memberships` với `role_keys: []`
+      trả 200 và lặng lẽ bỏ workspace đó, còn gán vai trò cho chủ kia thì chủ kia là người nhận, không xác nhận được
+      (tenant-rbac:R6.4), nên mọi lần gán treo; lối duy nhất là đề xuất vai trò rồi rút, để lại membership. Ticket
+      `.claude/plans/studio/tenant-rbac/issues/16-membership-khong-vai-qua-put-memberships.md`: `role_keys: []` tạo
+      membership không vai trò, một người; mỗi chủ đặt chủ kia (không tự đặt mình) vào Marketing và Sales, thân giữ
+      nguyên membership `main` `tenant_owner` như `GET /api/v1/admin/members` đọc.
+      Hai lựa chọn của build lane, chưa commit, cho lần dựng kế tiếp: (a) nền chạy là một database mới mỗi lần
+      (`dw_e2e_marketing_pilot` cộng `DW_TEST_DB_SUFFIX`, migrate) cộng API và worker chạy như tiến trình trên máy chủ
+      (`uvicorn dw_api.main:app`, `python -m dw_worker.main`, API ở loopback), không phải compose project mới: job e2e của CI
+      chỉ dựng profile `infra` của compose (`.github/workflows/ci.yml`), nên câu "compose project mới mỗi lần, như
+      `make demo-dw`" ở bước 1 đọc theo dòng này, công ty dở dang của lần chạy hỏng mất cùng database. (b) Người vận hành đầu
+      tiên, bước duy nhất không API nào làm, do script khởi tạo có tài liệu `scripts/grant_platform_operator.py` cấp, chạy
+      đúng như viết, từ một module dựng nền nằm ngoài package harness (`tests/e2e/marketing_pilot` không import `dw_*`, không
+      mở database, MP17). Bản nháp của build lane ở scratchpad phiên 6/11/2026 (`lane2-mp02-draft/`, `api.py`,
+      `marketing_pilot_stack.py`), không ở repo. Nếu sai thì: (a) compose project mới mỗi lần như bước 1, CI e2e dựng thêm
+      profile ứng dụng; (b) người vận hành đầu qua một fixture `dw_migrator` của module dựng nền.

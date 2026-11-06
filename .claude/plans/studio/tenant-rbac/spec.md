@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (6/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15)
+Sẵn sàng: ĐẠT (6/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15, 16)
 
 Quản trị viên công ty cần tự dựng vai trò cho các workspace của mình (vai Marketing và vai Sales của lát Marketing, D4) với
 quyền trên đối tượng do công ty định nghĩa (`obj.lead.read`, D3), điều mà danh mục vai toàn cục chỉ migration ghi không
@@ -518,23 +518,32 @@ Không còn câu hỏi mở.
   mới. `Yêu cầu: R6.7, RB20` cho 14, `R3.10, R6.7, RB20, RB38` cho 15; `Mục tiêu` không đổi: R6.7 nay đúng cả dưới lần
   xóa người nhận và lần kích hoạt lại đồng thời, R3.10 cả dưới lần mất chủ đồng thời. Nếu sai thì: hai ticket gộp một
   revision (15 vào 14), gate lại.
+- 6/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 16. Ticket 16 cắt từ phát hiện 2 của build lane
+  marketing-pilot/02: `PUT /api/v1/admin/members/{user_id}/memberships` đọc thân là trạng thái muốn có, workspace có mặt
+  với `role_keys: []` là membership không vai trò (tạo bởi một người giữ `platform.members.write`, một audit, không đề
+  xuất, vì membership không cho quyền nào), workspace vắng mới mất membership; không tự đặt mình hay principal của DW vào
+  workspace mới; và lần đề xuất gán vai trò mà ngoài người đề xuất chỉ người nhận giữ `platform.roles.bind` trả 409
+  `no_checker_available` (R7.3, vì R6.4 cấm người nhận xác nhận). Không migration, không route mới. Chờ ticket 03. Theo
+  `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: `role_keys: []` cho workspace mới trả 422 và membership
+  không vai qua một route hai người, gate lại.
 
 ## Danh sách ticket
 
-| #   | Ticket                                                                                                                                    |
-| --- | ----------------------------------------------------------------------------------------------------------------------------------------- |
-| 01  | [Một chủ cho quyền: bootstrap qua effective_scopes và danh mục platform.permissions](issues/01-mot-chu-cho-quyen.md)                      |
-| 02  | [Vai trò của tenant là dữ liệu: gán vai trò, vai trò mẫu, hàm quyền hiệu lực và phiên bản quyền](issues/02-vai-la-du-lieu-tenant.md)      |
-| 03  | [Chống leo thang quyền và API quản trị vai trò, gán vai trò, audit](issues/03-chong-leo-thang-va-api-quan-tri-vai.md)                     |
-| 04  | [Quyền theo đối tượng có độ sâu và quyền trường trong vai trò](issues/04-quyen-doi-tuong-va-truong-co-do-sau.md)                          |
-| 05  | [FOG-49: dw-proterial thôi ghi `memberships.role_keys` trước khi ticket 06 khóa cột](issues/05-fog49-dw-proterial-roi-cot-role-keys.md)   |
-| 06  | [Khóa `memberships.role_keys` và `permission_set_keys` sau FOG-49](issues/06-khoa-cot-role-keys-sau-fog49.md)                             |
-| 07  | [Đuôi `GET /api/v1/me` ở cỡ D12: `gc.freeze()` khi API khởi động, `scopes_in` trong FROM](issues/07-gc-freeze-va-scopes-in-trong-from.md) |
-| 08  | [Chi phí trigger quyền ở cỡ D12](issues/08-chi-phi-trigger-quyen-o-co-d12.md)                                                             |
-| 09  | [Tách nhiệm khi khôi phục vai trò đã xóa mềm, và luật tách nhiệm không nêu khóa sinh](issues/09-tach-nhiem-khi-khoi-phuc-vai-tro.md)      |
-| 10  | [`scopes_in` của `_STANDING` và `_HOLDERS` ở cỡ D12](issues/10-scopes-in-cua-standing-va-holders.md)                                      |
-| 11  | [Tách nhiệm dưới hai lần ghi đồng thời, và lần đổi người của membership](issues/11-tach-nhiem-duoi-ghi-dong-thoi.md)                      |
-| 12  | [Lần đổi người của membership qua các guard mà lần gán và lần gỡ phải qua](issues/12-doi-nguoi-cua-membership-qua-guard-gan.md)           |
-| 13  | [Chủ sở hữu cuối dưới lần đình chỉ người vừa thành chủ](issues/13-chu-cuoi-duoi-dinh-chi-dong-thoi.md)                                    |
-| 14  | [Chủ sở hữu cuối dưới lần xóa người nhận và lần kích hoạt lại đồng thời](issues/14-chu-cuoi-duoi-xoa-nguoi-nhan-va-kich-hoat-lai.md)      |
-| 15  | [Công ty `setup` mở với ít hơn hai chủ dưới lần mất chủ đồng thời](issues/15-cong-ty-setup-mo-duoi-mat-chu-dong-thoi.md)                  |
+| #   | Ticket                                                                                                                                                         |
+| --- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 01  | [Một chủ cho quyền: bootstrap qua effective_scopes và danh mục platform.permissions](issues/01-mot-chu-cho-quyen.md)                                           |
+| 02  | [Vai trò của tenant là dữ liệu: gán vai trò, vai trò mẫu, hàm quyền hiệu lực và phiên bản quyền](issues/02-vai-la-du-lieu-tenant.md)                           |
+| 03  | [Chống leo thang quyền và API quản trị vai trò, gán vai trò, audit](issues/03-chong-leo-thang-va-api-quan-tri-vai.md)                                          |
+| 04  | [Quyền theo đối tượng có độ sâu và quyền trường trong vai trò](issues/04-quyen-doi-tuong-va-truong-co-do-sau.md)                                               |
+| 05  | [FOG-49: dw-proterial thôi ghi `memberships.role_keys` trước khi ticket 06 khóa cột](issues/05-fog49-dw-proterial-roi-cot-role-keys.md)                        |
+| 06  | [Khóa `memberships.role_keys` và `permission_set_keys` sau FOG-49](issues/06-khoa-cot-role-keys-sau-fog49.md)                                                  |
+| 07  | [Đuôi `GET /api/v1/me` ở cỡ D12: `gc.freeze()` khi API khởi động, `scopes_in` trong FROM](issues/07-gc-freeze-va-scopes-in-trong-from.md)                      |
+| 08  | [Chi phí trigger quyền ở cỡ D12](issues/08-chi-phi-trigger-quyen-o-co-d12.md)                                                                                  |
+| 09  | [Tách nhiệm khi khôi phục vai trò đã xóa mềm, và luật tách nhiệm không nêu khóa sinh](issues/09-tach-nhiem-khi-khoi-phuc-vai-tro.md)                           |
+| 10  | [`scopes_in` của `_STANDING` và `_HOLDERS` ở cỡ D12](issues/10-scopes-in-cua-standing-va-holders.md)                                                           |
+| 11  | [Tách nhiệm dưới hai lần ghi đồng thời, và lần đổi người của membership](issues/11-tach-nhiem-duoi-ghi-dong-thoi.md)                                           |
+| 12  | [Lần đổi người của membership qua các guard mà lần gán và lần gỡ phải qua](issues/12-doi-nguoi-cua-membership-qua-guard-gan.md)                                |
+| 13  | [Chủ sở hữu cuối dưới lần đình chỉ người vừa thành chủ](issues/13-chu-cuoi-duoi-dinh-chi-dong-thoi.md)                                                         |
+| 14  | [Chủ sở hữu cuối dưới lần xóa người nhận và lần kích hoạt lại đồng thời](issues/14-chu-cuoi-duoi-xoa-nguoi-nhan-va-kich-hoat-lai.md)                           |
+| 15  | [Công ty `setup` mở với ít hơn hai chủ dưới lần mất chủ đồng thời](issues/15-cong-ty-setup-mo-duoi-mat-chu-dong-thoi.md)                                       |
+| 16  | [Membership không vai trò qua `PUT .../memberships`, và không đề xuất nào chỉ người nhận xác nhận được](issues/16-membership-khong-vai-qua-put-memberships.md) |

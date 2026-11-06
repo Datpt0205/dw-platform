@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (5/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-06, 10, 11)
+Sẵn sàng: ĐẠT (6/11/2026; 0 CRITICAL, 0 HIGH; ticket 01-06, 10, 11, 12)
 
 Công ty tự định nghĩa đối tượng và trường của mình (Lead và Campaign của Marketing trước tiên, D4) mà không
 cần nhà vận hành hay migration: định nghĩa là dữ liệu trên các bảng cố định do migration tạo, và mọi đường
@@ -849,6 +849,12 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
 - 5/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 10. Ticket 10 cắt từ discovery/10 (a): bảng 21 mã của
   QĐ 798/QĐ-BTTTT và một chủ cho luật số điện thoại ở `dw_kernel.phone`, oracle của marketing-pilot giữ bản riêng dưới
   một test bốn bên; theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: hai ticket, bảng trước, một chủ sau.
+- 6/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 12. Ticket 12 cắt từ phát hiện 1 của build lane
+  marketing-pilot/02: describe trả `field_id` cho mỗi trường người gọi đọc được (`access` `read` hay `edit`), trường Đã
+  ẩn giữ đúng `api_name`, nhãn, `access` (R3.2, CO7), để người quản trị chỉ dùng API đưa được quyền trường vào vai trò
+  (tenant-rbac:R9.13); phương án A, không B (`/admin/permissions` liệt kê khóa `fld.*` kèm `field_id`). Văn bản R3.1 đọc
+  kèm dòng này cho tới khi `writing-plan-specs` thêm `field_id` vào danh sách của nó. Không migration, một route đổi
+  thân. Theo `## Ủy quyền` của studio.md (Đạt, 31/10/2026). Nếu sai thì: B, describe không đổi.
 
 ## Danh sách ticket
 
@@ -865,3 +871,4 @@ ghi (DO-01, ADR-0100 (Accepted)), mỗi bảng một dòng lý do trong danh sá
 | 09  | [Đo đường thật của bản ghi ở quy mô D12](issues/09-do-duong-that-ban-ghi-o-quy-mo-d12.md)                                              |
 | 10  | [Đầu số di động trước đợt đổi 2018 và một chủ cho luật số điện thoại](issues/10-dau-so-cu-va-mot-luat-so-dien-thoai.md)                |
 | 11  | [Tạo hoặc cập nhật không đổi gì trên bản ghi không sửa được trả 409](issues/11-upsert-khong-doi-tren-ban-ghi-khong-sua-duoc.md)        |
+| 12  | [Describe trả `field_id` của mỗi trường người gọi đọc được](issues/12-describe-tra-field-id-cua-truong-doc-duoc.md)                    |
