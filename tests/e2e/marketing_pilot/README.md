@@ -72,3 +72,24 @@ uv run python -m pytest -p no:cacheprovider tests/e2e/marketing_pilot/test_gener
 
 The tests are marked `unit` and `tests/e2e` is in pytest's `testpaths`, so CI's
 `pytest -m unit` runs them too.
+
+## The two companies, seeded over the API (ticket 02; R1.1-R1.7)
+
+- `seed.py`: `seed(api, operator, prefix=...)` builds companies `a` (demo) and `b`
+  (control) through the public API only (`api.py` signs its own dev tokens; no
+  `dw_*` import, no database): the company with two owners, a wait until it is
+  `active`, the Marketing and Sales workspaces, `mkt_lead` and `mkt_campaign`
+  submitted by one owner and approved by the other, the five roles (the
+  protected fields' ids read from describe), the members invited and signed in,
+  the workflow's service account with its one role, and the limits set once.
+  Every widening change is proposed by one owner and confirmed by the other.
+  `python -m marketing_pilot.seed --operator-subject ... --operator-email ...`
+  runs it against a platform that is already up.
+- `test_seed.py` (`-m e2e`) brings the platform up itself with
+  `tests/support/marketing_pilot_stack.py`, outside this package: a new database
+  (`dw_e2e_marketing_pilot` plus `DW_TEST_DB_SUFFIX`), migrated, the API
+  (`MP_API_PORT`, 8010 by default) and the worker as host processes, and the
+  first platform operator granted by `scripts/grant_platform_operator.py`.
+- `marketing_pilot_independence` (import-linter, root package
+  `tests.e2e.marketing_pilot`) refuses any platform import here; R1.2's test
+  adds one and watches `lint-imports` go red.

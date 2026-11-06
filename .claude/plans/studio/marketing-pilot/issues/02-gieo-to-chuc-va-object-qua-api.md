@@ -1,6 +1,6 @@
 # 02 — Tenant thí điểm, hai workspace, vai và object dựng qua API
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: .claude/plans/studio/custom-objects/issues/02-luoc-do-dinh-nghia-object.md, .claude/plans/studio/custom-objects/issues/03-record-service.md, .claude/plans/studio/custom-objects/issues/04-truy-van-ban-ghi.md, .claude/plans/studio/custom-objects/issues/06-phat-hanh-doi-tuong-qua-vong-doi.md, .claude/plans/studio/tenant-rbac/issues/03-chong-leo-thang-va-api-quan-tri-vai.md, .claude/plans/studio/tenant-rbac/issues/04-quyen-doi-tuong-va-truong-co-do-sau.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/record-access/issues/03-policy-ban-ghi-va-mac-dinh-truy-cap.md, .claude/plans/studio/org-and-principals/issues/03-tai-khoan-dich-vu-run-as.md, .claude/plans/studio/usage-and-limits/issues/03-han-muc-giu-truoc-va-quyet-toan.md, .claude/plans/studio/custom-objects/issues/12-describe-tra-field-id-cua-truong-doc-duoc.md, .claude/plans/studio/tenant-rbac/issues/16-membership-khong-vai-qua-put-memberships.md
 Area: studio
 Yêu cầu: R1.1, R1.2, R1.3, R1.4, R1.5, R1.6, R1.7
@@ -21,16 +21,16 @@ Người đặt yêu cầu cần một bộ cố định hai công ty cô lập 
 
 ## Tiêu chí chấp nhận
 
-- [ ] R1.1: chạy `seed.py` dựng hai công ty, bốn workspace, hai đối tượng mỗi công ty, năm vai (gồm Cộng tác viên Marketing thiếu quyền trường và Quy trình Tiếp nhận lead), các thành viên của mục Dữ liệu ở trạng thái `active` và một tài khoản dịch vụ chỉ giữ vai Quy trình Tiếp nhận lead, chỉ bằng lời gọi HTTP tới route công khai; không lời gọi nào chạm database trực tiếp; `GET /me` của mỗi thành viên chứa mọi khóa của vai mình theo mục Dữ liệu, sai nếu nhân viên Sales hay Cộng tác viên Marketing giữ `obj.mkt_campaign.update`, hay Cộng tác viên Marketing giữ một khóa `fld.mkt_lead.*`.
-- [ ] R1.2: thêm một `import` adapter vào `tests/e2e/marketing_pilot/` làm `lint-imports` (import-linter) đỏ; đó là test âm của MP17.
-- [ ] R1.3: người của công ty B gọi `GET`/`POST .../objects/mkt_lead/records` của công ty A trả 404 hoặc 0 dòng (custom-objects:R4.2; record-access:R4.2, R4.3). Vế đọc thẳng partition của R1.3 không chạy trong harness, vì harness không chạm database (MP17): nó là test của custom-objects:R4.3 và `test_rls_coverage.py` (RLS bật và FORCE trên mọi partition), mà ticket này dẫn thay vì viết lại.
-- [ ] R1.4: describe `mkt_lead` và `mkt_campaign` cho thấy mọi trường có `pd_category` và `default_access = private`, bốn trường `basic` và `score_reason` ở chế độ bảo vệ; bỏ `pd_category` một trường: lần lưu Nháp vẫn nhận (lưu Nháp không kiểm lược đồ), còn lệnh gửi phát hành đối tượng trả 422 `validation_failed` với `errors[].code` `pd_category_required` và con trỏ `/fields/<n>` tới trường đó (custom-objects:R2.2; compliance-pdpl:R1.1; niêm phong của custom-objects/02).
-- [ ] R1.5: pha một, dừng script sau lệnh gửi phát hành của chủ sở hữu thứ nhất → hai đối tượng ở Chờ duyệt, `GET` bản ghi `mkt_lead` trả 404; chủ sở hữu thứ hai duyệt → Đang dùng.
-- [ ] R1.5: pha hai, dừng script sau đề xuất vai của chủ sở hữu thứ nhất → nhân viên Marketing của công ty A `POST .../objects/mkt_lead/records` bị từ chối, 0 bản ghi; chủ sở hữu thứ hai xác nhận → vai có hiệu lực, nhân viên Marketing tạo được một Lead với số trong dải thử của ticket 01 và đọc lại thấy `phone_e164`; Lead này là Lead của tiêu chí R1.3. Ca người xác nhận không giữ khóa `fld.*` (403 `rbac_escalation`) là test của tenant-rbac/04, ticket này không dựng người thứ ba cho nó.
-- [ ] R1.1: thân `owners` với một email, hai email trùng nhau hay hai email chỉ khác chữ hoa → 422 `validation_failed`, không công ty nào (tenant-rbac:R3.9, RB37); script gửi đúng hai email khác nhau cho mỗi công ty.
-- [ ] R1.7: sau lời gọi tạo, người vận hành đọc trạng thái công ty là `setup` và nhật ký lời gọi của harness không có lời gọi nào khác lên công ty đó; chủ sở hữu thứ hai nhận lời mời → `active`, script đi tiếp; chạy với tham số bỏ lần nhận của chủ sở hữu thứ hai → script dừng với lỗi ở thời hạn chờ, 0 workspace, 0 đối tượng, nhật ký lời gọi không có lời gọi nào lên công ty đó ngoài lần nhận của chủ sở hữu thứ nhất; bỏ bước chờ trong script → nhật ký có lời gọi tạo workspace lúc công ty còn `setup` (máy chủ từ chối nó, tenant-rbac:R3.14), test đỏ.
-- [ ] R1.6: sau script, `GET /api/v1/limits` của công ty demo trả đúng Hạn mức của công ty và của workspace Marketing như số truyền vào; sau đó một chủ sở hữu `PUT` lại cùng `{scope_type}/{scope_id}/{metric}/{window_kind}` của workspace Marketing với số cao hơn → 409 `second_person_required`, Hạn mức giữ nguyên (usage-and-limits:R4.9); chạy lại script với tiền tố `slug` đã dùng → script dừng với lỗi, Hạn mức của công ty cũ không đổi.
-- [ ] Xong: `uv run pytest tests/e2e/marketing_pilot/test_seed.py` xanh.
+- [x] R1.1: chạy `seed.py` dựng hai công ty, bốn workspace, hai đối tượng mỗi công ty, năm vai (gồm Cộng tác viên Marketing thiếu quyền trường và Quy trình Tiếp nhận lead), các thành viên của mục Dữ liệu ở trạng thái `active` và một tài khoản dịch vụ chỉ giữ vai Quy trình Tiếp nhận lead, chỉ bằng lời gọi HTTP tới route công khai; không lời gọi nào chạm database trực tiếp; `GET /me` của mỗi thành viên chứa mọi khóa của vai mình theo mục Dữ liệu, sai nếu nhân viên Sales hay Cộng tác viên Marketing giữ `obj.mkt_campaign.update`, hay Cộng tác viên Marketing giữ một khóa `fld.mkt_lead.*`.
+- [x] R1.2: thêm một `import` adapter vào `tests/e2e/marketing_pilot/` làm `lint-imports` (import-linter) đỏ; đó là test âm của MP17.
+- [x] R1.3: người của công ty B gọi `GET`/`POST .../objects/mkt_lead/records` của công ty A trả 404 hoặc 0 dòng (custom-objects:R4.2; record-access:R4.2, R4.3). Vế đọc thẳng partition của R1.3 không chạy trong harness, vì harness không chạm database (MP17): nó là test của custom-objects:R4.3 và `test_rls_coverage.py` (RLS bật và FORCE trên mọi partition), mà ticket này dẫn thay vì viết lại.
+- [x] R1.4: describe `mkt_lead` và `mkt_campaign` cho thấy mọi trường có `pd_category` và `default_access = private`, bốn trường `basic` và `score_reason` ở chế độ bảo vệ; bỏ `pd_category` một trường: lần lưu Nháp vẫn nhận (lưu Nháp không kiểm lược đồ), còn lệnh gửi phát hành đối tượng trả 422 `validation_failed` với `errors[].code` `pd_category_required` và con trỏ `/fields/<n>` tới trường đó (custom-objects:R2.2; compliance-pdpl:R1.1; niêm phong của custom-objects/02).
+- [x] R1.5: pha một, dừng script sau lệnh gửi phát hành của chủ sở hữu thứ nhất → hai đối tượng ở Chờ duyệt, `GET` bản ghi `mkt_lead` trả 404; chủ sở hữu thứ hai duyệt → Đang dùng.
+- [x] R1.5: pha hai, dừng script sau đề xuất vai của chủ sở hữu thứ nhất → nhân viên Marketing của công ty A `POST .../objects/mkt_lead/records` bị từ chối, 0 bản ghi; chủ sở hữu thứ hai xác nhận → vai có hiệu lực, nhân viên Marketing tạo được một Lead với số trong dải thử của ticket 01 và đọc lại thấy `phone_e164`; Lead này là Lead của tiêu chí R1.3. Ca người xác nhận không giữ khóa `fld.*` (403 `rbac_escalation`) là test của tenant-rbac/04, ticket này không dựng người thứ ba cho nó.
+- [x] R1.1: thân `owners` với một email, hai email trùng nhau hay hai email chỉ khác chữ hoa → 422 `validation_failed`, không công ty nào (tenant-rbac:R3.9, RB37); script gửi đúng hai email khác nhau cho mỗi công ty.
+- [x] R1.7: sau lời gọi tạo, người vận hành đọc trạng thái công ty là `setup` và nhật ký lời gọi của harness không có lời gọi nào khác lên công ty đó; chủ sở hữu thứ hai nhận lời mời → `active`, script đi tiếp; chạy với tham số bỏ lần nhận của chủ sở hữu thứ hai → script dừng với lỗi ở thời hạn chờ, 0 workspace, 0 đối tượng, nhật ký lời gọi không có lời gọi nào lên công ty đó ngoài lần nhận của chủ sở hữu thứ nhất; bỏ bước chờ trong script → nhật ký có lời gọi tạo workspace lúc công ty còn `setup` (máy chủ từ chối nó, tenant-rbac:R3.14), test đỏ.
+- [x] R1.6: sau script, `GET /api/v1/limits` của công ty demo trả đúng Hạn mức của công ty và của workspace Marketing như số truyền vào; sau đó một chủ sở hữu `PUT` lại cùng `{scope_type}/{scope_id}/{metric}/{window_kind}` của workspace Marketing với số cao hơn → 409 `second_person_required`, Hạn mức giữ nguyên (usage-and-limits:R4.9); chạy lại script với tiền tố `slug` đã dùng → script dừng với lỗi, Hạn mức của công ty cũ không đổi.
+- [x] Xong: `uv run pytest tests/e2e/marketing_pilot/test_seed.py` xanh.
 
 ## Nguồn
 
@@ -95,3 +95,33 @@ Người đặt yêu cầu cần một bộ cố định hai công ty cô lập 
       mở database, MP17). Bản nháp của build lane ở scratchpad phiên 6/11/2026 (`lane2-mp02-draft/`, `api.py`,
       `marketing_pilot_stack.py`), không ở repo. Nếu sai thì: (a) compose project mới mỗi lần như bước 1, CI e2e dựng thêm
       profile ứng dụng; (b) người vận hành đầu qua một fixture `dw_migrator` của module dựng nền.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): làm khác ticket. (1) Theo (a) và (b) của dòng 6/11 trên: nền là một
+  database mới mỗi lần chạy (`dw_e2e_marketing_pilot` cộng `DW_TEST_DB_SUFFIX`, migrate) và API cùng worker là tiến trình
+  trên máy (`tests/support/marketing_pilot_stack.py`, ngoài package harness), người vận hành đầu tiên qua
+  `scripts/grant_platform_operator.py` chạy đúng như viết. (2) `POST /api/v1/admin/invitations` lặng lẽ bỏ một
+  workspace `role_keys: []` (service chỉ giữ workspace có vai, cùng lỗi mà tenant-rbac/16 sửa cho `PUT .../memberships`),
+  nên Sales C và D được mời với membership Sales rồi chủ sở hữu đặt họ vào Marketing không vai bằng `PUT .../memberships`
+  (tenant-rbac/16); trạng thái cuối đúng như mục Dữ liệu. Lỗ của lời mời là tenant-rbac/17 (cắt 6/11/2026, chờ 16; lời mời
+  giữ workspace không vai như một membership, như ticket 03 bước 6 đã ghi lẽ); khi 17 xong, seed gỡ bước
+  `PUT .../memberships` này và mời Sales C, D bằng một lời mời hai membership. (3) Danh mục quyền không có
+  `studio.workflows.run`, nên vai trưởng Marketing giữ `studio.workflows.read`, `.edit` và `approvals.decide`, không khóa
+  chạy; ticket đưa khóa chạy tay vào danh mục thêm nó vào bảng vai. (4) Describe không trả `pd_category` hay
+  `default_access`, nên R1.4 đọc chúng ở tài liệu phiên bản 1 đã phát hành (`GET .../versions/1`), và chế độ bảo vệ ở
+  describe của Cộng tác viên Marketing (năm trường "Đã ẩn"). (5) `lint-imports` chỉ đặt thư mục làm việc lên
+  `sys.path`, không `tests/e2e`, nên gốc của ràng buộc là `tests.e2e.marketing_pilot` (gói namespace), không
+  `marketing_pilot`; `test_model_door_import_contract.py` và `test_cel_import_contracts.py`, hai test dựng lại cây từ `root_packages`, dựng gốc có dấu chấm thành thư mục lồng (đã chạy trên bản xuất sạch Linux: `lint-imports` 18 kept, hai test xanh). (6) Hạn mức mặc định
+  nằm dưới trần của gói (`runs`/`day` của gói `professional` là 200): công ty 150, Marketing 100, `cost_usd`/`month` 200 và
+  100; số là tham số (`Limits`). (7) R1.3: người của B dưới ngữ cảnh của chính B đọc Lead của A → 404 theo id và 0 dòng
+  trong danh sách; gửi `X-Tenant-Id` của A → 403 hay 404, không lộ gì. (8) R1.5 pha hai: người Marketing được mời sau
+  điểm dừng (vai đã tạo, quyền còn là đề xuất) để thấy lần từ chối rồi lần tạo được sau xác nhận. (9) Công ty lên `active`
+  ngay trong lần đăng nhập đầu của chủ thứ hai, nên kiểm nhật ký của R1.7 ở đường thường không thấy bước chờ; ca chủ thứ
+  hai không đăng nhập là ca giết đột biến bỏ chờ. Nếu sai thì: (1) compose project mới mỗi lần, CI e2e dựng thêm profile
+  ứng dụng; (2) sửa lời mời trước rồi gieo một lời mời hai membership; (5) đặt `PYTHONPATH=tests/e2e` ở mọi lời gọi
+  `lint-imports`.
+- 2026-11-06 (agent): resolved. `tests/e2e/marketing_pilot/test_seed.py` 11 xanh (`-m e2e`, `_lane2`, khoảng 85 giây):
+  R1.1 ba ca (khóa của mỗi vai theo `/me`, mọi người `active` và tài khoản dịch vụ chỉ giữ `lead_intake`, `owners` một
+  email/trùng/khác hoa → 422 không công ty), R1.2 (một import adapter thêm vào harness → `lint-imports` đỏ), R1.3, R1.4,
+  R1.5 hai pha, R1.6, R1.7 hai ca. `reviewing-feature-security`: harness không route, không bảng, không bộ nhớ; ranh giới 1
+  (B không đọc được gì của A qua API) và 2 (mọi thay đổi nới qua người thứ hai, quyền trường không cho Cộng tác viên) đọc
+  qua chính API; token dev ký ở harness là bản sao định dạng claim, lệch thì mọi lời gọi 401. `mutations/02.yaml` 3
+  mutation, chưa chạy (bỏ chờ `active` bẻ tay, đỏ). Không migration, route hay ảnh.

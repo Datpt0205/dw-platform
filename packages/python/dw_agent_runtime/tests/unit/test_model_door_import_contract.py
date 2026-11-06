@@ -69,8 +69,11 @@ def _write_config(path: Path, config: dict[str, Any]) -> None:
 
 def _tree(base: Path, root_packages: list[str], modules: dict[str, str]) -> None:
     for package in root_packages:
-        (base / package).mkdir(parents=True)
-        (base / package / "__init__.py").write_text("", encoding="utf-8")
+        # A dotted root (`tests.e2e.marketing_pilot`) is nested folders under
+        # namespace packages, as it is in the checkout.
+        folder = base.joinpath(*package.split("."))
+        folder.mkdir(parents=True)
+        (folder / "__init__.py").write_text("", encoding="utf-8")
     for dotted, body in modules.items():
         parts = dotted.split(".")
         for depth in range(1, len(parts)):

@@ -292,6 +292,32 @@ root_packages = [
     "dw_api",
     "dw_docgen",
     "dw_worker",
+    # The marketing pilot harness (`tests/e2e`), for its independence contract.
+    "tests.e2e.marketing_pilot",
+]
+
+[[tool.importlinter.contracts]]
+# marketing-pilot R1.2 (MP17): the pilot's harness reaches the platform over its
+# public HTTP API only, so a seed or a test there that imports any platform
+# package, adapter or not, is a door the API's checks do not stand at.
+id = "marketing_pilot_independence"
+name = "The marketing pilot harness imports no platform package"
+type = "forbidden"
+source_modules = ["tests.e2e.marketing_pilot"]
+forbidden_modules = [
+    "dw_kernel",
+    "dw_platform",
+    "dw_agent_runtime",
+    "dw_knowledge",
+    "dw_memory",
+    "dw_connectors",
+    "dw_observability",
+    "dw_evals",
+    "dw_studio",
+    "dw_usage",
+    "dw_api",
+    "dw_docgen",
+    "dw_worker",
 ]
 
 [[tool.importlinter.contracts]]

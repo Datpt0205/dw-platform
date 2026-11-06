@@ -1,0 +1,29 @@
+# Mutation check of marketing-pilot ticket 02: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). The seed's own guards; what isolates the
+# two companies (MP4), the hidden fields (MP6) and the two-person rule are the
+# platform's, each with its owner's mutations. The setup wait was broken by hand
+# while writing the tests (6/11/2026): R1.7's timeout test went red (a
+# workspace created in `setup` is refused, not "not active").
+#
+# Left out: the happy path's own R1.7 log check cannot see the wait, since a
+# company goes `active` inside its second owner's first sign-in; the timeout
+# test is the one that does.
+mutations:
+  - name: R1.7 the seed stops waiting for active
+    file: tests/e2e/marketing_pilot/seed.py
+    old: '        lambda: tenant_status(api, operator, company.tenant_id) == "active",'
+    new: '        lambda: True or tenant_status(api, operator, company.tenant_id) == "active",'
+    tests:
+      - tests/e2e/marketing_pilot/test_seed.py::test_r1_7_a_company_whose_second_owner_never_signs_in_stops_the_seed
+  - name: R1.2 the independence contract watches nothing
+    file: pyproject.toml
+    old: 'source_modules = ["tests.e2e.marketing_pilot"]'
+    new: 'source_modules = ["dw_kernel"]'
+    tests:
+      - tests/e2e/marketing_pilot/test_seed.py::test_r1_2_an_adapter_import_in_the_harness_turns_lint_imports_red
+  - name: R1.4 the seed sends every field's pd_category in the refused draft
+    file: tests/e2e/marketing_pilot/seed.py
+    old: '            version, etag = _save(api, company, artifact, lead_document(without_pd="message"))'
+    new: '            version, etag = _save(api, company, artifact, lead_document())'
+    tests:
+      - tests/e2e/marketing_pilot/test_seed.py::test_r1_4_each_published_field_declares_its_personal_data
