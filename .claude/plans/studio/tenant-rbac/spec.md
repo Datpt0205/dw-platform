@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (6/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08, 09, 10, 11, 12, 13)
+Sẵn sàng: ĐẠT (6/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08, 09, 10, 11, 12, 13, 14, 15)
 
 Quản trị viên công ty cần tự dựng vai trò cho các workspace của mình (vai Marketing và vai Sales của lát Marketing, D4) với
 quyền trên đối tượng do công ty định nghĩa (`obj.lead.read`, D3), điều mà danh mục vai toàn cục chỉ migration ghi không
@@ -502,6 +502,22 @@ Không còn câu hỏi mở.
   lần đình chỉ cạnh lần ghi làm người đó thành chủ; lần xóa dòng công ty hay người dùng và lần kích hoạt lại dưới lần
   ghi đồng thời còn nợ một ticket của R6.7 (MEDIUM (a) gate ticket 13). Nếu sai thì: nhánh sửa trong revision của
   ticket 12 và gate lại 12.
+- 6/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 14, 15. Ticket 14 là chủ của MEDIUM (a) lượt đầu gate
+  ticket 13 (R6.7, RB20): lần xóa dòng công ty hay người dùng của P cạnh lần trao chủ, và lần gỡ lần gán `tenant_owner`
+  của Q `suspended` cạnh giao dịch kích hoạt lại Q (hay đổi người của membership của Q) rồi đình chỉ chủ cuối, mỗi lối để
+  tenant 0 chủ vì một bên trả sớm theo ảnh chụp cũ. `platform.remove_owner_assignments_first` (nhánh `tenant_members`)
+  khóa các membership của P `FOR UPDATE` trước câu xóa lần gán, đúng khóa dây chuyền vốn lấy, nên chờ mọi lần trao đang
+  mở; phần chung của `platform.refuse_losing_the_last_owner` (người giữ có dòng công ty mà chưa `active`) khóa dòng
+  tenant `FOR KEY SHARE` (tenant `active`, `locked`) rồi đọc lại người của membership và trạng thái, như ticket 13. Chờ
+  ticket 13 vì cùng thay thân hàm sau. Ticket 15 là chủ của lỗ R3.10 mà Comments ticket 13 để ngoài: lần kích hoạt công
+  ty `setup` cạnh lần mất chủ chưa commit mở công ty với một chủ, ba bên với 0 chủ. Vế trạng thái của ba câu khóa ở
+  `refuse_losing_the_last_owner` thêm `setup`, câu `FOR UPDATE` của phần chung đọc lại trạng thái sau khóa, và
+  `guard_tenant_setup` khóa dòng tenant `FOR UPDATE` trước câu đếm ở lần chuyển `setup` → `active` như
+  `complete_tenant_setup` (không đổi) vốn làm, nên lần kích hoạt đếm sau lần mất chủ, hay lần mất chủ chờ nó rồi được xét
+  theo R6.7. Chờ ticket 14 vì cùng thay thân hàm đó. Mỗi ticket một revision, một tệp test, không bảng, route hay hàm
+  mới. `Yêu cầu: R6.7, RB20` cho 14, `R3.10, R6.7, RB20, RB38` cho 15; `Mục tiêu` không đổi: R6.7 nay đúng cả dưới lần
+  xóa người nhận và lần kích hoạt lại đồng thời, R3.10 cả dưới lần mất chủ đồng thời. Nếu sai thì: hai ticket gộp một
+  revision (15 vào 14), gate lại.
 
 ## Danh sách ticket
 
@@ -520,3 +536,5 @@ Không còn câu hỏi mở.
 | 11  | [Tách nhiệm dưới hai lần ghi đồng thời, và lần đổi người của membership](issues/11-tach-nhiem-duoi-ghi-dong-thoi.md)                      |
 | 12  | [Lần đổi người của membership qua các guard mà lần gán và lần gỡ phải qua](issues/12-doi-nguoi-cua-membership-qua-guard-gan.md)           |
 | 13  | [Chủ sở hữu cuối dưới lần đình chỉ người vừa thành chủ](issues/13-chu-cuoi-duoi-dinh-chi-dong-thoi.md)                                    |
+| 14  | [Chủ sở hữu cuối dưới lần xóa người nhận và lần kích hoạt lại đồng thời](issues/14-chu-cuoi-duoi-xoa-nguoi-nhan-va-kich-hoat-lai.md)      |
+| 15  | [Công ty `setup` mở với ít hơn hai chủ dưới lần mất chủ đồng thời](issues/15-cong-ty-setup-mo-duoi-mat-chu-dong-thoi.md)                  |
