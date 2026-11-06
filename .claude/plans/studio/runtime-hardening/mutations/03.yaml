@@ -21,22 +21,21 @@ mutations:
     tests:
       - packages/python/dw_agent_runtime/tests/integration/test_resume_once_db.py::test_a_cancelled_resume_is_recorded_failed_and_raised
   - name: RH27 the claim ignores the backoff
+    # runtime-hardening/04 rewrote the claim: the row step of a chosen company.
     file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
-    old: "                        e.c.available_at <= sa.func.now(),"
-    new: "                        sa.true(),"
+    old: "          AND o.tenant_id = t.tenant_id\n          AND o.available_at <= now()\n"
+    new: "          AND o.tenant_id = t.tenant_id\n"
     tests:
       - packages/python/dw_platform/tests/integration/test_outbox_dead_letters.py::test_a_failure_backs_off_exponentially_by_the_databases_clock
+      - packages/python/dw_platform/tests/integration/test_outbox_fair_claim.py::test_a_company_s_backing_off_and_dead_events_stay_out_of_its_claim
   - name: RH28 the claim takes dead events
+    # runtime-hardening/04 rewrote the claim: the row step of a chosen company.
     file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
-    old: |2
-                          e.c.processed_at.is_(None),
-                          e.c.dead_at.is_(None),
-                          # Its backoff has passed, by PostgreSQL's clock (R10.1).
-    new: |2
-                          e.c.processed_at.is_(None),
-                          # Its backoff has passed, by PostgreSQL's clock (R10.1).
+    old: "        WHERE o.processed_at IS NULL AND o.dead_at IS NULL\n          AND o.tenant_id = t.tenant_id\n"
+    new: "        WHERE o.processed_at IS NULL\n          AND o.tenant_id = t.tenant_id\n"
     tests:
       - packages/python/dw_platform/tests/integration/test_outbox_dead_letters.py::test_the_last_attempt_and_an_undeliverable_event_are_given_up_on
+      - packages/python/dw_platform/tests/integration/test_outbox_fair_claim.py::test_a_company_s_backing_off_and_dead_events_stay_out_of_its_claim
   - name: RH28 a spent event is hidden, not given up on, at the claim
     file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
     old: "            spent = [row.id for row in candidates if row.attempts >= max_attempts]"

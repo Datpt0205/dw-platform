@@ -92,13 +92,29 @@ async def test_a_failure_backs_off_exponentially_by_the_databases_clock(
     kind = _type()
     drain, event_id, _ = await _one(pooled_app_engine, kind)
     for n in (1, 2):
-        claimed = await drain.claim_batch(event_types=[kind], limit=5, max_attempts=10)
+        claimed = (
+            await drain.claim_batch(
+                event_types=[kind],
+                per_tenant_limit=5,
+                tenant_limit=64,
+                max_attempts=10,
+                after_tenant=None,
+            )
+        ).events
         assert [e.id for e in claimed] == [event_id] and claimed[0].attempts == n
         await drain.record_failure(event_id, error="boom", max_attempts=10)
         wait = await _wait_seconds(migrator, event_id)
         base = min(30 * 2 ** (n - 1), 3600)
         assert base - 2 <= wait <= base * 1.2 + 1, (n, wait)
-        assert await drain.claim_batch(event_types=[kind], limit=5, max_attempts=10) == []
+        assert (
+            await drain.claim_batch(
+                event_types=[kind],
+                per_tenant_limit=5,
+                tenant_limit=64,
+                max_attempts=10,
+                after_tenant=None,
+            )
+        ).events == []
         await _due(migrator, event_id)
 
 
@@ -111,15 +127,39 @@ async def test_the_last_attempt_and_an_undeliverable_event_are_given_up_on(
     drain, event_id, _ = await _one(pooled_app_engine, kind)
     for _ in range(MAX):
         await _due(migrator, event_id)
-        assert await drain.claim_batch(event_types=[kind], limit=5, max_attempts=MAX)
+        assert (
+            await drain.claim_batch(
+                event_types=[kind],
+                per_tenant_limit=5,
+                tenant_limit=64,
+                max_attempts=MAX,
+                after_tenant=None,
+            )
+        ).events
         await drain.record_failure(event_id, error="boom", max_attempts=MAX)
     assert (await _row(migrator, event_id)).dead_at is not None
     await _due(migrator, event_id)
-    assert await drain.claim_batch(event_types=[kind], limit=5, max_attempts=MAX) == []
+    assert (
+        await drain.claim_batch(
+            event_types=[kind],
+            per_tenant_limit=5,
+            tenant_limit=64,
+            max_attempts=MAX,
+            after_tenant=None,
+        )
+    ).events == []
 
     kind = _type()
     drain, event_id, _ = await _one(pooled_app_engine, kind)
-    assert await drain.claim_batch(event_types=[kind], limit=5, max_attempts=MAX)
+    assert (
+        await drain.claim_batch(
+            event_types=[kind],
+            per_tenant_limit=5,
+            tenant_limit=64,
+            max_attempts=MAX,
+            after_tenant=None,
+        )
+    ).events
     await drain.record_failure(event_id, error="no actor", max_attempts=MAX, undeliverable=True)
     row = await _row(migrator, event_id)
     assert row.dead_at is not None and row.attempts == 1
@@ -141,7 +181,15 @@ async def test_an_event_that_died_during_its_last_delivery_is_given_up_on_at_the
         )
     before = await drain.backlog(event_types=[kind])
     assert (before.pending, before.dead) == (1, 0)
-    assert await drain.claim_batch(event_types=[kind], limit=5, max_attempts=MAX) == []
+    assert (
+        await drain.claim_batch(
+            event_types=[kind],
+            per_tenant_limit=5,
+            tenant_limit=64,
+            max_attempts=MAX,
+            after_tenant=None,
+        )
+    ).events == []
     assert (await _row(migrator, event_id)).dead_at is not None
     after = await drain.backlog(event_types=[kind])
     assert (after.pending, after.dead) == (0, 1)
@@ -173,7 +221,15 @@ async def _operator(migrator: AsyncEngine) -> str:
 async def _dead(pooled_app_engine: AsyncEngine, migrator: AsyncEngine) -> tuple[uuid.UUID, Any]:
     kind = _type()
     drain, event_id, sessions = await _one(pooled_app_engine, kind)
-    assert await drain.claim_batch(event_types=[kind], limit=5, max_attempts=MAX)
+    assert (
+        await drain.claim_batch(
+            event_types=[kind],
+            per_tenant_limit=5,
+            tenant_limit=64,
+            max_attempts=MAX,
+            after_tenant=None,
+        )
+    ).events
     await drain.record_failure(event_id, error="x", max_attempts=MAX, undeliverable=True)
     return event_id, sessions
 

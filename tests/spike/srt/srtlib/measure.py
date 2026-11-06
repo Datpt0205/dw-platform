@@ -1333,10 +1333,19 @@ async def q3(h: Harness) -> Result:
     batches = 0
     d_at: float | None = None
     processed = 0
+    after_tenant = None
     while d_at is None and time.perf_counter() - started < 1800:
-        claimed = await drain.claim_batch(
-            event_types=["srt.record_event"], limit=100, max_attempts=5
+        # The claim by company of runtime-hardening/04, its cursor carried
+        # from claim to claim as the outbox lane carries it.
+        found = await drain.claim_batch(
+            event_types=["srt.record_event"],
+            per_tenant_limit=100,
+            tenant_limit=8,
+            max_attempts=5,
+            after_tenant=after_tenant,
         )
+        after_tenant = found.last_tenant
+        claimed = found.events
         if not claimed:
             break
         batches += 1

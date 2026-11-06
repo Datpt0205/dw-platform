@@ -1,0 +1,70 @@
+# Mutation check of runtime-hardening ticket 04 (R10.6, G9, RH37): the outbox
+# claim taken company by company. scripts/mutate.py runs this file at the
+# queue's close (wave-close.md), with 03.yaml, whose RH27 and RH28 mutations
+# this ticket moved onto the new claim.
+#
+# (a) of the ticket, "rows chosen by one order across companies", is (h) under
+# this claim's shape: the row step is the one place an order is chosen, and
+# taking its company condition away is choosing rows by one `available_at,
+# occurred_at` order for every company; it is listed once, as (h).
+mutations:
+  - name: (b) companies taken by their earliest due event, not in turn
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: "    ORDER BY coalesce(p.tenant_id <= CAST(:after AS uuid), false), p.tenant_id\n"
+    new: "    ORDER BY (SELECT min(o.available_at) FROM platform.outbox_events o WHERE o.tenant_id = p.tenant_id AND o.processed_at IS NULL AND o.dead_at IS NULL), p.tenant_id\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_fair_claim.py::test_companies_beyond_the_per_claim_cap_take_turns
+  - name: (c) the cursor is ignored, every claim from the smallest id
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: "    ORDER BY coalesce(p.tenant_id <= CAST(:after AS uuid), false), p.tenant_id\n"
+    new: "    ORDER BY p.tenant_id\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_fair_claim.py::test_companies_beyond_the_per_claim_cap_take_turns
+  - name: (d) the dispatcher always hands None
+    file: apps/worker/src/dw_worker/consumers/outbox.py
+    old: "            after_tenant=after_tenant,\n"
+    new: "            after_tenant=None,\n"
+    tests:
+      - apps/worker/tests/unit/test_outbox_consumer.py::test_the_dispatcher_hands_the_rotation_cursor_to_the_next_claim
+  - name: (e) a company backing off takes a turn
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: "            AND o.tenant_id = p.tenant_id\n            AND o.available_at <= now()\n"
+    new: "            AND o.tenant_id = p.tenant_id\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_fair_claim.py::test_a_company_with_nothing_this_process_can_take_takes_no_turn
+  - name: (e) a company with only a type nobody delivers takes a turn
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: "            AND o.event_type = ANY(CAST(:types AS text[]))\n      )\n"
+    new: "      )\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_fair_claim.py::test_a_company_with_nothing_this_process_can_take_takes_no_turn
+  - name: (f) the rotation does not wrap past the last company
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: "    WHERE p.tenant_id IS NOT NULL\n      AND EXISTS (\n"
+    new: "    WHERE p.tenant_id IS NOT NULL\n      AND (CAST(:after AS uuid) IS NULL OR p.tenant_id > CAST(:after AS uuid))\n      AND EXISTS (\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_fair_claim.py::test_the_rotation_wraps_past_the_last_company
+  - name: (g) the rotation stops before the cursor's own company
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: "    WHERE p.tenant_id IS NOT NULL\n      AND EXISTS (\n"
+    new: "    WHERE p.tenant_id IS NOT NULL\n      AND (CAST(:after AS uuid) IS NULL OR p.tenant_id <> CAST(:after AS uuid))\n      AND EXISTS (\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_fair_claim.py::test_a_lone_company_is_drained_on_every_claim
+  - name: (h) the row step takes rows of any chosen company
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: "          AND o.tenant_id = t.tenant_id\n          AND o.available_at <= now()\n          AND o.event_type"
+    new: "          AND o.available_at <= now()\n          AND o.event_type"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_fair_claim.py::test_a_company_is_not_held_behind_another_company_s_backlog
+  - name: G9 a claim's events delivered in claim order, not occurred_at
+    file: packages/python/dw_platform/src/dw_platform/adapters/persistence/outbox_drain.py
+    old: "            events.sort(key=lambda event: event.occurred_at)\n            return OutboxClaim(events=events, last_tenant=last)\n"
+    new: "            events.sort(key=lambda event: event.occurred_at, reverse=True)\n            return OutboxClaim(events=events, last_tenant=last)\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_outbox_fair_claim.py::test_one_company_s_events_are_claimed_oldest_first
+  - name: R10.6 tenants per tick takes any value
+    file: apps/worker/src/dw_worker/settings.py
+    old: "    outbox_tenants_per_tick: int = Field(default=8, ge=1, le=64)\n"
+    new: "    outbox_tenants_per_tick: int = Field(default=8)\n"
+    tests:
+      - apps/worker/tests/unit/test_worker.py::test_outbox_tenants_per_tick_outside_its_range_is_refused

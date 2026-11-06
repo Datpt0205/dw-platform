@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from dw_platform.domain.approval import ApprovalDecision, ApprovalRequest
     from dw_platform.domain.audit import AuditEvent
     from dw_platform.domain.feedback import Feedback, FeedbackAttachment
-    from dw_platform.domain.outbox import OutboxBacklog, OutboxEvent
+    from dw_platform.domain.outbox import OutboxBacklog, OutboxClaim, OutboxEvent
 
 
 class VerifiedIdentity(Protocol):
@@ -301,15 +301,30 @@ class OutboxDrainPort(Protocol):
     """
 
     async def claim_batch(
-        self, *, event_types: Sequence[str], limit: int, max_attempts: int
-    ) -> list[OutboxEvent]:
-        """Take the oldest undelivered events of the named types, across tenants.
+        self,
+        *,
+        event_types: Sequence[str],
+        per_tenant_limit: int,
+        tenant_limit: int,
+        max_attempts: int,
+        after_tenant: UUID | None,
+    ) -> OutboxClaim:
+        """Take undelivered events of the named types, company by company
+        (runtime-hardening R10.6): at most `tenant_limit` companies with a due
+        event, in `tenant_id` order from the first after `after_tenant`,
+        wrapping round to the smallest and up to `after_tenant` itself, and at
+        most `per_tenant_limit` of each one's due events, its oldest first.
+        With T companies due and K a claim, each company's earliest event is
+        claimed within ⌈T / K⌉ claims, whatever another company holds. The
+        cursor is the caller's: it hands each claim the `last_tenant` of the
+        one before, None to start.
 
         Only the types the caller can actually handle: an event nobody consumes
         yet must stay undelivered rather than be drained into nothing. The claim
         is ``FOR UPDATE SKIP LOCKED`` plus an attempt increment in one
         transaction, so two dispatchers take different rows and a process that
-        dies mid-delivery leaves the attempt counted.
+        dies mid-delivery leaves the attempt counted. The events come back in
+        `occurred_at` order (G9).
         """
         ...
 

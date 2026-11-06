@@ -127,7 +127,15 @@ async def test_the_drain_claims_across_tenants_and_settles_each_event(
     await _announce(factory, alpha, ignored)
 
     drain = SqlOutboxDrain(session_factory=session_factory, clock=FixedClock())
-    claimed = await drain.claim_batch(event_types=[CLAIMED_TYPE], limit=10, max_attempts=3)
+    claimed = (
+        await drain.claim_batch(
+            event_types=[CLAIMED_TYPE],
+            per_tenant_limit=10,
+            tenant_limit=64,
+            max_attempts=3,
+            after_tenant=None,
+        )
+    ).events
 
     # Two tenants, one claim, oldest first. The third event has no handler and
     # must still be undelivered afterwards.
@@ -155,7 +163,15 @@ async def test_the_drain_claims_across_tenants_and_settles_each_event(
         # The delivered event is gone from the next round; the failed one is
         # back once its backoff has passed.
         await _due(migrator, second.id)
-        again = await drain.claim_batch(event_types=[CLAIMED_TYPE], limit=10, max_attempts=3)
+        again = (
+            await drain.claim_batch(
+                event_types=[CLAIMED_TYPE],
+                per_tenant_limit=10,
+                tenant_limit=64,
+                max_attempts=3,
+                after_tenant=None,
+            )
+        ).events
         assert [event.id for event in again] == [second.id]
         assert again[0].attempts == 2
     finally:
@@ -178,13 +194,27 @@ async def test_an_event_that_keeps_failing_stops_being_claimed(
     try:
         for attempt in range(2):
             await _due(migrator, event.id)
-            claimed = await drain.claim_batch(
-                event_types=[EXHAUSTED_TYPE], limit=10, max_attempts=2
-            )
+            claimed = (
+                await drain.claim_batch(
+                    event_types=[EXHAUSTED_TYPE],
+                    per_tenant_limit=10,
+                    tenant_limit=64,
+                    max_attempts=2,
+                    after_tenant=None,
+                )
+            ).events
             assert [item.id for item in claimed] == [event.id], f"attempt {attempt}"
             await drain.record_failure(event.id, error="still broken", max_attempts=2)
         await _due(migrator, event.id)
-        exhausted = await drain.claim_batch(event_types=[EXHAUSTED_TYPE], limit=10, max_attempts=2)
+        exhausted = (
+            await drain.claim_batch(
+                event_types=[EXHAUSTED_TYPE],
+                per_tenant_limit=10,
+                tenant_limit=64,
+                max_attempts=2,
+                after_tenant=None,
+            )
+        ).events
         assert exhausted == []
         # R10.2: given up on at its last attempt, and counted as dead only.
         assert (await _row(migrator, event.id)).dead_at is not None
@@ -209,7 +239,20 @@ async def test_the_drain_flag_does_not_survive_its_transaction(
     await _announce(factory, beta, theirs)
 
     drain = SqlOutboxDrain(session_factory=session_factory, clock=FixedClock())
-    assert len(await drain.claim_batch(event_types=[RESIDUE_TYPE], limit=10, max_attempts=3)) == 2
+    assert (
+        len(
+            (
+                await drain.claim_batch(
+                    event_types=[RESIDUE_TYPE],
+                    per_tenant_limit=10,
+                    tenant_limit=64,
+                    max_attempts=3,
+                    after_tenant=None,
+                )
+            ).events
+        )
+        == 2
+    )
 
     # Same pooled connection, now as an ordinary tenant-scoped caller.
     async with session_factory() as session, session.begin():

@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
+from uuid import UUID
 
 from dw_kernel.ids import TenantId, WorkspaceId
 
@@ -68,3 +69,13 @@ class OutboxBacklog:
     oldest_pending_at: datetime | None
     # Given up on (runtime-hardening R10.3): never in `pending`.
     dead: int = 0
+
+
+@dataclass(frozen=True, slots=True)
+class OutboxClaim:
+    """One claim of the drain (runtime-hardening R10.6): its events, in
+    `occurred_at` order, and the last company it served in the rotation, the
+    cursor the caller hands the next claim. None when it served none."""
+
+    events: list[OutboxEvent]
+    last_tenant: UUID | None

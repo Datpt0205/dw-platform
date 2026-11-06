@@ -251,9 +251,15 @@ async def decide(
 
 async def decided_event(lane: Lane, approval_id: uuid.UUID) -> OutboxEvent:
     """The event the decision wrote, claimed the way the worker claims it."""
-    claimed = await lane.drain.claim_batch(
-        event_types=[MEMORY_REVIEW_DECIDED], limit=100, max_attempts=100
-    )
+    claimed = (
+        await lane.drain.claim_batch(
+            event_types=[MEMORY_REVIEW_DECIDED],
+            per_tenant_limit=100,
+            tenant_limit=64,
+            max_attempts=100,
+            after_tenant=None,
+        )
+    ).events
     [event] = [event for event in claimed if event.aggregate_id == approval_id]
     return event
 

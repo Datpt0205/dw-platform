@@ -238,8 +238,14 @@ class WorkerSettings(BaseSettings):
     )
 
     # Outbox events are cheap to dispatch, so a batch keeps an import of many
-    # accounts from taking one poll tick each.
+    # accounts from taking one poll tick each: the cap of each company's events
+    # in one tick (runtime-hardening R10.6).
     outbox_batch_size: int = Field(default=8, ge=1, le=64)
+    # How many companies one tick serves, in turn: with T companies due, each
+    # company's oldest event is claimed within ceil(T / this) ticks, whatever
+    # another company's import holds (R10.6). Outside 1-64 the worker does not
+    # start.
+    outbox_tenants_per_tick: int = Field(default=8, ge=1, le=64)
     # After this many delivery attempts an event stops being claimed and waits
     # for a human, with `last_error` saying what it kept failing on. Three is a
     # transient fault survived twice, not a broken handler retried for ever.

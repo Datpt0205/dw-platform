@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 import pytest
+from pydantic import ValidationError
 
 from dw_worker.consumers import ConsumerRegistry
 from dw_worker.health import beat, is_alive
@@ -262,3 +263,10 @@ def test_the_worker_registers_offboarding_alone_for_the_tenant_wide_scope() -> N
     assert lane.lane == "offboarding"
     assert lane.reads_private_tables is True
     assert lane.reason.strip()
+
+
+# runtime-hardening R10.6: how many companies a tick of the outbox serves.
+@pytest.mark.parametrize("tenants", [0, 65])
+def test_outbox_tenants_per_tick_outside_its_range_is_refused(tenants: int) -> None:
+    with pytest.raises(ValidationError):
+        WorkerSettings(outbox_tenants_per_tick=tenants)

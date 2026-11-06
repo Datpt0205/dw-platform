@@ -912,6 +912,7 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
                 SqlOutboxDrain(sessions, clock),
                 handlers,
                 batch_size=settings.outbox_batch_size,
+                tenants_per_tick=settings.outbox_tenants_per_tick,
                 max_attempts=settings.outbox_max_attempts,
                 telemetry=telemetry,
                 clock=clock,

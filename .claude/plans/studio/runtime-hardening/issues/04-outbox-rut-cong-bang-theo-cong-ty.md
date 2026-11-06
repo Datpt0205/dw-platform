@@ -1,6 +1,6 @@
 # 04 — Rút outbox công bằng theo công ty
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 03
 Area: studio
 Yêu cầu: R10.6, G9, RH37
@@ -215,3 +215,33 @@ P95 300 ms như một thao tác API; chạy lại `uv run python tests/spike/srt
   `tenant_id` `NOT NULL` có neo; `max_attempts` 10 và `mark_processed` giữa các lần claim trong test; `tenants_per_tick`
   không có mặc định; tên test settings.
 - 2026-11-05 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent): dựng xong.
+    - Test trước, ở commit gốc (`f4a56a0a`): G9 qua `claim_batch(limit=3)` xanh; RH37 qua chữ ký cũ đỏ vì khẳng định
+      (không có sự kiện của D); test của lane qua `build_outbox_consumer` không `tenants_per_tick` đỏ vì khẳng định
+      (`assert 0 == 1`: handler chỉ nhận 8 sự kiện của C), không vì `TypeError`.
+    - Đã làm: revision `8a693dcd2c04` (`ix_outbox_events_due_by_tenant`, vị từ trùng chữ); `OutboxClaim`;
+      `OutboxDrainPort.claim_batch(event_types, per_tenant_limit, tenant_limit, max_attempts, after_tenant)`;
+      `SqlOutboxDrain`: CTE đệ quy quét nhảy công ty, `EXISTS` giữ công ty có dòng đến hạn đúng loại, thứ tự vòng
+      xoay `coalesce(tenant_id <= after, false), tenant_id`, chọn dòng bằng một `LATERAL ... FOR UPDATE SKIP LOCKED`
+      (chạy được trên PG 16, không cần câu mỗi công ty), hai nhánh hết lượt/tăng `attempts` giữ nguyên;
+      `build_outbox_consumer(tenants_per_tick=…)` giữ con trỏ trong closure; `outbox_tenants_per_tick` 1-64; mọi
+      chỗ gọi theo chữ ký mới (kể cả `test_memory_review_db.py` của worker, không có trong danh sách bước 10).
+    - (agent, theo ủy quyền 31/10/2026) thêm `test_a_company_s_backing_off_and_dead_events_stay_out_of_its_claim`:
+      đột biến RH27, RH28 của 03.yaml nay nằm ở bước chọn dòng của công ty, mà test cũ không giết được (công ty chỉ có
+      dòng đang lùi hay đã chết thì không được chọn ở bước trước); test mới đặt một dòng đến hạn cạnh hai dòng đó.
+      Đột biến (a) của bước 12 là (h) dưới hình câu này, ghi ở đầu 04.yaml. Nếu sai thì: tách thêm một đột biến cho
+      (a).
+    - `EXPLAIN (ANALYZE, BUFFERS)` (DB test của lane 1, mỗi ca thêm mười công ty vài sự kiện, sau `ANALYZE`): ca 1
+      (100.000 dòng đến hạn của C) bước công ty 2,3 ms / 380 buffer, bước dòng 0,30 ms / 62 buffer; ca 2 (30.000
+      dòng sớm nhất của C đang lùi) bước dòng 0,26 ms / 62 buffer, không đọc 30.000 dòng đang lùi (Index Cond
+      `available_at <= now()`), bước công ty 28,5 ms / 3.434 buffer vì `EXISTS` đọc qua 100.000 dòng đến hạn thuộc
+      loại khác còn lại từ ca 1; ca 3 (100.000 dòng của C thuộc loại không ai giao, một của D) bước công ty 50,6 ms /
+      6.088 buffer, bước dòng 0,37 ms: đọc qua dòng không ai giao là lỗi có sẵn, không sửa ở đây.
+    - Test: `test_outbox_fair_claim.py` 8 (Postgres), `test_outbox_drain.py`, `test_outbox_dead_letters.py` theo chữ
+      ký mới (19 cùng nhau), `test_outbox_fairness_db.py` 1 và `test_memory_review_db.py` (worker, 12 cùng nhau),
+      unit worker 158, unit dw_platform 413; `test_rls_coverage`, `test_privileges`, `test_offboarding_coverage` 163
+      xanh không sửa; mypy sạch.
+    - `mutations/04.yaml` 10 đột biến, `03.yaml` RH27, RH28 đổi `old` theo mã mới; chưa chạy `mutate.py`; chạy tay (c)
+      (bỏ con trỏ), đỏ.
+    - Còn ở lúc đóng hàng đợi: `mutate.py` cho 04.yaml và 03.yaml; P50/P95/P99 của `claim_batch` ở ba ca của bước 13
+      so với commit bắt đầu hàng đợi; `uv run python tests/spike/srt/run_srt.py measure q3` ở 100.000 sự kiện.

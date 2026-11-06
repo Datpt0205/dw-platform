@@ -25,6 +25,7 @@ marked delivered. To wire one, pass ``{EVENT_TYPE: handler}`` to
 from __future__ import annotations
 
 import logging
+import uuid
 from collections.abc import Awaitable, Callable, Mapping
 
 from dw_kernel.ports import UtcClock
@@ -82,11 +83,17 @@ def build_outbox_consumer(
     handlers: Mapping[str, EventHandler],
     *,
     batch_size: int,
+    tenants_per_tick: int,
     max_attempts: int,
     telemetry: TelemetryPort,
     clock: UtcClock,
 ) -> Callable[[], Awaitable[None]]:
-    """Return a consumer that dispatches at most ``batch_size`` events per tick.
+    """Return a consumer that dispatches, each tick, at most ``batch_size``
+    events of each of at most ``tenants_per_tick`` companies, taken in turn
+    (runtime-hardening R10.6): the rotation's cursor lives in this closure,
+    handed to each claim and moved to the ``last_tenant`` it returns. It lives
+    only in this process: a restart begins the rotation again, and R10.6's
+    bound still holds.
 
     Reports backlog size and the oldest pending event's age every tick, for
     the same ``event_types`` this process actually claims — an event type
@@ -95,11 +102,19 @@ def build_outbox_consumer(
     """
     event_types = sorted(handlers)
 
+    after_tenant: uuid.UUID | None = None
+
     async def consume() -> None:
-        events = await drain.claim_batch(
-            event_types=event_types, limit=batch_size, max_attempts=max_attempts
+        nonlocal after_tenant
+        claimed = await drain.claim_batch(
+            event_types=event_types,
+            per_tenant_limit=batch_size,
+            tenant_limit=tenants_per_tick,
+            max_attempts=max_attempts,
+            after_tenant=after_tenant,
         )
-        for event in events:
+        after_tenant = claimed.last_tenant
+        for event in claimed.events:
             await _deliver(event, handlers[event.event_type], drain, max_attempts)
 
         backlog = await drain.backlog(event_types=event_types)
