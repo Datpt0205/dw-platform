@@ -21,6 +21,14 @@ Five questions, on the schema `alembic upgrade head` builds (tenant-rbac 02-04):
 5. `_STANDING` and `_HOLDERS` (tenant-rbac 10): `platform.scopes_in` in the select
    list, frozen as it stood at `657ef4c6`, against the same call in FROM and the
    modules' own text, one member and a whole workspace (25 and 5,000 members).
+6. Separation of duties under two concurrent writes (tenant-rbac 11), 200 rounds
+   each with question 3's schedule, on a small company of its own: two
+   assignments of the two sides, a right key into a held role against a left
+   assignment, a role's restore against a left assignment, two revocations below
+   two owner-key holders, and a waiver revoked with an assignment in one
+   transaction against an assignment relying on it; question 3's two races
+   again; with the separation-of-duties lock taken out of the function in this
+   database when it has one. Each counts leaks, `40P01` and `40001`.
 
 Its own database, `dw_bench_rbac` plus `DW_TEST_DB_SUFFIX`, on the compose
 PostgreSQL that `.env` names; tenants are planted as `dw_migrator`, measured as
@@ -1163,9 +1171,11 @@ async def q2(u: Urls, world: World) -> dict[str, Any]:
 
 SOD_LOCK = "FOR SHARE;"
 RBAC_LOCK = "FOR SHARE OF a;"
+VERSION_LOCK = "FOR NO KEY UPDATE;"  # tenant-rbac 11, the version row
 MUTATIONS = {
     "sod_violation": ("platform.sod_violation(uuid, uuid)", SOD_LOCK),
     "rbac_refusals": ("platform.rbac_refusals(uuid, uuid, jsonb, boolean)", RBAC_LOCK),
+    "sod_version_lock": ("platform.enforce_role_separation_of_duties()", VERSION_LOCK),
 }
 
 
@@ -1224,6 +1234,7 @@ def _constraint(error: BaseException) -> str:
 class Leg:
     ok: bool = False
     error: str = ""
+    sqlstate: str = ""
     work_done: float = 0.0
     commit_sent: float = 0.0
     commit_done: float = 0.0
@@ -1252,6 +1263,8 @@ async def leg(
     except DBAPIError as error:
         await tx.rollback()
         found.error = _constraint(error)
+        orig = getattr(error, "orig", None)
+        found.sqlstate = str(getattr(getattr(orig, "__cause__", None) or orig, "sqlstate", ""))
     return found
 
 
@@ -1464,6 +1477,478 @@ async def q3(u: Urls, world: World) -> dict[str, Any]:
         "sod_mutation_red": out["sod_without_for_share"]["leaks"] > 0,
         "rbac_mutation_red": out["rbac_without_for_share"]["leaks"] > 0,
     }
+    return out
+
+
+# -- question 6 (tenant-rbac 11) -----------------------------------------------------
+
+Q6_STRICT = "sod_bench_w11_strict"
+Q6_WAIVABLE = "sod_bench_w11_waivable"
+Q6_KEYS = {
+    "left": "bench.w11_left",
+    "right": "bench.w11_right",
+    "outside": "bench.w11_outside",
+    "wleft": "bench.w11_wleft",
+    "wright": "bench.w11_wright",
+}
+
+
+@dataclass
+class Q6:
+    tenant_id: str
+    a: str
+    b: str
+    owner_1: str
+    owner_2: str
+    roles: dict[str, str]
+    p: Person  # the person each race gives two sides, membership at A
+    p_at_b: str  # p's membership at B
+    n: Person  # race e's bystander, given a role beside the revocation
+    d: Person  # race e's person relying on the waiver
+    coverage_tenant: str
+    coverage_main: str
+    coverage_role: str
+    coverage_holders: list[Person]
+
+
+async def plant_q6(migrator: AsyncEngine) -> Q6:
+    """Its own keys, two rules and a five-person company in two workspaces, plus
+    a company for race d: one owner and two holders of both owner keys."""
+    async with migrator.begin() as conn:
+        await run(
+            conn,
+            "INSERT INTO platform.permissions (key, area, label_vi, scope_kind, risk, status,"
+            " owner_package, tenant_grantable) SELECT k, 'bench', 'Khóa đo tenant-rbac 11',"
+            " 'workspace', 'standard', 'active', 'fog38', true FROM unnest(CAST(:ks AS text[])) k"
+            " ON CONFLICT (key) DO NOTHING",
+            ks=list(Q6_KEYS.values()),
+        )
+        for key, left, right, waivable in (
+            (Q6_STRICT, Q6_KEYS["left"], Q6_KEYS["right"], False),
+            (Q6_WAIVABLE, Q6_KEYS["wleft"], Q6_KEYS["wright"], True),
+        ):
+            await run(
+                conn,
+                "INSERT INTO platform.sod_rules (key, description, left_scopes, right_scopes,"
+                " waivable) VALUES (:k, 'Luật đo tenant-rbac 11', CAST(:l AS jsonb),"
+                " CAST(:r AS jsonb), :w) ON CONFLICT (key) DO NOTHING",
+                k=key,
+                l=json.dumps([left]),
+                r=json.dumps([right]),
+                w=waivable,
+            )
+        tenant = await plant_tenant(conn, workspaces=2)
+        t, a, b = str(tenant.tenant_id), str(tenant.workspaces[0]), str(tenant.workspaces[1])
+        roles = {
+            name: await _role(conn, t, f"bench_w11_{name}", {key: "workspace"})
+            for name, key in Q6_KEYS.items()
+        }
+        roles["x"] = await _role(conn, t, "bench_w11_x", {Q6_KEYS["outside"]: "workspace"})
+        # Race c's own right-side role, soft-deleted between rounds.
+        roles["restorable"] = await _role(
+            conn, t, "bench_w11_restorable", {Q6_KEYS["right"]: "workspace"}
+        )
+        people = await _plant_people(conn, t, f"w11-{t[:8]}", 5, [a])
+        owner = await _system_role(conn, t, "tenant_owner")
+        await _assign(conn, t, people[:2], owner)
+        p, n, d = people[2], people[3], people[4]
+        p_at_b = await _membership(conn, t, b, p.user_id)
+        await _assign(conn, t, [p], roles["x"])
+        await _assign(conn, t, [d], roles["wleft"])
+        coverage = await plant_tenant(conn, workspaces=1)
+        ct, cm = str(coverage.tenant_id), str(coverage.main)
+        keys = await run(conn, "SELECT platform.owner_permission_keys()")
+        coverage_role = await _role(
+            conn, ct, "bench_w11_admins", dict.fromkeys(keys.scalar_one(), "tenant")
+        )
+        coverage_people = await _plant_people(conn, ct, f"w11cov-{ct[:8]}", 3, [cm])
+        await _assign(conn, ct, coverage_people[:1], await _system_role(conn, ct, "tenant_owner"))
+        await _assign(conn, ct, coverage_people[1:], coverage_role)
+    return Q6(
+        tenant_id=t,
+        a=a,
+        b=b,
+        owner_1=people[0].user_id,
+        owner_2=people[1].user_id,
+        roles=roles,
+        p=p,
+        p_at_b=p_at_b,
+        n=n,
+        d=d,
+        coverage_tenant=ct,
+        coverage_main=cm,
+        coverage_role=coverage_role,
+        coverage_holders=coverage_people[1:],
+    )
+
+
+async def _q6_broken(conn: AsyncConnection, w: Q6, rule: str, user: str) -> bool:
+    """The person holds both sides of `rule` with no confirmed open waiver."""
+    return bool(
+        (
+            await run(
+                conn,
+                "SELECT platform.sod_rule_broken(:k, platform.sod_held_keys("
+                "CAST(:t AS uuid), CAST(:u AS uuid))) AND NOT EXISTS ("
+                " SELECT 1 FROM platform.sod_waivers x WHERE x.tenant_id = CAST(:t AS uuid)"
+                " AND x.rule_key = :k AND x.revoked_at IS NULL AND x.confirmed_at IS NOT NULL)",
+                k=rule,
+                t=w.tenant_id,
+                u=user,
+            )
+        ).scalar_one()
+    )
+
+
+async def _q6_assign(
+    conn: AsyncConnection, tenant: str, workspace: str, membership: str, role: str
+) -> None:
+    await _assign_one(conn, tenant, workspace, membership, role)
+
+
+Leaked = Callable[[AsyncConnection, Leg, Leg], Awaitable[bool]]
+Step = Callable[[AsyncConnection], Awaitable[None]]
+
+
+async def _race_rounds(
+    u: Urls,
+    name: str,
+    rounds: int,
+    seed: int,
+    *,
+    tenant: str,
+    actors: tuple[str, str],
+    app_legs: bool,
+    prepare: Callable[[AsyncEngine, int], Awaitable[tuple[Step, Step]]],
+    leaked: Leaked,
+    reset: Step,
+) -> dict[str, Any]:
+    """`rounds` rounds of two legs on two held connections, question 3's
+    schedule; after each round `leaked` reads the outcome as the migrator and
+    `reset` puts the company back."""
+    rng = random.Random(seed)
+    legs = engine(u.app if app_legs else u.migrator)
+    migrator = engine(u.migrator)
+    tally: dict[str, int] = {}
+    leaks = deadlocks = serialization = 0
+    async with legs.connect() as c1, legs.connect() as c2:
+        for n in range(rounds):
+            first, second = await prepare(migrator, n)
+            plan, d1, h1, d2, h2 = schedule(rng, n)
+            one, two = await asyncio.gather(
+                leg(c1, tenant, actors[0], d1, h1, first),
+                leg(c2, tenant, actors[1], d2, h2, second),
+            )
+            for found in (one, two):
+                deadlocks += int(found.sqlstate == "40P01")
+                serialization += int(found.sqlstate == "40001")
+            outcome = (
+                f"{plan}: first={'ok' if one.ok else one.sqlstate or one.error}"
+                f" second={'ok' if two.ok else two.sqlstate or two.error}"
+            )
+            tally[outcome] = tally.get(outcome, 0) + 1
+            async with migrator.begin() as conn:
+                leaks += int(await leaked(conn, one, two))
+                await reset(conn)
+    await legs.dispose()
+    await migrator.dispose()
+    print(name, "leaks", leaks, "40P01", deadlocks, "40001", serialization, flush=True)
+    return {
+        "rounds": rounds,
+        "leaks": leaks,
+        "deadlocks_40P01": deadlocks,
+        "serialization_40001": serialization,
+        "outcomes": tally,
+    }
+
+
+async def _delete_assignments(conn: AsyncConnection, w: Q6, *pairs: tuple[str, str]) -> None:
+    for membership, role in pairs:
+        await run(
+            conn,
+            "DELETE FROM platform.role_assignments WHERE membership_id = CAST(:m AS uuid)"
+            " AND role_id = CAST(:r AS uuid)",
+            m=membership,
+            r=role,
+        )
+
+
+def race_two_assignments(w: Q6) -> dict[str, Any]:
+    """(a) L to P at A and R to P at B, both under `dw_app` through a proposal
+    confirmed in the transaction, as the role service writes."""
+
+    async def prepare(migrator: AsyncEngine, n: int) -> tuple[Step, Step]:
+        at_b = Person(w.p.user_id, w.p.subject, w.p_at_b, w.b)
+        (left_request,) = await plant_proposals(
+            migrator,
+            w.tenant_id,
+            w.owner_1,
+            "assignment_grant",
+            w.roles["left"],
+            [{"membership_id": w.p.membership_id}],
+        )
+        (right_request,) = await plant_proposals(
+            migrator,
+            w.tenant_id,
+            w.owner_1,
+            "assignment_grant",
+            w.roles["right"],
+            [{"membership_id": w.p_at_b}],
+        )
+
+        async def left(conn: AsyncConnection) -> None:
+            await assign_confirmed(conn, w.tenant_id, left_request, w.owner_2, w.p, w.roles["left"])
+
+        async def right(conn: AsyncConnection) -> None:
+            await assign_confirmed(
+                conn, w.tenant_id, right_request, w.owner_2, at_b, w.roles["right"]
+            )
+
+        return left, right
+
+    async def leaked(conn: AsyncConnection, one: Leg, two: Leg) -> bool:
+        return await _q6_broken(conn, w, Q6_STRICT, w.p.user_id)
+
+    async def reset(conn: AsyncConnection) -> None:
+        await _delete_assignments(
+            conn, w, (w.p.membership_id, w.roles["left"]), (w.p_at_b, w.roles["right"])
+        )
+
+    return {
+        "prepare": prepare,
+        "leaked": leaked,
+        "reset": reset,
+        "app_legs": True,
+        "actors": (w.owner_2, w.owner_2),
+        "tenant": w.tenant_id,
+    }
+
+
+def race_key_into_role(w: Q6) -> dict[str, Any]:
+    """(b) P holds X; the right key into X against L assigned to P, as the migrator."""
+
+    async def prepare(migrator: AsyncEngine, n: int) -> tuple[Step, Step]:
+        async def key(conn: AsyncConnection) -> None:
+            await run(
+                conn,
+                "INSERT INTO platform.tenant_role_permissions (tenant_id, role_id,"
+                " permission_key, depth) VALUES (CAST(:t AS uuid), CAST(:r AS uuid), :k,"
+                " 'workspace')",
+                t=w.tenant_id,
+                r=w.roles["x"],
+                k=Q6_KEYS["right"],
+            )
+
+        async def left(conn: AsyncConnection) -> None:
+            await _q6_assign(conn, w.tenant_id, w.a, w.p.membership_id, w.roles["left"])
+
+        return key, left
+
+    async def leaked(conn: AsyncConnection, one: Leg, two: Leg) -> bool:
+        return await _q6_broken(conn, w, Q6_STRICT, w.p.user_id)
+
+    async def reset(conn: AsyncConnection) -> None:
+        await run(
+            conn,
+            "DELETE FROM platform.tenant_role_permissions WHERE role_id = CAST(:r AS uuid)"
+            " AND permission_key = :k",
+            r=w.roles["x"],
+            k=Q6_KEYS["right"],
+        )
+        await _delete_assignments(conn, w, (w.p.membership_id, w.roles["left"]))
+
+    return {
+        "prepare": prepare,
+        "leaked": leaked,
+        "reset": reset,
+        "app_legs": False,
+        "actors": (w.owner_1, w.owner_1),
+        "tenant": w.tenant_id,
+    }
+
+
+def race_restore(w: Q6) -> dict[str, Any]:
+    """(c) R soft-deleted with P's assignment: its restore against L assigned to P."""
+
+    async def prepare(migrator: AsyncEngine, n: int) -> tuple[Step, Step]:
+        async def restore(conn: AsyncConnection) -> None:
+            await run(
+                conn,
+                "UPDATE platform.tenant_roles SET deleted_at = NULL WHERE id = CAST(:r AS uuid)",
+                r=w.roles["restorable"],
+            )
+
+        async def left(conn: AsyncConnection) -> None:
+            await _q6_assign(conn, w.tenant_id, w.a, w.p.membership_id, w.roles["left"])
+
+        return restore, left
+
+    async def leaked(conn: AsyncConnection, one: Leg, two: Leg) -> bool:
+        return await _q6_broken(conn, w, Q6_STRICT, w.p.user_id)
+
+    async def reset(conn: AsyncConnection) -> None:
+        await _delete_assignments(conn, w, (w.p.membership_id, w.roles["left"]))
+        await run(
+            conn,
+            "UPDATE platform.tenant_roles SET deleted_at = now() WHERE id = CAST(:r AS uuid)",
+            r=w.roles["restorable"],
+        )
+
+    return {
+        "prepare": prepare,
+        "leaked": leaked,
+        "reset": reset,
+        "app_legs": False,
+        "actors": (w.owner_1, w.owner_1),
+        "tenant": w.tenant_id,
+    }
+
+
+def race_two_revocations(w: Q6) -> dict[str, Any]:
+    """(d) three holders of both owner keys (an owner and two of the role); each
+    leg revokes one of the two: exactly one warning is no leak."""
+    seen = {"before": 0}
+    events = (
+        "SELECT count(*) FROM platform.outbox_events WHERE tenant_id = CAST(:t AS uuid)"
+        " AND event_type = 'platform.tenant.owner_coverage_low'"
+    )
+
+    async def prepare(migrator: AsyncEngine, n: int) -> tuple[Step, Step]:
+        async with migrator.connect() as conn:
+            seen["before"] = (await run(conn, events, t=w.coverage_tenant)).scalar_one()
+
+        def revoke(holder: Person) -> Step:
+            async def go(conn: AsyncConnection) -> None:
+                await _delete_assignments(conn, w, (holder.membership_id, w.coverage_role))
+
+            return go
+
+        return revoke(w.coverage_holders[0]), revoke(w.coverage_holders[1])
+
+    async def leaked(conn: AsyncConnection, one: Leg, two: Leg) -> bool:
+        now = (await run(conn, events, t=w.coverage_tenant)).scalar_one()
+        return bool(now - seen["before"] != 1)
+
+    async def reset(conn: AsyncConnection) -> None:
+        for holder in w.coverage_holders:
+            await _delete_assignments(conn, w, (holder.membership_id, w.coverage_role))
+        await _assign(conn, w.coverage_tenant, w.coverage_holders, w.coverage_role)
+
+    return {
+        "prepare": prepare,
+        "leaked": leaked,
+        "reset": reset,
+        "app_legs": False,
+        "actors": (w.owner_1, w.owner_1),
+        "tenant": w.coverage_tenant,
+    }
+
+
+def race_waiver_then_role(w: Q6) -> dict[str, Any]:
+    """(e) one transaction revokes the waiver D relies on and then assigns a role
+    to N; the other assigns the right side to D (who holds the left one). The
+    lock order is inverted by the fix: a deadlock is expected, a leak is not."""
+    waiver = {"id": ""}
+
+    async def prepare(migrator: AsyncEngine, n: int) -> tuple[Step, Step]:
+        waiver["id"] = str(uuid.uuid4())
+        async with migrator.begin() as conn:
+            await run(
+                conn,
+                "INSERT INTO platform.sod_waivers (id, tenant_id, rule_key, reason, granted_by)"
+                " VALUES (CAST(:w AS uuid), CAST(:t AS uuid), :k, 'đo tenant-rbac 11',"
+                " CAST(:g AS uuid))",
+                w=waiver["id"],
+                t=w.tenant_id,
+                k=Q6_WAIVABLE,
+                g=w.owner_1,
+            )
+            await run(
+                conn,
+                "UPDATE platform.sod_waivers SET confirmed_at = now(),"
+                " confirmed_by = CAST(:c AS uuid), confirm_reason = 'đo tenant-rbac 11'"
+                " WHERE id = CAST(:w AS uuid)",
+                w=waiver["id"],
+                c=w.owner_2,
+            )
+
+        async def revoke_then_assign(conn: AsyncConnection) -> None:
+            await run(
+                conn,
+                "UPDATE platform.sod_waivers SET revoked_at = now(),"
+                " revoked_by = CAST(:u AS uuid), revoke_reason = 'đo tenant-rbac 11'"
+                " WHERE id = CAST(:w AS uuid)",
+                u=w.owner_1,
+                w=waiver["id"],
+            )
+            await _q6_assign(conn, w.tenant_id, w.a, w.n.membership_id, w.roles["outside"])
+
+        async def right_to_d(conn: AsyncConnection) -> None:
+            await _q6_assign(conn, w.tenant_id, w.a, w.d.membership_id, w.roles["wright"])
+
+        return revoke_then_assign, right_to_d
+
+    async def leaked(conn: AsyncConnection, one: Leg, two: Leg) -> bool:
+        return await _q6_broken(conn, w, Q6_WAIVABLE, w.d.user_id)
+
+    async def reset(conn: AsyncConnection) -> None:
+        await _delete_assignments(
+            conn, w, (w.d.membership_id, w.roles["wright"]), (w.n.membership_id, w.roles["outside"])
+        )
+        await run(
+            conn,
+            "UPDATE platform.sod_waivers SET revoked_at = now(), revoked_by = CAST(:u AS uuid),"
+            " revoke_reason = 'đo tenant-rbac 11, dọn' WHERE id = CAST(:w AS uuid)"
+            " AND revoked_at IS NULL",
+            u=w.owner_1,
+            w=waiver["id"],
+        )
+
+    return {
+        "prepare": prepare,
+        "leaked": leaked,
+        "reset": reset,
+        "app_legs": False,
+        "actors": (w.owner_1, w.owner_1),
+        "tenant": w.tenant_id,
+    }
+
+
+Q6_RACES = {
+    "a_two_assignments": race_two_assignments,
+    "b_key_into_role": race_key_into_role,
+    "c_restore": race_restore,
+    "d_two_revocations": race_two_revocations,
+    "e_waiver_then_role": race_waiver_then_role,
+}
+
+
+async def q6(u: Urls, world: World) -> dict[str, Any]:
+    migrator = engine(u.migrator)
+    w = await plant_q6(migrator)
+    async with migrator.begin() as conn:
+        await run(
+            conn,
+            "UPDATE platform.tenant_roles SET deleted_at = now() WHERE id = CAST(:r AS uuid)",
+            r=w.roles["restorable"],
+        )
+        await _q6_assign(conn, w.tenant_id, w.a, w.p.membership_id, w.roles["restorable"])
+        locked, _ = await function_source(conn, MUTATIONS["sod_version_lock"][0])
+    await migrator.dispose()
+    out: dict[str, Any] = {"has_version_lock": VERSION_LOCK in locked}
+    for name, make in Q6_RACES.items():
+        out[name] = await _race_rounds(u, name, ROUNDS, seed=0, **make(w))
+    out["q3_sod"] = await race_sod(u, world, ROUNDS, seed=0)
+    print("q3 sod", out["q3_sod"]["leaks"], flush=True)
+    out["q3_rbac"] = await race_rbac(u, world, ROUNDS, seed=0)
+    print("q3 rbac", out["q3_rbac"]["leaks"], flush=True)
+    if out["has_version_lock"]:
+        async with without_lock(u, "sod_version_lock") as how:
+            out["mutated"] = {"how": how}
+            for name in ("a_two_assignments", "b_key_into_role", "c_restore"):
+                out["mutated"][name] = await _race_rounds(
+                    u, f"mutated {name}", ROUNDS, seed=1, **Q6_RACES[name](w)
+                )
     return out
 
 
@@ -1892,7 +2377,7 @@ async def q5(u: Urls, world: World) -> dict[str, Any]:
     return out
 
 
-QUESTIONS = {"q1": q1, "q1gc": q1gc, "q2": q2, "q3": q3, "q4": q4, "q5": q5}
+QUESTIONS = {"q1": q1, "q1gc": q1gc, "q2": q2, "q3": q3, "q4": q4, "q5": q5, "q6": q6}
 
 
 async def measure(questions: list[str], out_dir: Path) -> None:

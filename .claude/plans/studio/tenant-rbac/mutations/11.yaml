@@ -1,0 +1,119 @@
+# Mutation check of tenant-rbac ticket 11: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per row of the ticket's
+# "Đột biến" column (K1 a-d, K2 a-b, K3 a-d, K4). Each is in a migration,
+# mutated in place, taking effect when the integration suite migrates.
+mutations:
+  - name: K1 (a) no version lock before reading
+    file: db/migrations/versions/5a68710cf15a_separation_of_duties_judges_concurrent_writes_and_membership_moves.py
+    old: "        FOR NO KEY UPDATE;
+
+      "
+    new: "        ;
+
+      "
+    tests: &id001
+      - packages/python/dw_platform/tests/integration/test_role_write_races.py::test_k1b_a_right_key_into_a_held_role_then_a_left_assignment_is_refused
+      - packages/python/dw_platform/tests/integration/test_role_write_races.py::test_k1c_a_restore_of_the_right_side_then_a_left_assignment_is_refused
+  - name: K1 (b) the lock taken after the common check
+    file: db/migrations/versions/5a68710cf15a_separation_of_duties_judges_concurrent_writes_and_membership_moves.py
+    old:
+      "        PERFORM 1 FROM platform.tenant_access_versions v\n        WHERE v.tenant_id = NEW.tenant_id\n\
+      \        FOR NO KEY UPDATE;\n        IF NOT FOUND AND NOT EXISTS (\n            SELECT 1 FROM platform.tenants\
+      \ t\n            WHERE t.id = NEW.tenant_id AND t.status IN ('offboarding', 'offboarded')\n      \
+      \  ) THEN\n            RAISE EXCEPTION 'tenant % has no access version to judge separation of duties\
+      \ under',\n                NEW.tenant_id\n                USING ERRCODE = 'check_violation',\n   \
+      \                   CONSTRAINT = 'ck_roles_sod_access_version';\n        END IF;\n        IF TG_TABLE_NAME\
+      \ = 'role_assignments' THEN\"\"\",\n    ),\n"
+    new:
+      "        IF TG_TABLE_NAME = 'role_assignments' THEN\"\"\",\n    ),\n    (\n        \"\"\"     \
+      \   IF v_count > 0 THEN\"\"\",\n        \"\"\"        PERFORM 1 FROM platform.tenant_access_versions\
+      \ v\n        WHERE v.tenant_id = NEW.tenant_id\n        FOR NO KEY UPDATE;\n        IF v_count > 0\
+      \ THEN\"\"\",\n    ),\n"
+    tests: *id001
+  - name: K1 (c) FOR KEY SHARE instead of FOR NO KEY UPDATE
+    file: db/migrations/versions/5a68710cf15a_separation_of_duties_judges_concurrent_writes_and_membership_moves.py
+    old: "        FOR NO KEY UPDATE;
+
+      "
+    new: "        FOR KEY SHARE;
+
+      "
+    tests: *id001
+  - name: K1 (d) the lock reads every tenant's version row
+    file: db/migrations/versions/5a68710cf15a_separation_of_duties_judges_concurrent_writes_and_membership_moves.py
+    old:
+      "        PERFORM 1 FROM platform.tenant_access_versions v\n        WHERE v.tenant_id = NEW.tenant_id\n\
+      \        FOR NO KEY UPDATE;\n"
+    new: "        PERFORM 1 FROM platform.tenant_access_versions v\n        FOR NO KEY UPDATE;\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_write_races.py::test_k1_an_assignment_in_another_tenant_does_not_wait
+  - name: K2 (a) a missing version row does not refuse
+    file: db/migrations/versions/5a68710cf15a_separation_of_duties_judges_concurrent_writes_and_membership_moves.py
+    old:
+      "            RAISE EXCEPTION 'tenant % has no access version to judge separation of duties under',\n\
+      \                NEW.tenant_id\n                USING ERRCODE = 'check_violation',\n             \
+      \         CONSTRAINT = 'ck_roles_sod_access_version';\n"
+    new: "            NULL;
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_write_races.py::test_k2_an_active_tenant_without_its_version_row_is_refused
+  - name: K2 (b) no exemption for an offboarding tenant
+    file: db/migrations/versions/5a68710cf15a_separation_of_duties_judges_concurrent_writes_and_membership_moves.py
+    old:
+      "            WHERE t.id = NEW.tenant_id AND t.status IN ('offboarding', 'offboarded')
+
+      "
+    new: "            WHERE false
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_write_races.py::test_k2_deleting_a_user_who_assigned_a_role_passes_in_an_offboarding_tenant
+  - name: K3 (a) no trigger on a membership's change of person
+    file: db/migrations/versions/5a68710cf15a_separation_of_duties_judges_concurrent_writes_and_membership_moves.py
+    old: "    op.execute(_MEMBERSHIP_TRIGGER)
+
+      "
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_write_races.py::test_k3_moving_a_right_side_membership_to_a_left_holder_is_refused
+  - name: K3 (b) the branch judges the old person
+    file: db/migrations/versions/5a68710cf15a_separation_of_duties_judges_concurrent_writes_and_membership_moves.py
+    old: "            v_people := ARRAY[NEW.user_id];
+
+      "
+    new: "            v_people := ARRAY[OLD.user_id];
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_write_races.py::test_k3_moving_a_right_side_membership_to_a_left_holder_is_refused
+  - name: K3 (c) no WHEN on the trigger
+    file: db/migrations/versions/5a68710cf15a_separation_of_duties_judges_concurrent_writes_and_membership_moves.py
+    old: '    " WHEN (NEW.user_id IS DISTINCT FROM OLD.user_id)"
+
+      '
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_write_races.py::test_k3_setting_a_membership_to_its_own_person_is_not_judged
+  - name: K3 (d) a holder is judged in every tenant they belong to
+    file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+    old:
+      "            CROSS JOIN LATERAL platform.sod_violation(NEW.tenant_id, p.user_id) v
+
+      "
+    new:
+      "            CROSS JOIN LATERAL (SELECT DISTINCT m2.tenant_id FROM platform.memberships m2\n  \
+      \                              WHERE m2.user_id = p.user_id) mt\n            CROSS JOIN LATERAL platform.sod_violation(mt.tenant_id,\
+      \ p.user_id) v\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_write_races.py::test_k3_a_breach_in_another_tenant_does_not_refuse_a_move_here
+  - name: K4 the coverage check runs before the version row is locked
+    file: db/migrations/versions/a7ca12c36ec7_owner_coverage_per_transaction_and_hold_rule_per_anchor.py
+    old: '    " DEFERRABLE INITIALLY DEFERRED FOR EACH ROW"
+
+      '
+    new: '    " DEFERRABLE INITIALLY IMMEDIATE FOR EACH ROW"
+
+      '
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_write_races.py::test_k4_two_concurrent_revocations_below_two_tell_once

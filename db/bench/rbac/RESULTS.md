@@ -434,6 +434,57 @@ riêng cộng một) có test ở `test_role_trigger_cost_db.py`, không ở ben
 `role_assignments` giữ đường cũ (bước 3 của ticket), và đó là phần lớn của 21 giây còn lại. Cột "hoãn" sau là 0,1-0,5
 giây: một lần `check_owner_coverage` của cả giao dịch, chạy lúc commit ngoài bench.
 
+## Đo cuộc đua tách nhiệm (tenant-rbac/11): khóa dòng version trước khi đọc
+
+Ticket: [`tenant-rbac/11`](../../../.claude/plans/studio/tenant-rbac/issues/11-tach-nhiem-duoi-ghi-dong-thoi.md). Đo
+ngày 6/11/2026, cùng máy và cấu hình như trên, `setup q6 drop` một lần và `setup q2 drop` ba lần mỗi bên
+(`DW_TEST_DB_SUFFIX=_lane1b`). **Trước** là `git archive` của `fba70dc6` (head sau ticket 09) cộng harness của ticket này,
+**sau** là cùng bản cộng revision `5a68710cf15a`. `q6` dựng công ty nhỏ của riêng nó (hai workspace, năm người, khóa
+`bench.w11_*`, luật `sod_bench_w11_strict` không miễn trừ được và `sod_bench_w11_waivable`), 200 lượt mỗi cuộc đua với lịch
+`schedule()` của Câu 3 (seed 0; đột biến seed 1), hai kết nối giữ suốt các lượt; (a) dưới `dw_app` với đề xuất xác nhận
+trong chính giao dịch, còn lại dưới `dw_migrator`. Lọt: sau lượt, người đó giữ cả hai vế của luật mà không có miễn trừ mở
+(`platform.sod_rule_broken` trên `platform.sod_held_keys`); ở (d) số sự kiện của lượt khác một.
+
+| Cuộc đua                                      | Trước (200 lượt)                                            | Sau (200 lượt)                                | Bỏ `FOR NO KEY UPDATE` sau (200 lượt) |
+| --------------------------------------------- | ----------------------------------------------------------- | --------------------------------------------- | ------------------------------------- |
+| a. Gán L ở A và R ở B cho cùng người          | **0 lọt**; mỗi lượt bên thứ hai 23514                       | **0 lọt**                                     | **0 lọt**                             |
+| b. Khóa vế phải vào vai trò P giữ, cạnh gán L | **106 lọt** (100/100 lượt khóa trước, 6/100 lượt gán trước) | **0 lọt**; bên thứ hai 23514 ở 200/200        | **109 lọt**                           |
+| c. Khôi phục R (lần gán của P), cạnh gán L    | **200 lọt**                                                 | **0 lọt**; bên thứ hai 23514 ở 200/200        | **200 lọt**                           |
+| d. Hai lần gỡ, ba người giữ hai khóa chủ      | **0 lọt** (đúng một sự kiện mỗi lượt)                       | **0 lọt**                                     | không đo (hàm không đổi)              |
+| e. Thu hồi miễn trừ rồi gán, cạnh gán vế phải | **0 lọt**, 0 `40P01`                                        | **0 lọt**, **9 `40P01`** (lượt thu hồi trước) | không đo                              |
+| Câu 3 a. Miễn trừ tách nhiệm                  | 0 lọt                                                       | 0 lọt                                         |                                       |
+| Câu 3 b. Quyền của người gán                  | 0 lọt                                                       | 0 lọt                                         |                                       |
+
+Không cuộc đua nào cho `40001`; ngoài (e) không `40P01` nào. Phép đột biến làm trong database đo như Câu 3: thay đúng một
+lần `FOR NO KEY UPDATE;` trong `pg_get_functiondef` của `platform.enforce_role_separation_of_duties()` bằng `;`,
+`md5(prosrc)` `98bd34dc…` → `7bc278fd…`, chạy (a)-(c), tạo lại định nghĩa đã lưu và kiểm `md5` trùng bản gốc.
+
+Vì sao (a) không lọt cả trước lẫn khi bỏ khóa: hai lần gán cho cùng một người đi qua
+`platform.guard_operator_tenant_grants()` (BEFORE, mọi người ghi), hàm lấy `pg_advisory_xact_lock` theo người trước khi
+đọc, nên bên thứ hai chờ ở đó, rồi trigger tách nhiệm của nó đọc lần gán đã commit. Dự đoán của ticket ("ở commit gốc ba ca
+đồng thời nhận cả hai bên") sai cho (a); lỗ hổng có thật ở (b) và (c), nơi một vế đến qua bảng quyền hay lần khôi phục,
+không qua lần gán cho người đó. (d) không lọt như dự đoán: lần gỡ thứ hai chờ dòng version của lần thứ nhất, và lần kiểm hoãn
+của nó chạy lúc commit với snapshot mới; `platform.owner_coverage_after_write()` không đổi. (e) là thứ tự khóa đảo mà bước 2
+sinh ra: bên gán khóa dòng version rồi chờ `FOR SHARE` trên miễn trừ, bên thu hồi giữ miễn trừ rồi chờ dòng version ở lần
+gán của nó; Postgres hủy một bên, không bên nào lọt. Ở `fba70dc6` không đường nào ghi miễn trừ và vai trò trong một giao
+dịch (`separation_of_duties_repo.py` ghi miễn trừ một mình, offboarding chỉ DELETE).
+
+**`q2`** (trung vị ba lần, ms: ghi + hoãn + commit; số lần gọi `check_owner_coverage` / `holder_covers_grant` /
+`sod_violation` giống nhau ở hai bên):
+
+| Lần ghi                     | Trước    | Sau      | Số lần gọi (cả hai) |
+| --------------------------- | -------- | -------- | ------------------- |
+| Gán 1.000 người, một mình   | 14.579,2 | 11.659,6 | 1 / 0 / 1.000       |
+| Gán 1.000 người, cạnh `/me` | 35.374,6 | 27.202,3 | 1 / 0 / 1.000       |
+| Thêm 1 khóa                 | 456,3    | 366,5    | 1 / 1 / 0           |
+| Thêm 10 khóa, 10 lệnh       | 3.956,6  | 3.434,7  | 1 / 10 / 0          |
+| Bỏ 10 khóa                  | 398,7    | 312,6    | 1 / 10 / 0          |
+| Thêm 5 quyền object         | 442,5    | 357,2    | 1 / 5 / 0           |
+
+Không ô nào xấu hơn 10%: một lần khóa dòng mỗi lần trigger bắn, trên dòng chính lệnh đó đã khóa ở trigger tăng version, nên
+không thêm lần chờ nào; phần chênh (sau nhanh hơn 12-23%) là độ nhiễu của máy giữa hai lần đo, cùng chiều ở mọi ô kể cả các
+ô không chạm trigger tách nhiệm. Khóa vẫn lấy mỗi lần bắn, không dấu theo giao dịch (MEDIUM (a) của ticket 08).
+
 ## Chưa đo, và vì sao
 
 - **Máy tham chiếu.** Mọi số là của máy dev ở trên, PostgreSQL của compose không giới hạn và dùng chung với một làn khác.

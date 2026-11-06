@@ -1,6 +1,6 @@
 # 11 — Tách nhiệm dưới hai lần ghi đồng thời, và lần đổi người của membership
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 08, 09
 Area: studio
 Yêu cầu: R5.1, RB14, R3.12
@@ -146,19 +146,19 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
 
 ## Tiêu chí chấp nhận
 
-- [ ] R5.1: K1, ba ca đồng thời (a), (b), (c) từ chối bên thứ hai với 23514 `ck_roles_sod_memberships`, `DETAIL` có P, và
+- [x] R5.1: K1, ba ca đồng thời (a), (b), (c) từ chối bên thứ hai với 23514 `ck_roles_sod_memberships`, `DETAIL` có P, và
       sau đó P không giữ vế bên thứ hai mang; ba ca đối chứng nhận cả hai bên, bên tenant B không chờ; sai nếu một bên thứ hai được nhận, một ca
       đối chứng bị từ chối, hay một trong bốn đột biến của K1 vẫn xanh. Ở commit gốc ba ca đồng thời nhận cả hai bên.
-- [ ] RB14: K2, lần gán trên tenant `active` thiếu dòng version bị từ chối với `ck_roles_sod_access_version`, ca
+- [x] RB14: K2, lần gán trên tenant `active` thiếu dòng version bị từ chối với `ck_roles_sod_access_version`, ca
       offboarding được nhận; sai nếu lần gán được nhận, ca offboarding bị từ chối, hay một trong hai đột biến của K2 vẫn
       xanh.
-- [ ] R5.1: K3, lần đổi `user_id` làm P giữ cả hai vế bị từ chối với `ck_roles_sod_memberships` và M giữ `user_id` cũ; ca
+- [x] R5.1: K3, lần đổi `user_id` làm P giữ cả hai vế bị từ chối với `ck_roles_sod_memberships` và M giữ `user_id` cũ; ca
       M không mang khóa thuộc luật sang P đã vi phạm sẵn bị từ chối; ca hai tenant và ca cùng giá trị được nhận; sai nếu lần đổi đó được nhận, một ca đối chứng bị từ chối, hay một trong bốn đột biến của K3 vẫn
       xanh. Ở commit gốc lần đổi được nhận.
-- [ ] R3.12: K4, đúng một sự kiện sau hai lần gỡ đồng thời; sai nếu không có hay có hai sự kiện, hay đột biến của K4
+- [x] R3.12: K4, đúng một sự kiện sau hai lần gỡ đồng thời; sai nếu không có hay có hai sự kiện, hay đột biến của K4
       vẫn xanh. Ở commit gốc (sau ticket 08) dự đoán đã đúng: test này là lớp giữ, và điều làm nó đỏ được là đột biến
       của K4; nếu ở commit gốc nó đỏ thì (d) lọt và bước 2 thêm khóa vào `owner_coverage_after_write()`.
-- [ ] R5.1: mục mới của `db/bench/rbac/RESULTS.md` có, cho (a)-(d) và hai cuộc đua của Câu 3, số lọt trên 200 lượt trước
+- [x] R5.1: mục mới của `db/bench/rbac/RESULTS.md` có, cho (a)-(d) và hai cuộc đua của Câu 3, số lọt trên 200 lượt trước
       bước 2, sau bước 2 và với đột biến trong database (kèm `md5` trước, đột biến, khôi phục), cùng số `40P01` và
       `40001`; sai nếu sau bước 2 một cuộc đua lọt, có một deadlock, hay đột biến của (a)-(c) không lọt lần nào. Cùng mục
       có `q2` trước và sau (trung vị ba lần): sai nếu trung vị lần gán 1.000 người hay "thêm 10 khóa" xấu hơn 10% mà không
@@ -166,7 +166,7 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
       theo giao dịch, vì một GUC `dw_app` đặt sẵn được thì bỏ được khóa (MEDIUM (a) của ticket 08). Cuộc đua (e) không
       tính vào "không deadlock": số `40P01` của nó ghi riêng cùng kết quả tìm nơi ghi miễn trừ và vai trò trong một giao
       dịch; sai nếu (e) có một lần lọt.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_role_write_races.py packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py packages/python/dw_platform/tests/integration/test_separation_of_duties.py packages/python/dw_platform/tests/integration/test_sod_waivers.py packages/python/dw_platform/tests/integration/test_tenant_roles.py packages/python/dw_platform/tests/integration/test_service_principals_db.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py packages/python/dw_platform/tests/integration/test_offboarding.py packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_role_write_races.py packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py packages/python/dw_platform/tests/integration/test_separation_of_duties.py packages/python/dw_platform/tests/integration/test_sod_waivers.py packages/python/dw_platform/tests/integration/test_tenant_roles.py packages/python/dw_platform/tests/integration/test_service_principals_db.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py packages/python/dw_platform/tests/integration/test_offboarding.py packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py` xanh.
 
 ## Nguồn
 
@@ -234,3 +234,25 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
   một ticket riêng. (c) Nợ R3.11 của MEDIUM (a) lượt trước: phiên điều phối cắt ticket (thêm vào "Danh sách ticket").
   Sửa sau lượt này không được người đọc mới đọc lại; người dựng đọc bước 2 và K1-K3 trước.
 - 2026-11-05 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): dựng xong, `resolved`. Revision `5a68710cf15a` (trên `8ae042d86742`):
+  thân `enforce_role_separation_of_duties` của ticket 09 sửa hai neo bằng `_patched()` (câu khóa dòng version
+  `FOR NO KEY UPDATE` đầu thân, thiếu dòng thì 23514 `ck_roles_sod_access_version` trừ công ty `offboarding`/`offboarded`;
+  nhánh `memberships`), trigger `trg_memberships_separation_of_duties`; `owner_coverage_after_write()` không đổi vì (d)
+  không lọt. Số đo ở `db/bench/rbac/RESULTS.md` (mục "Đo cuộc đua tách nhiệm (tenant-rbac/11)"), harness `q6` mới trong
+  `db/bench/rbac/bench_rbac.py`: trước / sau / bỏ khóa trên 200 lượt: (a) 0 / 0 / 0, (b) 106 / 0 / 109, (c) 200 / 0 / 200,
+  (d) 0 / 0, (e) 0 lọt và 0 → 9 `40P01`, hai cuộc đua của Câu 3 0 / 0; không `40001`. `q2` trung vị ba lần không xấu hơn ở ô nào (gán 1.000 người một mình 14.579 → 11.660 ms, thêm 10 khóa 10 lệnh 3.957 → 3.435 ms; chênh là nhiễu của máy, số lần gọi bằng nhau).
+  Khác ticket, theo số đo: (1) (a) không lọt ở commit gốc và cũng không lọt khi bỏ khóa: hai lần gán cho cùng một người
+  qua `guard_operator_tenant_grants()`, hàm lấy khóa tư vấn theo người trước khi đọc, nên tiêu chí "đột biến của (a)-(c)
+  lọt" chỉ đúng cho (b), (c); test K1 (a) (`test_k1a_...`) là lớp giữ, đột biến của K1 trong `mutations/11.yaml` trỏ test
+  (b), (c). Nếu sai thì: một đường gán không qua guard R3.11 (không có ở head) thì (a) lọt khi bỏ khóa; test (a) vẫn giữ.
+  (2) (e): 9/200 `40P01` mới, đúng như bước 1 dự đoán, 0 lọt; ở head không đường nào ghi miễn trừ rồi vai trò trong một
+  giao dịch (`separation_of_duties_repo.py` chỉ ghi miễn trừ, offboarding chỉ DELETE), đường mới như thế khóa dòng version
+  trước. Test: `packages/python/dw_platform/tests/integration/test_role_write_races.py`, 15 ca (K1 sáu, K2 hai, K3 sáu,
+  K4 một). Gate nhanh: ruff, format, mypy (3 lỗi ở tệp của làn khác: `scripts/bench_json_schema.py`,
+  `tests/support/plan_shape.py`, một test `dw_studio`; tệp của ticket sạch), integration của dòng Xong 333 xanh. Phá thử
+  bằng tay cả 11 đột biến của `mutations/11.yaml`: cả 11 đỏ đúng lý do (K1 (a)-(c) bên thứ hai được nhận, (d) bên tenant
+  B chờ, K2 (b) lần xóa người dùng bị từ chối, K4 không còn `owner_coverage_low_since`). `reviewing-feature-security`:
+  ranh giới 1 (khóa đúng dòng của `NEW.tenant_id`, test hai tenant không chờ), 2 (mọi người ghi, `dw_migrator` cũng xét,
+  test K3 dưới `dw_migrator`, K1 (a) dưới `dw_app`), 3 không áp (không đường agent), 5 (một hàm cho bốn bảng), 6 (lần đổi
+  người là lối cuối của R5.1, test ở tầng database); 4 không áp (không cache). Thứ tự khóa: dòng version lấy trong trigger
+  AFTER của tách nhiệm, sau khóa dòng tenant của `refuse_losing_the_last_owner` (tên `ck_` xếp trước), nên không đảo thêm.
