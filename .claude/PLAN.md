@@ -32,7 +32,7 @@ step or a decision owed changes. A new area gets its own file and a row here.
   a shipped lead-care pack (YC118-YC125, ADR-0128 Proposed), built. D19 (2026-11-04):
   HITL drops by evidence per decision class (ADR-0129 Proposed, spec `autonomy-evidence`
   needs-info until Q1-Q3 are measured on lead-care's 200 synthetic leads, queue item 16).
-  **Next:** queue item 15 in `studio.md` (two lanes; CI integration red since `b7a384ee`, 2026-11-05: `studio.md` "Ngắt lần tư"); heavy checks at its close.
+  **Next:** queue item 15 in `studio.md` (two lanes; CI green again on `fba70dc6`, 2026-11-06); heavy checks at its close.
 
 ## Decisions Đạt owes
 
