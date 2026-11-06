@@ -65,7 +65,12 @@ from dw_agent_runtime.adapters.model_retry import ModelRetryMiddleware
 from dw_agent_runtime.adapters.recalled_memory import MemoryRecallPort, RecalledMemoryMiddleware
 from dw_agent_runtime.adapters.residency_middleware import ResidencyGateMiddleware
 from dw_agent_runtime.adapters.run_control_middleware import RunControlMiddleware
-from dw_agent_runtime.adapters.studio_tools import PinnedTools, StrictToolsMiddleware
+from dw_agent_runtime.adapters.studio_tools import (
+    FIELD_NARROWING,
+    FieldSecurityToolSchemaMiddleware,
+    PinnedTools,
+    StrictToolsMiddleware,
+)
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec, sub_agent_middleware
 from dw_agent_runtime.adapters.system_prompt import WorkerSystemPrompt
 from dw_agent_runtime.contracts import RunContext, ToolDefinition
@@ -75,7 +80,7 @@ from dw_agent_runtime.model.gateway import UsageRecorderPort
 from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.resolver import ModelResolver
-from dw_agent_runtime.ports import LimitsPort
+from dw_agent_runtime.ports import LimitsPort, ObjectFieldsPort
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.tools import ToolRegistry
 from dw_kernel.ports import IdGenerator, UtcClock
@@ -181,6 +186,10 @@ class AgentSpec:
     # agent's only tools and their definitions are what every middleware is
     # built from: `offered` stays empty and `registry` is not read.
     pinned: PinnedTools | None = None
+    # What the run's actor reads of each object now, which a Studio agent's
+    # object tools are narrowed to at every model call (tools-and-skills R6.3).
+    # Required once a pinned tool lists an object's fields.
+    object_fields: ObjectFieldsPort | None = None
 
 
 def offered_definitions(spec: AgentSpec) -> list[ToolDefinition]:
@@ -241,6 +250,7 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
         ),
         UnreadableFilesMiddleware(),
         OfferedToolsOnlyMiddleware(offered),
+        *_field_security(spec),
         ScopedToolsMiddleware(offered),
         # Decides which tools are gated per call from the run's autonomy, not once
         # here from the tool. It used to freeze that set at build time, and an
@@ -298,6 +308,26 @@ def platform_middleware(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
             )
         )
     return stack
+
+
+def _field_security(spec: AgentSpec) -> list[AgentMiddleware[Any, Any]]:
+    """A Studio agent's object tools narrowed to what its actor reads, at
+    every model call (tools-and-skills R6.3). Closed on a gap: a pinned tool
+    that lists an object's fields and no port to ask is a `ConfigError`, never
+    a model shown fields nobody checked."""
+    if spec.pinned is None:
+        return []
+    narrowed = [
+        tool.name for tool in spec.pinned.tools if (tool.metadata or {}).get(FIELD_NARROWING)
+    ]
+    if spec.object_fields is None:
+        if narrowed:
+            raise ConfigError(
+                "an object tool needs the run's field access to be shown",
+                details={"tools": narrowed},
+            )
+        return []
+    return [FieldSecurityToolSchemaMiddleware(spec.object_fields)]
 
 
 def build_agent(

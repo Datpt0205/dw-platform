@@ -21,6 +21,14 @@ and cut by `contain_tool_output`, the one place that does it; the artifact
 (the execution row, the pinned version, whether it was cut) stays beside the
 message and never reaches the model.
 
+An object tool (ticket 03) is shown narrower than the executor checks it: its
+behaviour's `args_schema` is the view as built (a field soft-deleted since the
+pin left out, R6.5), and its `FieldNarrowing` travels in the tool's metadata
+for `FieldSecurityToolSchemaMiddleware`, which narrows the view to what the
+run's actor reads at every model call (R6.3). The executor still checks the
+full pinned schema, so a call naming a hidden or soft-deleted field reaches
+RecordService and is refused there.
+
 Strict mode (R4.4, R4.6; ticket 04) is two things at once, decided once per
 turn in `PinnedTools.strict`: every tool's args schema in its strict form, and
 `strict=True` on the provider's tool definitions (`StrictToolsMiddleware`),
@@ -37,16 +45,18 @@ import copy as copying
 from collections.abc import Awaitable, Callable, Mapping, Sequence
 from dataclasses import dataclass
 from functools import partial
-from typing import Any, Protocol
+from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, ModelRequest, ModelResponse
 from langchain_core.tools import StructuredTool
+from langgraph.runtime import get_runtime
 
 from dw_agent_runtime.adapters.langchain_tools import tool_call
 from dw_agent_runtime.contracts import (
     MAX_MODEL_TOOLS,
     MAX_TOOL_NAME_CHARS,
     MODEL_TOOL_NAME,
+    RunContext,
     ToolDefinition,
     model_facing_name,
 )
@@ -55,38 +65,33 @@ from dw_agent_runtime.model.copy import RuntimeCopy
 from dw_agent_runtime.model.profiles import ModelCapabilities
 from dw_agent_runtime.model.prompts import ContainedOutput, contain_tool_output
 from dw_agent_runtime.pinned import PinnedResolver
-from dw_agent_runtime.ports import PinnedEntry
-from dw_agent_runtime.tool_kinds import ToolAssembler, ToolBinding, ToolContract
-from dw_agent_runtime.tools import RegisteredTool
-from dw_kernel.errors import ConfigError
+from dw_agent_runtime.ports import ObjectFieldsPort
+from dw_agent_runtime.tool_kinds import (
+    CompiledTool,
+    PinnedToolSource,
+    ToolAssembler,
+    ToolsetEntry,
+)
+from dw_agent_runtime.tools import FieldNarrowing, ModelView, RegisteredTool
+from dw_kernel.errors import ConfigError, NotFoundError, PermissionDeniedError
 
+__all__ = [
+    "FIELD_NARROWING",
+    "CompiledTool",
+    "FieldSecurityToolSchemaMiddleware",
+    "PinnedToolSource",
+    "PinnedTools",
+    "StrictToolsMiddleware",
+    "ToolsetEntry",
+    "drop_strict_nulls",
+    "render_input_schema",
+    "studio_tools",
+    "turn_capabilities",
+]
 
-class ToolsetEntry(Protocol):
-    """One entry of a pinned agent's `toolset`, as the runtime reads it: its
-    tool kind and the `(kind, key)` the run manifest pinned it under."""
-
-    @property
-    def kind(self) -> str: ...
-
-    def pin(self) -> tuple[str, str]: ...
-
-
-@dataclass(frozen=True)
-class CompiledTool:
-    """One tool a toolset entry offers: what the kind's factory builds from."""
-
-    binding: ToolBinding
-    contract: ToolContract
-
-
-class PinnedToolSource(Protocol):
-    """One tool kind's way from a toolset entry and what the run pinned for it
-    to the tools it offers: tools-and-skills/03's object generator
-    (`object_crud`, a tool per enabled operation) and connections-and-vault/05's
-    action compiler (`connector_action`). The table `kind -> source` is the
-    composition root's, beside the assembler's `kind -> factory`."""
-
-    def compile(self, entry: ToolsetEntry, pinned: PinnedEntry) -> Sequence[CompiledTool]: ...
+# The `StructuredTool.metadata` key a tool's `FieldNarrowing` travels under,
+# already rendered for the turn's strict mode; the model never sees metadata.
+FIELD_NARROWING = "field_narrowing"
 
 
 @dataclass(frozen=True)
@@ -199,7 +204,18 @@ def _pinned_tool(
 ) -> StructuredTool:
     registered, version_id = built.registered, built.version_id
     definition = registered.definition
-    original = registered.behaviour.input_schema()
+    behaviour = registered.behaviour
+    original = behaviour.input_schema()
+    # What the model is shown, which may be narrower than what the executor
+    # checks (`ToolBehaviour.narrowing`); a JSON Schema tool's is its input.
+    shown = behaviour.args_schema if isinstance(behaviour.args_schema, dict) else original
+    metadata: dict[str, Any] = {
+        "tool_version_id": version_id,
+        "content_hash": built.content_hash,
+        "kind": built.kind,
+    }
+    if behaviour.narrowing is not None:
+        metadata[FIELD_NARROWING] = _rendered(behaviour.narrowing, capabilities)
 
     def present(result: ToolResult) -> ContainedOutput:
         return contain_tool_output(
@@ -215,7 +231,7 @@ def _pinned_tool(
     return StructuredTool(
         name=model_facing_name(definition.name),
         description=definition.description,
-        args_schema=render_input_schema(original, capabilities),
+        args_schema=render_input_schema(shown, capabilities),
         coroutine=tool_call(
             registered,
             executor,
@@ -227,12 +243,19 @@ def _pinned_tool(
             admit=partial(drop_strict_nulls, original) if capabilities.strict_tools else None,
         ),
         response_format="content_and_artifact",
-        metadata={
-            "tool_version_id": version_id,
-            "content_hash": built.content_hash,
-            "kind": built.kind,
-        },
+        metadata=metadata,
     )
+
+
+def _rendered(narrowing: FieldNarrowing, capabilities: ModelCapabilities) -> FieldNarrowing:
+    """``narrowing`` whose view comes out in the turn's form (R4.4): a strict
+    turn's narrowed schema is strict too, never one tool plain among strict."""
+
+    def view(readable: frozenset[str]) -> ModelView:
+        seen = narrowing.view(readable)
+        return ModelView(render_input_schema(seen.args_schema, capabilities), seen.description)
+
+    return FieldNarrowing(narrowing.object, view)
 
 
 # ------------------------------------------------------- strict (R4.4, R4.6) --
@@ -365,3 +388,61 @@ class StrictToolsMiddleware(AgentMiddleware):
     ) -> ModelResponse:
         settings = {**request.model_settings, "strict": True}
         return await handler(request.override(model_settings=settings))
+
+
+# ------------------------------------------------- field security (R6.3) --
+
+
+class FieldSecurityToolSchemaMiddleware(AgentMiddleware):
+    """Every object tool's model view narrowed to the fields the run's actor
+    reads now (tools-and-skills R6.3; field-security R4.2, R4.8): at every
+    model call, asked of `ObjectFieldsPort` once per object per call and never
+    kept, so a read revoked between two calls of one run is out of the next
+    one. It only narrows (`FieldNarrowing`); the executor still checks a call
+    against the full pinned schema, and RecordService refuses a filter on a
+    field the caller cannot read (`field_not_readable`). The one place a tool's
+    view follows field security: field-security/02 adds its cases here.
+
+    An object the actor may no longer read at all (`not_found`, `forbidden`)
+    takes its tools out of the offer; any other failure fails the call."""
+
+    def __init__(self, fields: ObjectFieldsPort) -> None:
+        super().__init__()
+        self._fields = fields
+
+    async def awrap_model_call(
+        self,
+        request: ModelRequest,
+        handler: Callable[[ModelRequest], Awaitable[ModelResponse]],
+    ) -> ModelResponse:
+        run = get_runtime(RunContext).context
+        readable: dict[str, frozenset[str] | None] = {}
+        offered: list[Any] = []
+        for tool in request.tools:
+            narrowing = _narrowing_of(tool) if isinstance(tool, StructuredTool) else None
+            if narrowing is None or not isinstance(tool, StructuredTool):
+                offered.append(tool)
+                continue
+            if narrowing.object not in readable:
+                readable[narrowing.object] = await self._readable(run, narrowing.object)
+            names = readable[narrowing.object]
+            if names is None:
+                continue
+            view = narrowing.view(names)
+            offered.append(
+                tool.model_copy(
+                    update={"args_schema": view.args_schema, "description": view.description}
+                )
+            )
+        return await handler(request.override(tools=offered))
+
+    async def _readable(self, run: RunContext, api_name: str) -> frozenset[str] | None:
+        try:
+            return await self._fields.readable(run, api_name)
+        except (NotFoundError, PermissionDeniedError):
+            return None
+
+
+def _narrowing_of(tool: StructuredTool) -> FieldNarrowing | None:
+    found = (tool.metadata or {}).get(FIELD_NARROWING)
+    return found if isinstance(found, FieldNarrowing) else None

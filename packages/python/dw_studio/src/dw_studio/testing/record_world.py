@@ -8,8 +8,8 @@ whose role carries `obj.<object>.<action>` at a depth and `fld.*` on fields,
 as the migrator, the way `test_field_access_db.py` does. `person_door` is the
 API's door (`user_session`); `plant_run` and `run_door` are a workflow's or
 an agent's, bound from the run row the way the runtime binds them (the run
-row itself is planted by the test: only the run door inserts a Studio run in
-source, `test_run_request_door.py`).
+row itself is planted by the test, `tests/support/studio_planted_runs.py`:
+only the run door inserts a Studio run in source, `test_run_request_door.py`).
 """
 
 from __future__ import annotations
@@ -22,6 +22,7 @@ from typing import Any, Literal
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
+from dw_kernel.http_conditions import ExpectedVersion
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_platform.application.access_context import AccessContext
 from dw_platform.testing.members import add_tenant_member
@@ -73,6 +74,35 @@ async def publish_object(
         await publish_on(tx.session, sealed.version_id)
         await entry.publish_hook(tx, sealed.version_id)
     return row.id
+
+
+async def publish_next(
+    sessions: async_sessionmaker[AsyncSession],
+    manager: Person,
+    object_id: uuid.UUID,
+    document: Mapping[str, Any],
+) -> uuid.UUID:
+    """A next version of the object, ``document``, live the same legal way as
+    `publish_object`'s (a draft from the live version, a seal, an approved
+    publish, the kind's hook); the new version's id."""
+    ids = Uuid7Generator()
+    registry = ArtifactKindRegistry(running_kinds())
+    service = ArtifactService(SqlArtifactStore(sessions, ids), registry, SystemClock(), ids)
+    context = manager.context()
+    row = await service.get(context, object_id)
+    draft = await service.create_draft(context, object_id, ExpectedVersion(row.row_version))
+    saved = await service.save_draft(
+        context, object_id, ExpectedVersion(draft.row_version), dict(document)
+    )
+    async with service.store.transaction(context) as tx:
+        sealed = await service.seal(tx, object_id, saved.version.row_version)
+    entry = registry.get("object")
+    assert entry is not None and entry.publish_hook is not None
+    async with service.store.transaction(context) as tx:
+        assert isinstance(tx, SqlArtifactTx)
+        await publish_on(tx.session, sealed.version_id)
+        await entry.publish_hook(tx, sealed.version_id)
+    return sealed.version_id
 
 
 async def field_ids(conn: AsyncConnection, object_id: uuid.UUID) -> dict[str, uuid.UUID]:

@@ -36,11 +36,14 @@ def grader_table() -> dict[str, Grader]:
     run (`merge_graders` raises, naming it)."""
     from dw_evals.graders import GRADERS, merge_graders
     from dw_studio.testing.agent_frame_evals import GRADERS as AGENT_FRAME_GRADERS
+    from dw_studio.testing.object_tool_evals import GRADERS as OBJECT_TOOL_GRADERS
 
     tables: list[Mapping[str, Grader]] = [GRADERS]
     # ---- BOUNDED CONTEXT GRADERS REGISTER HERE ----------------------------
     # Studio's agent frame (agent-builder 02): `studio.agent_frame.<gate>`.
     tables.append(AGENT_FRAME_GRADERS)
+    # Studio's object tools (tools-and-skills 03): `studio.object_tools.<gate>`.
+    tables.append(OBJECT_TOOL_GRADERS)
     return merge_graders(*tables)
 
 

@@ -51,6 +51,26 @@ class ToolPayload(BaseModel):
 
 
 @dataclass(frozen=True)
+class ModelView:
+    """What the model is shown of one tool: its args schema and description."""
+
+    args_schema: dict[str, Any]
+    description: str
+
+
+@dataclass(frozen=True)
+class FieldNarrowing:
+    """A tool whose model-facing view names the fields of one company object
+    (an object tool, tools-and-skills R6.3): ``view`` is that view for the
+    fields the run's principal reads now, asked at every model call by
+    `FieldSecurityToolSchemaMiddleware` and never kept. It only narrows: a
+    field outside what the tool was built with never enters the view."""
+
+    object: str
+    view: Callable[[frozenset[str]], ModelView]
+
+
+@dataclass(frozen=True)
 class ToolBehaviour:
     """How one tool checks what it takes and gives, and what it runs.
 
@@ -71,6 +91,10 @@ class ToolBehaviour:
     # between the card and the record - which left the approver authorizing a
     # write to a customer record with a UUID as the only thing on screen.
     approval_preview: ApprovalPreview | None = None
+    # Set only for a tool whose model view lists an object's fields; `args_schema`
+    # is then the view as built, which the executor's schema may exceed (a
+    # field soft-deleted since the pin stays checkable, tools-and-skills R6.7).
+    narrowing: FieldNarrowing | None = None
 
 
 def _pydantic_problems(exc: ValidationError) -> list[dict[str, str]]:

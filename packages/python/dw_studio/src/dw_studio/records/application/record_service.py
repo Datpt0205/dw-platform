@@ -343,6 +343,18 @@ class RecordService:
             creatable=_at_least(accesses["create"], "read"),
         )
 
+    async def readable(self, door: RecordDoor, api_name: str) -> frozenset[str]:
+        """The fields the caller reads of the object now, by `api_name`: what
+        an agent's object tool is narrowed to before each model call
+        (tools-and-skills R6.3), from the same decision `get` and `query`
+        read in their own transaction, never kept."""
+        async with door.transaction() as raw:
+            call = await self._enter(raw, door, api_name, "read", "live")
+            access = await self.fields.for_object(
+                raw, call.ctx.object_id, "read", caller=call.caller
+            )
+            return readable_names(access)
+
     async def require(self, door: RecordDoor, api_name: str, action: ObjectAction) -> None:
         """The route's own check before an idempotency key row is read
         (app-standards R2.17): the object, then its action key."""

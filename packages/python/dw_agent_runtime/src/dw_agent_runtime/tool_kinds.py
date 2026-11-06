@@ -12,11 +12,12 @@ injection), so `build` takes the binding and the contract alone.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Final, Literal, Protocol
 
 from dw_agent_runtime.contracts import ApprovalPolicy, SideEffectLevel, ToolDefinition
+from dw_agent_runtime.ports import PinnedEntry
 from dw_agent_runtime.tool_schema import check_profile
 from dw_agent_runtime.tools import RegisteredTool, ToolBehaviour, ToolRegistry
 from dw_kernel.errors import ConfigError, DomainError
@@ -121,6 +122,37 @@ class ToolKindFactory(Protocol):
     """One kind's behaviour (`object_crud`, `connector_action` in W1)."""
 
     def build(self, binding: ToolBinding, contract: ToolContract) -> ToolBehaviour: ...
+
+
+class ToolsetEntry(Protocol):
+    """One entry of a pinned agent's `toolset`, as the runtime reads it: its
+    tool kind and the `(kind, key)` the run manifest pinned it under."""
+
+    @property
+    def kind(self) -> str: ...
+
+    def pin(self) -> tuple[str, str]: ...
+
+
+@dataclass(frozen=True)
+class CompiledTool:
+    """One tool a toolset entry offers: what the kind's factory builds from."""
+
+    binding: ToolBinding
+    contract: ToolContract
+
+
+class PinnedToolSource(Protocol):
+    """One tool kind's way from a toolset entry and what the run pinned for it
+    to the tools it offers: tools-and-skills/03's object generator
+    (`object_crud`, a tool per enabled operation) and connections-and-vault/05's
+    action compiler (`connector_action`). The table `kind -> source` is the
+    composition root's, beside the assembler's `kind -> factory`. Here, beside
+    the factory, and not with the LangChain wrapping in `adapters.studio_tools`,
+    so a source in a package that never imports LangChain (Studio's) can name
+    it."""
+
+    def compile(self, entry: ToolsetEntry, pinned: PinnedEntry) -> Sequence[CompiledTool]: ...
 
 
 @dataclass(frozen=True)

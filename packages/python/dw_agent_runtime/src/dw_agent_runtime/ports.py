@@ -457,6 +457,52 @@ class PinnedManifest:
 
 
 @dataclass(frozen=True, slots=True)
+class ObjectSearch:
+    """One `obj_<api_name>__search` call, as the object tool hands it on
+    (tools-and-skills R6.1): ``filter`` is the `dw_kernel.filters` tree the
+    model's leaves make (an `$and` of them, or None), ``fields`` the fields of
+    the object version the run pinned, so a field added after the pin never
+    reaches the output."""
+
+    filter: Mapping[str, Any] | None
+    order_by: str | None
+    limit: int
+    cursor: str | None
+    fields: frozenset[str]
+
+
+class ObjectDataPort(Protocol):
+    """A company's records as an agent's object tool reads them
+    (tools-and-skills R6.2, R6.4, R6.6): through RecordService, as the run's
+    actor (its principal within its data boundary, `agent_record_session`),
+    asked again at every call. Custom-objects satisfies it; the runtime never
+    reads a record itself. A record the actor cannot see, another company's
+    or none at all, is the same `NotFoundError`."""
+
+    async def search(
+        self, run: RunContext, api_name: str, request: ObjectSearch
+    ) -> Mapping[str, Any]:
+        """`{next_cursor, items}`, each item a record as the records API shows
+        it, without `permissions` or `hidden_fields`; a refused query is a
+        `DomainError` naming its reason codes (`field_not_readable`, ...)."""
+        ...
+
+    async def get(
+        self, run: RunContext, api_name: str, record_id: UUID, fields: frozenset[str]
+    ) -> Mapping[str, Any]:
+        """One record, as an item of `search`, with only ``fields``."""
+        ...
+
+
+class ObjectFieldsPort(Protocol):
+    """Which fields of an object the run's actor reads now (field-security
+    R4.2): what `FieldSecurityToolSchemaMiddleware` narrows a tool's model
+    view to at every model call. Never cached."""
+
+    async def readable(self, run: RunContext, api_name: str) -> frozenset[str]: ...
+
+
+@dataclass(frozen=True, slots=True)
 class BoundConnection:
     """The connection a run's manifest pinned under one binding name, with
     what `connection_usable` is asked with at the egress call: the run's

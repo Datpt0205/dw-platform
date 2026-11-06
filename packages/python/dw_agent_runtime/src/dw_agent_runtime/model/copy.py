@@ -119,3 +119,32 @@ def load_runtime_copy(path: Path) -> RuntimeCopy:
         return RuntimeCopy.model_validate(yaml.safe_load(raw))
     except (yaml.YAMLError, ValidationError) as exc:
         raise ConfigError(f"runtime copy {path.name} invalid: {exc}") from exc
+
+
+class CopyCodes(BaseModel):
+    """A copy book of words by code (`configs/copy/<book>.yaml` with `codes:`),
+    the shape the reason-code and audit-action fragments use too. Whoever reads
+    one checks the codes it needs; an empty sentence never loads."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: str = Field(pattern=r"^1\.0$")
+    copy_id: str
+    version: str = Field(pattern=_SEMVER_PATTERN)
+    codes: dict[str, str]
+
+    def text(self, code: str) -> str:
+        found = self.codes.get(code)
+        if found is None:
+            raise ConfigError(f"copy {self.copy_id}@{self.version} has no {code}")
+        return found
+
+
+def load_copy_codes(path: Path) -> CopyCodes:
+    try:
+        loaded = CopyCodes.model_validate(yaml.safe_load(path.read_bytes()))
+    except (OSError, yaml.YAMLError, ValidationError) as exc:
+        raise ConfigError(f"copy {path.name} invalid: {exc}") from exc
+    if any(not text.strip() for text in loaded.codes.values()):
+        raise ConfigError(f"copy {path.name} has an empty sentence")
+    return loaded

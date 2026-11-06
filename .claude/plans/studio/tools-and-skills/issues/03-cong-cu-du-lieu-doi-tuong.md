@@ -1,6 +1,6 @@
 # 03 — Công cụ dữ liệu đối tượng theo phiên bản lược đồ, dùng quyền của người gọi
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 02, .claude/plans/studio/custom-objects/issues/04-truy-van-ban-ghi.md, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md
 Area: studio
 Yêu cầu: R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, TS8, TS9, TS11
@@ -141,3 +141,56 @@ untrusted` (giá trị bản ghi do người ngoài viết), `data_classificatio
   8 000 ký tự; `[đã cắt]` và `next_cursor` đứng trước giữ cho model biết còn trang sau; đo ở lúc đóng hàng.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (B:compliance-pdpl/05~tools-and-skills/03, HIGH): công cụ sinh ghi `data_classification` bằng giá trị `pd_category` (`basic`) trong khi compliance-pdpl/05 đọc tập đóng `personal`, `sensitive`, `secret` của ADR-0116 (Accepted) quyết 4, nên một lead có `phone` không cho nhãn B (mở khi lạ); nay ánh xạ sang tập đóng. Chủ của trường là tools-and-skills, bên đọc là compliance-pdpl/05, không gỡ (ADR-0106 (Accepted) bổ sung 4/11/2026). Nếu sai thì: compliance-pdpl/05 đọc `pd_category` của lược đồ công cụ thay `data_classification`.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): nối ở hai root dời sang agent-builder/03. Chưa root nào dựng
+  lượt agent Studio (`studio_tools` không có bên gọi ở API hay worker), nên một bảng `kind -> factory` ở root lúc này
+  là khai mà không ai đọc (failure-modes #1). Ticket này giao đủ mảnh, test nối chúng như composition root sẽ nối:
+  `ObjectToolGenerator.load(reader, tenant, entries, data=..., copy=...)` là cả nguồn `object_crud` lẫn nhà máy của
+  `ToolAssembler`, `RecordObjectData(records, door)` cài `ObjectDataPort` và `ObjectFieldsPort` với `door` là
+  `agent_record_session` của lượt (`test_object_tools_db.py::start`); `AgentSpec.object_fields` bắt buộc khi một công cụ
+  ghim mang `FieldNarrowing` (thiếu là `ConfigError`). Docstring của `bootstrap/studio.py` và `dw_worker/main.py` trỏ về
+  agent-builder/03. Nếu sai thì: thêm `StudioContainer.object_tools` và bản worker trước khi có bên đọc.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): eval là `evals/datasets/studio_object_tools@1.0.0.json` (định dạng
+  smoke, như `studio_agent_frame@1.0.0.json`), không `.jsonl`: `run_evals.py --smoke` chỉ đọc `*.json`, nên một
+  `.jsonl` không script nào đọc là failure-modes #1. Năm grader tất định `studio.object_tools.*` ở
+  `dw_studio.testing.object_tool_evals`, đăng ký ở seam của `scripts/run_evals.py`; 8 ca phủ tiêm prompt (mô tả trường,
+  mô tả đối tượng, giá trị bản ghi, `</tool_output>`), chéo công ty, thiếu bằng chứng và trường ẩn; ca model thật vẫn chờ
+  Đạt 21. Nếu sai thì: thêm script `eval_object_tools.py` đọc `.jsonl` như `eval_wf_ai.py`.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): W1 không có xóa mềm trường (`studio.field_defs` không có cột trạng
+  thái; xóa trường là custom-objects W2, R2.4 từ chối bỏ trường đã phát hành), nên "trường đã xóa mềm lúc dựng" là
+  trường phiên bản ghim có mà định nghĩa đang sống (`applied_object`, đọc dưới công ty của lượt lúc `load`) không còn;
+  không migration nào. Ticket W2 thêm xóa mềm phải làm `applied_object` bỏ trường đó, thì R6.5 và R6.7 đúng mà không
+  sửa ở đây. Test giả lập bằng cách xóa dòng `field_defs` như migrator. Nếu sai thì: bộ sinh đọc cột trạng thái W2 thêm.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): `ToolDefinition` chưa có trường `output_trust` (ADR-0116 quyết 4 nêu
+  nó, chưa bên đọc nào); bộ bọc gắn `trust="untrusted"` cho mọi công cụ Studio, nên công cụ đối tượng mang nhãn đó ở chỗ
+  model đọc. Thêm trường khi phân tích năng lực của ADR-0125 có bên đọc. Nếu sai thì: thêm `ToolDefinition.output_trust`
+  mặc định `untrusted` và `contain_tool_output` đọc nó.
+- 2026-11-06 (agent): làm khác ticket. (1) `CompiledTool`, `ToolsetEntry`, `PinnedToolSource` dời từ
+  `adapters/studio_tools.py` sang `tool_kinds.py` (vẫn xuất lại ở chỗ cũ): `dw_studio` không được import LangChain.
+  (2) Lược đồ model thấy khác lược đồ executor qua `ToolBehaviour.args_schema` và `ToolBehaviour.narrowing`
+  (`FieldNarrowing(object, view)`); `studio_tools` dựng `args_schema` từ đó và đưa `FieldNarrowing` (đã theo strict của
+  lượt) vào metadata; `FieldSecurityToolSchemaMiddleware` ở `platform_middleware` khi agent có công cụ ghim, hỏi
+  `ObjectFieldsPort.readable` một lần mỗi đối tượng mỗi lời gọi model, không đệm; đối tượng không còn đọc được
+  (`not_found`, `forbidden`) rời khỏi danh sách công cụ của lời gọi đó. (3) `RecordService.readable(door, api_name)` mới.
+  (4) Trường lọc được là trường mà phiên bản ghim đặt `indexed` hay `is_unique` (có slot, ADR-0107 quyết 1), đọc từ tài
+  liệu. (5) `order_by` W1 chỉ `name`, `created_at`, `updated_at`, nên R6.7 qua `order_by` không tới được; test qua
+  `filters`. (6) Chữ cố định ở `configs/copy/studio_object_tools.yaml` (`studio.object_tools.*`), đọc qua
+  `CopyCodes`/`load_copy_codes` mới của `dw_agent_runtime.model.copy`; release manifest sinh lại. (7) `get` cắt về trường
+  ghim ở `RecordObjectData` (RecordService không có `fields` cho một bản ghi), `search` cắt ở RecordService qua `fields`;
+  mỗi lớp một test và một mutation. (8) Lượt agent ở A0 cần người duyệt cả lời gọi đọc (bậc `none` > A0); mức tự chủ do
+  agent-builder/03 giải, test chạy ở A1. (9) `plant_run` của `test_record_service.py` dời sang
+  `tests/support/studio_planted_runs.py` (quét nguồn cấm chèn lượt Studio trong `src/`); thêm `publish_next` ở
+  `dw_studio.testing.record_world`.
+- 2026-11-06 (agent): resolved. Test: `test_object_tools.py` 12 và `test_object_tool_evals.py` 5 (unit `dw_studio`),
+  `test_field_security_tools.py` 3 (unit runtime), `test_object_tools_db.py` 8 integration (`_lane2`), cùng
+  `test_record_service.py` 28 chạy lại sau khi dời `plant_run`; eval `studio_object_tools@1.0.0` 8/8, phủ an ninh đủ.
+  `reviewing-feature-security` đã đọc: cách ly (lead công ty A từ lượt công ty B → `not_found` như id ngẫu nhiên; đối tượng
+  công ty khác → `object_unavailable`), quyền (RecordService hỏi lại ở mỗi lời gọi; tầm hạ giữa hai lời gọi → `not_found`;
+  `phone` ẩn vắng khỏi đầu ra và lược đồ, lọc trên nó → `field_not_readable`), tự chủ (đọc `none`/`never`, `simulate_safe`
+  đọc thật, không công cụ ghi), nội dung không tin cậy (mô tả trong một khối `<input>`, đầu ra trong `<tool_output>`, eval
+  tiêm), kiểm toán (lời gọi ghi `tool_executions` và audit của executor; không ghi bản ghi), vòng đời và mặc định (không
+  bộ đệm mới, thiếu cổng là `ConfigError`, lỗi khác làm hỏng lời gọi). Không migration, route, ảnh hay URL ra ngoài.
+  `mutations/03.yaml` 18 mutation; 12 qua test unit và 6 qua test integration trên tệp của ticket đã bẻ bằng tay (có lưu bản sao): tất cả
+  đỏ sau khi sửa test "không mở rộng" và tách lớp `fields` của `search`. Chờ lúc đóng hàng: `mutate.py` cả 18 (gồm hai
+  mutation trên `record_query.py` và `dw_kernel/filters.py` chưa bẻ tay), `make test-integration` đầy đủ, latency của
+  lời gọi `obj_<api_name>__search`/`__get` qua executor và của `RecordService.readable` mỗi lời gọi model, và M3 (trang 20
+  bản ghi so với trần 8 000 ký tự).

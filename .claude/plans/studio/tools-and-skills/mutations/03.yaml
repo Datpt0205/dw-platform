@@ -1,0 +1,127 @@
+# Mutation check of tools-and-skills ticket 03: scripts/mutate.py runs this file
+# at the queue's close. One mutation per control (R6.1-R6.8; TS8, TS9, TS11), and
+# per layer that holds one: the model's view (the generator, the middleware, the
+# stack) and the call (the executor's schema, RecordService) for field security
+# and the soft-deleted field (failure-modes #3, #5).
+mutations:
+  # ---------------------------------------------------------------- R6.1 --
+  - name: R6.1 the handler asks RecordService for every field, not the pinned ones
+    file: packages/python/dw_studio/src/dw_studio/records/presentation/object_data.py
+    old: '                fields=",".join(chosen) or ID_FIELD,'
+    new: "                fields=None,"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_tools_db.py::test_r6_1_r6_2_search_reads_the_pinned_fields_as_the_runs_actor
+  - name: R6.1 get returns every readable field, not the pinned ones
+    file: packages/python/dw_studio/src/dw_studio/records/presentation/object_data.py
+    old: "        return tool_record(view, fields)"
+    new: "        return tool_record(view)"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_tools_db.py::test_r6_1_r6_2_search_reads_the_pinned_fields_as_the_runs_actor
+  - name: R6.1 a field with no slot is offered as a filter
+    file: packages/python/dw_studio/src/dw_studio/records/application/object_tools.py
+    old: "    filterable = tuple(name for name in custom if fields[name].indexed or fields[name].is_unique)"
+    new: "    filterable = tuple(custom)"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_tools.py::test_r6_1_r6_6_what_the_schema_refuses_never_reaches_the_handler
+      - packages/python/dw_studio/tests/integration/test_object_tools_db.py::test_r6_1_a_filter_on_a_field_with_no_slot_never_reaches_the_handler
+  - name: R6.1 a pin that is not an object version is compiled
+    file: packages/python/dw_studio/src/dw_studio/records/application/object_tools.py
+    old: "    if version.document_schema != OBJECT_DOCUMENT_SCHEMA:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_tools.py::test_r6_1_a_pin_that_is_not_an_object_version_or_another_companys_builds_nothing
+  # ---------------------------------------------------------------- R6.3 --
+  - name: R6.3 the middleware shows the tool as built, not as the actor reads it
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "            view = narrowing.view(names)"
+    new: "            view = ModelView(dict(tool.args_schema), tool.description)  # type: ignore[arg-type]"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_tools.py::test_r6_3_ts8_a_read_revoked_between_two_model_calls_is_out_of_the_next
+      - packages/python/dw_studio/tests/unit/test_object_tools.py::test_r6_3_ts8_without_the_middleware_the_model_is_shown_a_hidden_field
+      - packages/python/dw_agent_runtime/tests/unit/test_field_security_tools.py::test_the_platform_stack_narrows_every_model_call
+  - name: R6.3 what the actor reads is kept across model calls
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/studio_tools.py
+    old: "        readable: dict[str, frozenset[str] | None] = {}"
+    new: '        readable: dict[str, frozenset[str] | None] = self.__dict__.setdefault("_kept", {})'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_tools.py::test_r6_3_ts8_a_read_revoked_between_two_model_calls_is_out_of_the_next
+  - name: R6.3 the platform stack has no field-security middleware
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/agent_factory.py
+    old: "        *_field_security(spec),\n"
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_field_security_tools.py::test_the_platform_stack_narrows_every_model_call
+  - name: R6.3 an object tool is built with no field access to ask
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/agent_factory.py
+    old: "    if spec.object_fields is None:"
+    new: "    if False:"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_field_security_tools.py::test_a_studio_agent_with_narrowed_tools_and_no_field_port_is_refused
+  - name: R6.3 the view widens to whatever the actor reads
+    file: packages/python/dw_studio/src/dw_studio/records/application/object_tools.py
+    old: "        seen = self.visible & readable"
+    new: "        seen = readable"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_tools.py::test_r6_3_narrowing_never_widens_past_the_pin
+  - name: R6.3 RecordService's readable fields ignore the field decision
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_service.py
+    old: "            return readable_names(access)\n"
+    new: "            return frozenset(access.api_names.values())\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_tools_db.py::test_r6_3_ts8_a_hidden_phone_is_absent_and_a_filter_on_it_is_refused
+  - name: R6.3 a record leaves with hidden_fields
+    file: packages/python/dw_studio/src/dw_studio/records/presentation/object_data.py
+    old: '_LEFT_OUT: Final = frozenset({"permissions", "hidden_fields"})'
+    new: '_LEFT_OUT: Final = frozenset({"permissions"})'
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_tools_db.py::test_r6_3_ts8_a_hidden_phone_is_absent_and_a_filter_on_it_is_refused
+  - name: R6.3 a filter on a hidden field reaches the records
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_query.py
+    old: "        if api_name == NAME or api_name not in readable:"
+    new: "        if api_name == NAME:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_tools_db.py::test_r6_3_ts8_a_hidden_phone_is_absent_and_a_filter_on_it_is_refused
+  - name: R6.3 the classification is the pd_category itself
+    file: packages/python/dw_studio/src/dw_studio/records/application/object_tools.py
+    old: "    return _CLASSIFICATION[highest]"
+    new: "    return highest"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_tools.py::test_r6_3_r6_6_the_tools_are_none_never_simulate_safe_and_classified_personal
+  # ------------------------------------------------------------ R6.4 (TS9) --
+  - name: R6.4 an object the company does not hold is compiled
+    file: packages/python/dw_studio/src/dw_studio/records/application/object_tools.py
+    old: "        if version is None or version.artifact_id != object_id or now is None:"
+    new: "        if version is None:"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_tools.py::test_r6_1_a_pin_that_is_not_an_object_version_or_another_companys_builds_nothing
+      - packages/python/dw_studio/tests/integration/test_object_tools_db.py::test_r6_4_another_companys_object_builds_no_tool
+  # ------------------------------------------------------- R6.5, R6.7 (TS9) --
+  - name: R6.5 a soft-deleted field stays in the model's view
+    file: packages/python/dw_studio/src/dw_studio/records/application/object_tools.py
+    old: "            visible=frozenset(fields) - deleted,"
+    new: "            visible=frozenset(fields),"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_tools.py::test_r6_5_a_field_soft_deleted_since_the_pin_leaves_the_model_view_only
+      - packages/python/dw_studio/tests/integration/test_object_tools_db.py::test_r6_5_r6_7_a_soft_deleted_field_leaves_the_view_and_a_call_naming_it_is_refused
+  - name: R6.7 a field the live definition no longer has is not refused
+    file: packages/python/dw_kernel/src/dw_kernel/filters.py
+    old: "    if field_ is None:\n        # Located at the leaf, not at the key: the name is the caller's.\n        raise _problem(ReasonCode.FIELD_NOT_READABLE, pointer=pointer)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_object_tools_db.py::test_r6_5_r6_7_a_soft_deleted_field_leaves_the_view_and_a_call_naming_it_is_refused
+  # ---------------------------------------------------------------- R6.6 --
+  - name: R6.6 an object read is not simulate_safe
+    file: packages/python/dw_studio/src/dw_studio/records/application/object_tools.py
+    old: "            simulate_safe=True,"
+    new: "            simulate_safe=False,"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_tools.py::test_r6_3_r6_6_the_tools_are_none_never_simulate_safe_and_classified_personal
+      - packages/python/dw_studio/tests/integration/test_object_tools_db.py::test_r6_6_a_simulated_run_reads_real_records_and_writes_no_simulated_row
+  # ----------------------------------------------------------- R6.8 (TS11) --
+  - name: R6.8 the company's words reach the description unwrapped
+    file: packages/python/dw_studio/src/dw_studio/records/application/object_tools.py
+    old: '        return contain_untrusted(DESCRIPTION_BLOCK, _cut("\n".join(lines)))'
+    new: '        return "\n".join(lines)'
+    tests:
+      - packages/python/dw_studio/tests/unit/test_object_tools.py::test_r6_8_a_companys_description_is_data_inside_one_escaped_block
+      - packages/python/dw_studio/tests/unit/test_object_tool_evals.py::test_the_dataset_passes_with_full_security_coverage

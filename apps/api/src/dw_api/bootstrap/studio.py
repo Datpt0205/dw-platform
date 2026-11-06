@@ -59,8 +59,9 @@ request reaches it through `record_door`, whose transactions open in
 `user_session` (record-access/03): tenant, principal, the actor `user` and the
 reach door, bound before the service's first statement. A workflow step's
 `RecordsPort` (workflow-nodes/04) and an agent's `ObjectDataPort`
-(tools-and-skills/03) take this same service when they ship, each with its
-run's door.
+(`RecordObjectData`, tools-and-skills/03) take this same service, each with
+its run's door: the object tools' door is `agent_record_session`, wired with
+`ObjectToolGenerator` where agent-builder/03 takes a Studio agent run.
 """
 
 from __future__ import annotations

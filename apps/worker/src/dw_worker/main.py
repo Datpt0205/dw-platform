@@ -558,8 +558,9 @@ def build_rate_limiter(settings: WorkerSettings, clock: UtcClock) -> InProcessRa
     """This process's one `RateLimiterPort` (usage-and-limits R7.1): each of
     `DW_WORKER_REPLICAS` processes allows its share of a company's limit. The
     duplicate-probe limit of an agent's record writes (custom-objects R7.6)
-    reads it through `ObjectDataPort`, which tools-and-skills/03 wires here
-    with the worker's `RecordService`; no module keeps one of its own."""
+    reads it through the worker's `RecordService`, which agent-builder/03
+    builds here behind `ObjectDataPort` (`RecordObjectData`, tools-and-skills/03)
+    where it takes a Studio agent run; no module keeps one of its own."""
     return InProcessRateLimiter(replicas=settings.worker_replicas or 1, clock=clock)
 
 

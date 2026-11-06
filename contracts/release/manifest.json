@@ -83,6 +83,11 @@
       "version": "1.6.0"
     },
     {
+      "checksum": "669bcaf36b337620c99737ad4d9c2b0006ba736d5859063bae998a0f26666f61",
+      "copy_id": "studio.object_tools",
+      "version": "1.0.0"
+    },
+    {
       "checksum": "22b139bbba4f0dd6dc9982501154cddcbb513bea8df4f2c2f0876f0b62374577",
       "copy_id": "platform.wflite_handoff",
       "version": "1.0.0"
@@ -98,9 +103,14 @@
       "checksum": "b67fe6324cb32795131ae238ede2a22613af04cac7fa1c6757b4d17f545b1bbb",
       "dataset_id": "studio_agent_frame",
       "version": "1.0.0"
+    },
+    {
+      "checksum": "e5a81388bbdf4943e048a805d73cacb7bddc750ba9be0d52ce5a057f0671987d",
+      "dataset_id": "studio_object_tools",
+      "version": "1.0.0"
     }
   ],
-  "git_sha": "8abdc7f8d6db03119557b92e3d6e693c165781b7",
+  "git_sha": "055263bb2df220c9a71e4161dc76c026429d91f2",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "model_profiles": [
