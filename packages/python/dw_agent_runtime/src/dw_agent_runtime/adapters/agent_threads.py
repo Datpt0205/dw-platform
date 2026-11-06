@@ -35,11 +35,12 @@ _SETTLED = (
     " AND NOT EXISTS (SELECT 1 FROM platform.worker_runs r"
     "   WHERE r.thread_id = :t AND r.status NOT IN :terminal)"
 )
+# `_SETTLED` is this module's constant (B608): no caller's text reaches either.
 _FORGET_WRITES = sa.text(
-    f"DELETE FROM platform.run_checkpoint_writes WHERE thread_id = :t AND {_SETTLED}"
+    f"DELETE FROM platform.run_checkpoint_writes WHERE thread_id = :t AND {_SETTLED}"  # nosec B608
 ).bindparams(sa.bindparam("terminal", expanding=True))
 _FORGET_CHECKPOINTS = sa.text(
-    f"DELETE FROM platform.run_checkpoints WHERE thread_id = :t AND {_SETTLED}"
+    f"DELETE FROM platform.run_checkpoints WHERE thread_id = :t AND {_SETTLED}"  # nosec B608
 ).bindparams(sa.bindparam("terminal", expanding=True))
 
 

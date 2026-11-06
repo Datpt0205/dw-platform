@@ -63,7 +63,7 @@ Dựng và chạy một phiên bản agent trong runner hiện có theo (công t
   (`pinned_content_hash` = `definition_hash(definition_body(...))` trên bao đóng mà bản kê ghim); kiểm bản Nháp ngoài
   `simulate` chạy ở MỌI lần nhận, cả lần trúng, vì cờ bản Nháp đi cùng graph trong cache: một lượt `live` trúng graph mà lượt
   `simulate` dựng vẫn bị từ chối. DB không cho một lượt `live` trỏ bản kê `simulate` (`run mode is not the one its manifest
-  pinned`), nên test dựng một bản kê `live` riêng ghim bản Nháp. (3) `StudioModelSelection` đứng ngay trước
+pinned`), nên test dựng một bản kê `live` riêng ghim bản Nháp. (3) `StudioModelSelection` đứng ngay trước
   `ResidencyGateMiddleware` (sau `RunControlMiddleware` của agent-lifecycle/01, không dời), qua `AgentSpec.model_selection`;
   nó giữ `(tenant, version, pinned_hash)` mà graph dựng từ và từ chối lượt khác (`graph_mismatch`), là bên đọc của
   `RunContext.artifact` và `RunContext.definition_hash` mới đặt ở `_studio_run_context`. Mô hình `create_agent` nhận là
@@ -107,3 +107,5 @@ Dựng và chạy một phiên bản agent trong runner hiện có theo (công t
   thiếu cổng hay nhà cung cấp → từ chối). `mutations/03.yaml` 15 mutation, chưa chạy (2 bẻ tay, đỏ). Chờ lúc đóng hàng:
   `mutate.py`, `make test-integration` đầy đủ, latency của một lượt agent qua `run_studio` (lần trượt cache gồm nạp bản kê và
   `ObjectToolGenerator.load`, lần trúng) và của `SqlRunNames` mỗi lời gọi model. Không migration, route hay ảnh.
+- 2026-11-06 (agent, lane CI-fix `_ci3`): `agent_threads.py` dựng hai câu `DELETE` bằng f-string trên hằng `_SETTLED` của
+  chính module; bandit 1.8.6 `-ll` báo B608 Medium (job security đỏ). Thêm `# nosec B608` kèm lý do, câu lệnh không đổi.

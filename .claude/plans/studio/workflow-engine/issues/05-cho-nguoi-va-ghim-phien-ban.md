@@ -120,7 +120,7 @@ Cho một lượt chạy chờ người tại chỗ nhiều ngày rồi tiếp t
       Bước chạy lại sau khi worker chết giữa lúc mở và lúc checkpoint, mà quyết định đã tới, gặp lại đúng dòng đã
       quyết, nên quyết định không mất. Nếu sai thì: bỏ `resolved` khỏi `_UNUSED` của `SqlRunWaits`.
     - (agent, theo ủy quyền 31/10/2026) bảng thêm cột `iteration_path` (công thức id đếm theo `(node_id,
-      iteration_path)`), và tên nút lấy từ giá trị interrupt (`node`) cùng `wait_node` của bộ bọc nút để kiểm (b)
+iteration_path)`), và tên nút lấy từ giá trị interrupt (`node`) cùng `wait_node` của bộ bọc nút để kiểm (b)
       đọc checkpoint mà không biên dịch đồ thị (route chạy ở API). Nếu sai thì: kiểm (b) biên dịch đồ thị ở API.
     - (agent, theo ủy quyền 31/10/2026) scope sống được hỏi ở mọi lần nhận, kể cả lần đầu (lượt Studio trước đây
       không có scope nào); port không nối → không scope; port lỗi hay chủ thể không `active` → giữ `queued` 60
@@ -146,3 +146,6 @@ Cho một lượt chạy chờ người tại chỗ nhiều ngày rồi tiếp t
     - Còn ở lúc đóng hàng đợi: `mutate.py` cho `mutations/05.yaml`; `make test-integration` toàn bộ;
       P50/P95/P99 của `run_studio` một lượt có Bước chờ (mở, đỗ, nhận lại, tiếp tục), `decide` một
       `studio.step.`, `RunRequestService.request` (bản kê thêm năm sự kiện) và `POST /runs/{id}/resume-check`.
+- 2026-11-06 (agent, lane CI-fix `_ci3`): `checkpoint_compaction.py` dựng hai câu `DELETE` bằng f-string trên hằng `_LATEST`
+  của chính module; bandit 1.8.6 `-ll` báo B608 Medium, job "Security · dependency scan" đỏ từ `50ea56d5`. Thêm
+  `# nosec B608` kèm lý do, câu lệnh không đổi.

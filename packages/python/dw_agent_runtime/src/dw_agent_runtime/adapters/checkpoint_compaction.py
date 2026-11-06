@@ -22,14 +22,15 @@ _LATEST = (
     "SELECT checkpoint_ns, max(checkpoint_id) AS checkpoint_id"
     " FROM platform.run_checkpoints WHERE thread_id = :t GROUP BY checkpoint_ns"
 )
+# `_LATEST` is this module's constant (B608): no caller's text reaches either.
 _COMPACT_WRITES = sa.text(
-    f"WITH latest AS ({_LATEST})"
+    f"WITH latest AS ({_LATEST})"  # nosec B608
     " DELETE FROM platform.run_checkpoint_writes w WHERE w.thread_id = :t"
     " AND NOT EXISTS (SELECT 1 FROM latest l"
     "   WHERE l.checkpoint_ns = w.checkpoint_ns AND l.checkpoint_id = w.checkpoint_id)"
 )
 _COMPACT_CHECKPOINTS = sa.text(
-    f"WITH latest AS ({_LATEST})"
+    f"WITH latest AS ({_LATEST})"  # nosec B608
     " DELETE FROM platform.run_checkpoints c WHERE c.thread_id = :t"
     " AND NOT EXISTS (SELECT 1 FROM latest l"
     "   WHERE l.checkpoint_ns = c.checkpoint_ns AND l.checkpoint_id = c.checkpoint_id)"
