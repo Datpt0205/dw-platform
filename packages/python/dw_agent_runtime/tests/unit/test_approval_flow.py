@@ -1219,3 +1219,66 @@ async def test_a_resumed_dw_run_acts_as_its_principal_and_stays_the_lanes_reques
     assert resumed.actor_id == principal
     assert resumed.run_as_principal_id == principal
     assert resumed.requested_by == REQUESTER
+
+
+# ----------------------- workflow-engine R6.2, R6.3, R6.6: a decided handler --
+
+
+@dataclass
+class RecordingDecided:
+    """A `DecidedHandler` that records what it was handed, and refuses when
+    told to, as the `studio.step.` handler does on a stale wait."""
+
+    seen: list[tuple[ApprovalRequest, ApprovalDecision]] = field(default_factory=list)
+    refuses: bool = False
+
+    async def decided(
+        self, uow: PlatformUnitOfWork, request: ApprovalRequest, decision: ApprovalDecision
+    ) -> None:
+        if self.refuses:
+            raise ConflictError("stale", details={"reason_code": "stale_interrupt"})
+        self.seen.append((request, decision))
+
+
+async def test_a_decided_handler_moves_it_in_the_transaction_and_announces_nothing() -> None:
+    """R6.2: a `studio.step.` decision goes to the handler its prefix
+    registered, inside the decision's transaction, and no outbox event."""
+    request = make_request("studio.step.approval")
+    outbox = FakeOutbox()
+    audit = FakeAudit()
+    handler = RecordingDecided()
+    service = make_service(request, frozenset(), outbox=outbox, audit=audit)
+    service.decided_handlers = {"studio.step.": handler}
+
+    await decide(service, APPROVER, "được")
+
+    [(seen, decision)] = handler.seen
+    assert seen.id == request.id and decision.decided_by == UserId(APPROVER)
+    assert outbox.events == [] and outbox.added_after_commit == []
+    assert [e.action for e in audit.events] == [DECIDED_ACTION]
+
+
+async def test_a_type_outside_every_prefix_still_announces_itself() -> None:
+    request = make_request("memory.review")
+    outbox = FakeOutbox()
+    handler = RecordingDecided()
+    service = make_service(request, frozenset(), outbox=outbox)
+    service.decided_handlers = {"studio.step.": handler}
+
+    await decide(service, APPROVER, "đã đọc")
+
+    assert handler.seen == [] and [e.event_type for e in outbox.events] == ["memory.review.decided"]
+
+
+async def test_a_handler_that_refuses_rolls_the_decision_back() -> None:
+    """R6.6: a stale wait is a 409 raised before the commit, so nothing of the
+    decision is kept."""
+    request = make_request("studio.step.approval")
+    audit = FakeAudit()
+    service = make_service(request, frozenset(), audit=audit)
+    service.decided_handlers = {"studio.step.": RecordingDecided(refuses=True)}
+
+    with pytest.raises(ConflictError):
+        await decide(service, APPROVER, "được")
+
+    assert audit.committed is False

@@ -19,6 +19,7 @@ from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor
 from dw_kernel.errors import DomainError
 from dw_kernel.residency import RouteClass
+from dw_platform.application.ports import PlatformUnitOfWork
 from dw_platform.domain.audit import AuditEvent
 
 OutputT = TypeVar("OutputT", bound=BaseModel)
@@ -640,6 +641,109 @@ class StepRecorderPort(Protocol):
 
     async def step_finished(self, step: StepRun) -> None: ...
 
+    async def step_waiting(
+        self,
+        uow: PlatformUnitOfWork,
+        *,
+        tenant_id: UUID,
+        run_id: UUID,
+        node_id: str,
+        lane_path: LanePath,
+        iteration_path: str,
+        attempt: int,
+        started_at: datetime,
+        reason_code: str,
+    ) -> None:
+        """The step parked its run at a wait (workflow-engine R6.37;
+        telemetry-and-audit R3.8): one step run `waiting` with `reason_code`
+        and no `finished_at`, written in `uow`, the transaction that opens the
+        `platform.run_waits` row, so a rolled-back wait leaves no step run.
+        The row that ends it later carries the same `started_at`. Refuses an
+        empty `reason_code` as it refuses a bad attempt."""
+        ...
+
+
+# ---- a run's waits (workflow-engine R6; ADR-0113 decision 4) ----------------------
+
+# Every kind of wait W1 has (`ck_run_waits_kind`): an approval step, an incident
+# (workflow-engine/07), an effect whose outcome is unknown (/08), a child run
+# (/09).
+WaitKind = Literal["approval", "incident", "outcome_review", "child_run"]
+
+
+@dataclass(frozen=True, slots=True)
+class RunWait:
+    """A wait of a run not yet used, as `take` reads it: `open` (nobody
+    decided yet) or `resolved` (its `resolution` is what the run resumes its
+    interrupt with)."""
+
+    interrupt_id: str
+    node_id: str
+    iteration_path: str
+    kind: WaitKind
+    status: Literal["open", "resolved"]
+    resolution: Mapping[str, Any] | None
+
+
+class RunWaitPort(Protocol):
+    """The one way a wait is opened (workflow-engine R6.1, ADR-0112 decision
+    4), and the one owner of its id, `wait:<node_id>:<iteration_path>:<n>`,
+    `n` the waits of the same `(node_id, iteration_path)` of the run already
+    closed (`resolved`, `consumed`, `cancelled`). Called in `uow`, the
+    transaction of the step before the waiting node, beside what the step
+    opens with it (workflow-nodes/06's approval request). A row still `open`
+    for the pair is returned as it is, so a step run again after a crash meets
+    its own wait; a step that waits a second time gets a new id and never
+    touches a used row. Satisfied by `SqlRunWaits`."""
+
+    async def open(
+        self,
+        uow: PlatformUnitOfWork,
+        run_id: UUID,
+        node_id: str,
+        iteration_path: str,
+        kind: WaitKind,
+        detail: Mapping[str, Any] | None = None,
+    ) -> str: ...
+
+    async def resolve(
+        self,
+        uow: PlatformUnitOfWork,
+        run_id: UUID,
+        interrupt_id: str,
+        resolution: Mapping[str, Any],
+    ) -> None:
+        """A decision on the wait, in `uow`, the decision's transaction (R6.3,
+        R6.6): the row `open` -> `resolved` with `resolution`, and the run
+        `waiting` -> `queued`, each a conditional write. A wait no longer open,
+        or a run that is neither waiting nor still running towards its park,
+        is `ConflictError` `stale_interrupt`, which rolls the decision back."""
+        ...
+
+
+class StepWaitLookupPort(Protocol):
+    """Which wait a `studio.step.` approval request decides (workflow-engine
+    R6.2): `(run_id, interrupt_id)`, read in `uow`, the decision's
+    transaction. Declared here for the handler; workflow-nodes/06 satisfies it
+    from `studio.step_approvals`. None: no wait links to the request."""
+
+    async def wait_of(
+        self, uow: PlatformUnitOfWork, approval_id: UUID
+    ) -> tuple[UUID, str] | None: ...
+
+
+class LiveScopesPort(Protocol):
+    """What a run's principal holds now in the run's workspace (workflow-
+    engine R6.12): the scopes a run is given each time it is taken, never the
+    ones stamped when it began, so a grant revoked while it waited is gone
+    when it resumes. None when the principal is no longer an active member
+    of the company; raises when it cannot say. Satisfied by `dw_platform`
+    over `platform.scopes_in`."""
+
+    async def scopes(
+        self, tenant_id: UUID, workspace_id: UUID, principal_id: UUID
+    ) -> frozenset[str] | None: ...
+
 
 @dataclass(frozen=True, slots=True)
 class StudioRun:
@@ -681,6 +785,9 @@ class StudioRun:
     # The root of the run's tree, whose lease a child spends (usage-and-limits
     # R5.6); None for a root.
     root_run_id: UUID | None = None
+    # The run's waits not yet used, `open` and `resolved` (workflow-engine
+    # R6.4), read in the take's transaction.
+    waits: tuple[RunWait, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -753,9 +860,44 @@ class StudioRunStorePort(Protocol):
         error: Mapping[str, Any] | None = None,
         result: Mapping[str, Any] | None = None,
         outcomes: Sequence[str] = (),
+        consumed: Sequence[str] = (),
     ) -> None:
-        """End the claimed run with the `outcomes[]` it reached (R5.24), in
-        one transaction."""
+        """End the claimed run with the `outcomes[]` it reached (R5.24), and
+        its `resolved` waits named in `consumed` (the interrupts this pass
+        resumed) `consumed`, in one transaction (R6.4)."""
+        ...
+
+    async def park(
+        self,
+        tenant_id: UUID,
+        run_id: UUID,
+        *,
+        lease_token: str,
+        thread_id: UUID,
+        consumed: Sequence[str] = (),
+    ) -> Literal["waiting", "queued"]:
+        """The claimed run stopped at an interrupt (R6.1, R6.11): in one
+        transaction its waits locked, `consumed` ones moved `consumed`, the
+        run `waiting` with its claim cleared, or `queued` when one of its
+        waits was decided between its open and this park (a decision is never
+        lost), and the thread's checkpoints compacted to the latest
+        (`compact`). Which status it took."""
+        ...
+
+    async def block(
+        self,
+        tenant_id: UUID,
+        run_id: UUID,
+        *,
+        lease_token: str,
+        reason_code: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> bool:
+        """The claimed run `blocked` with `error.code` `reason_code`
+        (`incompatible_resume`, `empty_resume`), its claim cleared, and audit
+        `run.blocked` as `system:studio_runs`, in one transaction (R6.5,
+        R6.8); its `resolved` waits stay `resolved` for `resume-check`. False
+        when the claim was no longer held."""
         ...
 
     async def cancel_past_deadline(
@@ -883,3 +1025,13 @@ def check_step_run(attempt: int, lane_path: object, iteration_path: object) -> N
         raise ValueError("a step run names its lane path")
     if not isinstance(iteration_path, str):
         raise ValueError("a step run names its iteration path")
+
+
+def check_step_waiting(
+    attempt: int, lane_path: object, iteration_path: object, reason_code: object
+) -> None:
+    """What every `StepRecorderPort.step_waiting` refuses before it writes:
+    what `check_step_run` refuses, and a wait without its reason (R6.37)."""
+    check_step_run(attempt, lane_path, iteration_path)
+    if not isinstance(reason_code, str) or not reason_code:
+        raise ValueError("a waiting step run names its reason code")

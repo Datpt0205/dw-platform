@@ -39,13 +39,15 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from types import MappingProxyType
-from typing import Any, Literal, TypedDict, get_args
+from typing import Any, Literal, Protocol, TypedDict, get_args
 
-from dw_agent_runtime.contracts import SideEffectLevel
+from dw_agent_runtime.contracts import RunContext, SideEffectLevel
+from dw_agent_runtime.ports import WaitKind
 from dw_agent_runtime.wflite import bodies
 from dw_agent_runtime.wflite.document import OnError
-from dw_agent_runtime.wflite.doors import EffectDoor, StepBody
+from dw_agent_runtime.wflite.doors import EffectDoor, Routed, StepBody
 from dw_kernel.canonical import content_hash
+from dw_platform.application.ports import PlatformUnitOfWork
 
 JsonSchema = Mapping[str, Any]
 
@@ -159,6 +161,44 @@ Ports = FixedPorts | KeyedPorts
 NO_PORTS = FixedPorts()
 
 
+# ---------------------------------------------------------------------------
+# A type whose step waits for a person or a child run (workflow-engine R6.1;
+# ADR-0112 decision 4)
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class WaitOpening:
+    """What a waiting step opens beside its wait, in `uow`, the transaction
+    that opened the `platform.run_waits` row `interrupt_id` names (workflow-
+    nodes/06: the approval request and its `studio.step_approvals` row)."""
+
+    uow: PlatformUnitOfWork
+    run: RunContext
+    node_id: str
+    iteration_path: str
+    interrupt_id: str
+    config: Mapping[str, Any]
+    inputs: Mapping[str, Any]
+
+
+class WaitOpener(Protocol):
+    async def __call__(self, opening: WaitOpening) -> None: ...
+
+
+@dataclass(frozen=True, slots=True)
+class WaitSpec:
+    """How a step of a waiting type runs in a Studio run: its node opens a
+    wait of `kind` (and whatever `opener` writes beside it) in one
+    transaction, the next node's first line is `interrupt()`, and the run
+    goes on with `resume(config, resolution)`, the step's output and the lane
+    it leaves by, once the wait is resolved."""
+
+    kind: WaitKind
+    resume: Callable[[Mapping[str, Any], Mapping[str, Any]], Routed]
+    opener: WaitOpener | None = None
+
+
 @dataclass(frozen=True, kw_only=True)
 class NodeTypeSpec:
     type: str
@@ -185,6 +225,9 @@ class NodeTypeSpec:
     # run cannot run yet (the compiler refuses it there).
     body: StepBody | None = None
     record_uses: RecordUses = no_record_uses
+    # A type whose step waits (workflow-engine R6.1): how it opens its wait
+    # and resumes from its resolution; None for a step that does not wait.
+    wait: WaitSpec | None = None
 
     def output_schema(self, config: Mapping[str, Any]) -> JsonSchema:
         """The output of a step of this type with `config`, from `output`."""

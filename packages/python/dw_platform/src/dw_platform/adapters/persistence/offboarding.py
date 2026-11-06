@@ -330,6 +330,12 @@ STUDIO_EXCLUSIONS: Mapping[str, OffboardingExclusion] = MappingProxyType(
             reason="REVOKE ALL với dw_app; xóa theo FK CASCADE khi lane xóa platform.connections",
             cascade_from="platform.connections",
         ),
+        # workflow-engine ticket 05: a run's waits, which `dw_app` never deletes.
+        "platform.run_waits": OffboardingExclusion(
+            reason="dw_app không DELETE; xóa khi offboarding theo FK CASCADE từ"
+            " platform.worker_runs",
+            cascade_from="platform.worker_runs",
+        ),
         # record-access ticket 02: the reach ledger, which `dw_app` only reads.
         "studio.principal_scopes": OffboardingExclusion(
             reason="dữ liệu dẫn xuất, không xóa bằng dw_app; đi theo cascade khi offboarding xóa"

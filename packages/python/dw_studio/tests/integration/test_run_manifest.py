@@ -30,7 +30,9 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
+from dw_agent_runtime.adapters.studio_resume import WorkflowEngineFacts
 from dw_agent_runtime.pinned import PinnedResolver
+from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_kernel.canonical import CanonicalError, content_hash
 from dw_kernel.errors import ConfigError, ConflictError, NotFoundError, PayloadTooLargeError
 from dw_kernel.http_conditions import ExpectedVersion
@@ -57,6 +59,10 @@ from dw_studio.testing.run_manifests import (
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
+
+# The engine facts a manifest pins (workflow-engine R6.7), of the fixture types.
+ENGINE_FACTS = WorkflowEngineFacts(fixture_node_registry())
+
 
 REF = "sha256:" + "e" * 64
 
@@ -100,7 +106,9 @@ def store_of(service: ArtifactService) -> SqlArtifactStore:
 
 @pytest.fixture
 def builder() -> RunManifestBuilder:
-    return RunManifestBuilder(ArtifactKindRegistry(FIXTURE_KINDS), REF, shipped_models())
+    return RunManifestBuilder(
+        ArtifactKindRegistry(FIXTURE_KINDS), REF, shipped_models(), ENGINE_FACTS
+    )
 
 
 async def build(
@@ -366,7 +374,7 @@ async def test_a_body_past_one_mebibyte_is_too_large_and_written_nowhere(
     writer = world["writer"]
     _, root, _ = await a_live_root(service, migrator, writer)
     huge = RunManifestBuilder(
-        ArtifactKindRegistry(FIXTURE_KINDS), "r" * (1 << 20), shipped_models()
+        ArtifactKindRegistry(FIXTURE_KINDS), "r" * (1 << 20), shipped_models(), ENGINE_FACTS
     )
     before = await counts(migrator, writer.tenant_id)
 

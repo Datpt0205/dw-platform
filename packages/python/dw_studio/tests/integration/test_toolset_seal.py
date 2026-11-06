@@ -27,12 +27,14 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import NullPool
 
+from dw_agent_runtime.adapters.studio_resume import WorkflowEngineFacts
 from dw_agent_runtime.adapters.studio_tools import CompiledTool, studio_tools
 from dw_agent_runtime.contracts import ToolDefinition
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.profiles import ModelCapabilities
 from dw_agent_runtime.pinned import PinnedResolver
 from dw_agent_runtime.ports import PinnedEntry
+from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_agent_runtime.tool_kinds import ToolAssembler, ToolBinding, ToolContract
 from dw_agent_runtime.tool_schema import json_schema_behaviour
 from dw_agent_runtime.tools import ToolBehaviour, ToolRegistry
@@ -59,6 +61,10 @@ from dw_studio.testing.run_manifests import (
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
+
+# The engine facts a manifest pins (workflow-engine R6.7), of the fixture types.
+ENGINE_FACTS = WorkflowEngineFacts(fixture_node_registry())
+
 
 REF = "sha256:" + "e" * 64
 COPY = load_runtime_copy(
@@ -312,7 +318,9 @@ async def test_a_sealed_toolset_builds_from_the_run_manifest_with_its_pins(
     )
     store = service.store
     assert isinstance(store, SqlArtifactStore)  # its transaction is a `RunManifestTx` too
-    builder = RunManifestBuilder(ArtifactKindRegistry(FIXTURE_KINDS), REF, shipped_models())
+    builder = RunManifestBuilder(
+        ArtifactKindRegistry(FIXTURE_KINDS), REF, shipped_models(), ENGINE_FACTS
+    )
     async with store.transaction(writer.context()) as tx:
         manifest_hash = await builder.build(
             tx, root.version_id, "live", tenant_id=writer.tenant_id, plan_id=TEST_PLAN

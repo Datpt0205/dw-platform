@@ -6,7 +6,9 @@ the validator must handle before the Studio types that have them exist:
 
 - `fixture.effect@1`: a step with an effect of its own, no lane;
 - `fixture.choice@1`: a `choice` block over `yes` and `no`;
-- `fixture.wait@1`: a step that waits, no lane;
+- `fixture.wait@1`: a step that waits, no lane; in a Studio run it opens an
+  `approval` wait and goes on with the resolution as its output, until
+  workflow-nodes/06's `human.approval@2` (workflow-engine/05);
 - `fixture.parallel@1`: a `parallel` block over `branches.<name>`;
 - `fixture.loop@1`: a `loop` over `body`, leaving by `max_reached`;
 - `fixture.stop@1`: `ends_run`;
@@ -47,6 +49,7 @@ from dw_agent_runtime.wflite.registry import (
     RecordUse,
     RecordUses,
     StepDependency,
+    WaitSpec,
     build_node_registry,
     no_dependencies,
     no_record_uses,
@@ -88,6 +91,7 @@ def _type(
     effect_door: EffectDoor | None = None,
     body: StepBody | None = None,
     record_uses: RecordUses = no_record_uses,
+    wait: WaitSpec | None = None,
 ) -> NodeTypeSpec:
     return NodeTypeSpec(
         type=name,
@@ -109,6 +113,7 @@ def _type(
         effect_door=effect_door,
         body=body,
         record_uses=record_uses,
+        wait=wait,
     )
 
 
@@ -158,6 +163,17 @@ async def _stop(
     return {}
 
 
+def waited(config: Mapping[str, Any], resolution: Mapping[str, Any]) -> Routed:
+    """A waiting fixture's output: what its wait was resolved with."""
+    return Routed(
+        {k: resolution[k] for k in ("decision", "decided_by", "comment") if k in resolution},
+        None,
+    )
+
+
+FIXTURE_WAIT = WaitSpec(kind="approval", resume=waited)
+
+
 def _record_uses(config: Mapping[str, Any]) -> tuple[RecordUse, ...]:
     fields = config.get("fields")
     writes = config.get("writes")
@@ -193,7 +209,19 @@ def fixture_node_types() -> tuple[NodeTypeSpec, ...]:
             output={"type": "object", "properties": {"case": {"type": "string"}}},
             body=_choose,
         ),
-        _type("fixture.wait@1", properties={"seconds": {"type": "integer", "minimum": 1}}),
+        _type(
+            "fixture.wait@1",
+            properties={"seconds": {"type": "integer", "minimum": 1}},
+            output={
+                "type": "object",
+                "properties": {
+                    "decision": {"type": "string"},
+                    "decided_by": {"type": "string"},
+                    "comment": {"type": "string"},
+                },
+            },
+            wait=FIXTURE_WAIT,
+        ),
         _type(
             "fixture.parallel@1",
             properties={"branches": {"type": "object", "additionalProperties": _LANE}},

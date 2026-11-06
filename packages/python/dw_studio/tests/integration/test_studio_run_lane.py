@@ -45,6 +45,7 @@ from dw_agent_runtime.adapters.checkpoint import (
 )
 from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.run_control import SqlRunControl
+from dw_agent_runtime.adapters.studio_resume import WorkflowEngineFacts
 from dw_agent_runtime.ports import StudioClaim, StudioLeaseLostError
 from dw_agent_runtime.run_control import HaltReason, RunControlDoor, RunHaltedError
 from dw_agent_runtime.studio_lane import StudioRunReaper, StudioRunsLane
@@ -99,6 +100,10 @@ from dw_studio.testing.world import Person, StudioWorld, plant_world
 from dw_worker.consumers.studio_runs import build_dead_letter_handler
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
+
+# The engine facts a manifest pins (workflow-engine R6.7), of the fixture types.
+ENGINE_FACTS = WorkflowEngineFacts(fixture_node_registry())
+
 
 REF = "sha256:" + "f" * 64
 REGISTRY = fixture_node_registry()
@@ -175,7 +180,7 @@ def door_of(store: SqlArtifactStore) -> RunRequestService:
     return RunRequestService(
         store,
         registry,
-        RunManifestBuilder(registry, REF, shipped_models()),
+        RunManifestBuilder(registry, REF, shipped_models(), ENGINE_FACTS),
         {("workflow", "test"): WORKFLOWS_TEST_SCOPE},
         RunLaneRegistry({"studio_gate": ("eval",)}),
         SystemClock(),

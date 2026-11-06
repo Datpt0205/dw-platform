@@ -29,6 +29,8 @@ from pathlib import Path
 
 import pytest
 
+from dw_agent_runtime.adapters.studio_resume import WorkflowEngineFacts
+from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_platform.application.access_context import AccessContext
 from dw_studio.core.application.registry import ArtifactKindRegistry
@@ -45,6 +47,10 @@ from dw_studio.testing.run_manifests import shipped_models
 from dw_studio.workflows.testing.fakes import RecordingBoundaries
 
 pytestmark = pytest.mark.unit
+
+# The engine facts a manifest pins (workflow-engine R6.7), of the fixture types.
+ENGINE_FACTS = WorkflowEngineFacts(fixture_node_registry())
+
 
 REPO = Path(__file__).resolve().parents[5]
 INTAKE = "packages/python/dw_studio/src/dw_studio/core/adapters/run_intake.py"
@@ -234,7 +240,9 @@ def test_the_door_keeps_its_own_frozen_run_key_table() -> None:
     door = RunRequestService(
         store=_NoStore(),
         registry=registry,
-        manifests=RunManifestBuilder(registry, "sha256:" + "0" * 64, shipped_models()),
+        manifests=RunManifestBuilder(
+            registry, "sha256:" + "0" * 64, shipped_models(), ENGINE_FACTS
+        ),
         run_keys=keys,
         lanes=RunLaneRegistry(LANES),
         clock=SystemClock(),

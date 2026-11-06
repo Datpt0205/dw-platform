@@ -34,8 +34,10 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 from tenant_wide_scopes import OFFBOARDING_SCOPES
 
+from dw_agent_runtime.adapters.studio_resume import WorkflowEngineFacts
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.testing.run_control import OpenRunControl
+from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_kernel.errors import ConflictError, DomainError, NotFoundError, PermissionDeniedError
 from dw_kernel.http_conditions import ExpectedVersion
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
@@ -115,6 +117,10 @@ from dw_studio.testing.run_manifests import draft_of, published, sealed, shipped
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
+
+# The engine facts a manifest pins (workflow-engine R6.7), of the fixture types.
+ENGINE_FACTS = WorkflowEngineFacts(fixture_node_registry())
+
 
 REF = "sha256:" + "e" * 64
 CONNECTOR = ("smtp", 1)
@@ -367,7 +373,7 @@ async def doors(sessions: async_sessionmaker[AsyncSession], world: World) -> Doo
         runs=RunRequestService(
             store,
             registry,
-            RunManifestBuilder(registry, REF, shipped_models()),
+            RunManifestBuilder(registry, REF, shipped_models(), ENGINE_FACTS),
             {
                 ("fixture_gateless", "manual"): FIXTURE_RUN,
                 ("fixture_gateless", "test"): FIXTURE_RUN,

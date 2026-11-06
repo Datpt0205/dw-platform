@@ -23,6 +23,7 @@ from dw_agent_runtime.adapters.model_stack import (
 )
 from dw_agent_runtime.adapters.pack_tools import build_leadcare_tools, register_leadcare_tools
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
+from dw_agent_runtime.adapters.run_waits import SqlRunWaits
 from dw_agent_runtime.adapters.wflite_host import (
     RunTrailReader,
     build_send_floor,
@@ -38,6 +39,11 @@ from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.ports import RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
+from dw_agent_runtime.studio_step_decisions import (
+    STUDIO_STEP_PREFIX,
+    StudioStepDecisions,
+    UnwiredStepWaitLookup,
+)
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.toolsets import ToolsetRegistry
@@ -410,6 +416,13 @@ def build_runtime(
     # A configuration version is approved by a second person, with a reason
     # (tenant-config R8.8); its guard is Studio's, registered where Studio is.
     approval_flow.strict_approval_prefixes |= {CONFIG_PREFIX}
+    # A Studio step's decision resolves its run's wait and queues the run in the
+    # decision's own transaction, here as in the worker (workflow-engine R6.2, R6.3);
+    # its link to the wait is workflow-nodes/06's, unwired until then.
+    approval_flow.decided_handlers = {
+        **approval_flow.decided_handlers,
+        STUDIO_STEP_PREFIX: StudioStepDecisions(UnwiredStepWaitLookup(), SqlRunWaits(ids)),
+    }
 
     seam = RuntimeSeam(
         session_factory=session_factory,

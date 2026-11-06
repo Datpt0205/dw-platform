@@ -22,6 +22,7 @@ from langgraph.graph import END, START, StateGraph
 from dw_agent_runtime.adapters import langgraph_runner
 from dw_agent_runtime.adapters.langgraph_runner import GRAPH_CACHE_SIZE, LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.run_store import RunStatus
+from dw_agent_runtime.adapters.studio_resume import WorkflowEngineFacts
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.dispatch import OutcomeUnknownError
 from dw_agent_runtime.ports import StudioRun, StudioRunBlocked
@@ -60,6 +61,11 @@ class FakeTake:
     outcomes: list[list[str]] = field(default_factory=list)
     held: list[tuple[timedelta, datetime | None]] = field(default_factory=list)
     deadlines: list[datetime] = field(default_factory=list)
+    # workflow-engine/05: the waits each end or park used up, the parks and
+    # the blocks, as `SqlStudioRunStore` would write them.
+    consumed: list[list[str]] = field(default_factory=list)
+    parked: list[str] = field(default_factory=list)
+    blocked: list[tuple[str, Mapping[str, Any] | None]] = field(default_factory=list)
 
     async def take(
         self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str
@@ -96,10 +102,46 @@ class FakeTake:
         error: Mapping[str, Any] | None = None,
         result: Mapping[str, Any] | None = None,
         outcomes: Sequence[str] = (),
+        consumed: Sequence[str] = (),
     ) -> None:
         assert lease_token == TOKEN
         self.finished.append((status, error))
         self.outcomes.append(list(outcomes))
+        self.consumed.append(list(consumed))
+
+    async def park(
+        self,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        *,
+        lease_token: str,
+        thread_id: uuid.UUID,
+        consumed: Sequence[str] = (),
+    ) -> Any:
+        """`waiting`, or `queued` when a wait of the run is resolved and not
+        among those this pass used up (the decision came first)."""
+        assert lease_token == TOKEN
+        assert isinstance(self.taken, StudioRun)
+        self.consumed.append(list(consumed))
+        decided = any(
+            w.status == "resolved" and w.interrupt_id not in consumed for w in self.taken.waits
+        )
+        status = "queued" if decided else "waiting"
+        self.parked.append(status)
+        return status
+
+    async def block(
+        self,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        *,
+        lease_token: str,
+        reason_code: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> bool:
+        assert lease_token == TOKEN
+        self.blocked.append((reason_code, details))
+        return True
 
     async def cancel_past_deadline(
         self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str
@@ -108,7 +150,18 @@ class FakeTake:
         return True
 
 
+def pinned_engine(doc: Mapping[str, Any], **over: Any) -> dict[str, Any]:
+    """What the manifest builder pins under `engine` for `doc` (R6.7): the
+    five facts of this build, the durability, and `over`."""
+    facts = WorkflowEngineFacts(fixture_node_registry()).facts(doc)
+    return {"durability": "sync", **facts, **over}
+
+
 def studio_run(doc: Mapping[str, Any], harness: StudioHarness, **over: Any) -> StudioRun:
+    """A run as `take` reads it. `engine` merges into the pinned facts, so a
+    test names only what it changes; `engine=None` pins nothing at all."""
+    engine = over.pop("engine", {})
+    over["engine"] = {} if engine is None else {**pinned_engine(doc), **engine}
     run_id = uuid.uuid4()
     base = StudioRun(
         run_id=run_id,
@@ -221,7 +274,7 @@ def runner_key(taken: Any) -> tuple[str, ...]:
 
 async def test_a_manifest_without_its_durability_runs_nothing() -> None:
     h, door = harness()
-    store = FakeTake(studio_run(two_sends(), h, engine={}))
+    store = FakeTake(studio_run(two_sends(), h, engine=None))
     status = await go(runner_of(h, store))
     assert status == RunStatus.FAILED
     assert store.finished == [("failed", {"code": "engine_unpinned"})]

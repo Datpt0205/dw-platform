@@ -33,6 +33,7 @@ from dw_agent_runtime.adapters.model_stack import (
 from dw_agent_runtime.adapters.pack_tools import build_leadcare_tools, register_leadcare_tools
 from dw_agent_runtime.adapters.release_manifest import read_release_manifest_ref
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
+from dw_agent_runtime.adapters.run_waits import SqlRunWaits
 from dw_agent_runtime.adapters.span_step_recorder import TelemetryStepRecorder
 from dw_agent_runtime.adapters.tool_claims import SqlToolClaims
 from dw_agent_runtime.adapters.wflite_host import (
@@ -53,7 +54,7 @@ from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
 from dw_agent_runtime.wflite.catalog import PackCatalog, ShippedToolSpecs
-from dw_agent_runtime.wflite.node_wrapper import StudioNodePorts, StudioRunPorts
+from dw_agent_runtime.wflite.node_wrapper import StudioNodePorts, StudioRunPorts, StudioWaits
 from dw_agent_runtime.wflite.registry import build_node_registry
 from dw_agent_runtime.wflite.starter import WorkflowRunStarter
 from dw_agent_runtime.wflite.waits import WorkQueueRunWaits
@@ -81,6 +82,7 @@ from dw_observability.telemetry import TelemetryPort
 from dw_platform.adapters.persistence.connections_repo import SqlConnectionStore
 from dw_platform.adapters.persistence.egress_allowlist_repo import SqlAllowedHosts
 from dw_platform.adapters.persistence.held_run_alerts import SqlHeldRunAlerts
+from dw_platform.adapters.persistence.live_scopes import SqlLiveScopes
 from dw_platform.adapters.persistence.plan_model_profiles import (
     CachingPlanModelProfiles,
     SqlPlanModelProfiles,
@@ -561,6 +563,9 @@ def build_studio_runner(
         recorder=TelemetryStepRecorder(telemetry, clock),
         telemetry=telemetry,
         clock=clock,
+        # A waiting step's wait, in a transaction of the run's tenant
+        # (workflow-engine R6.1).
+        waits=StudioWaits(SqlPlatformUnitOfWorkFactory(sessions), SqlRunWaits(ids)),
     )
     return LangGraphWorkflowRunner(
         worker_registry=WorkerRegistry(graph_registry=graphs),
@@ -583,6 +588,8 @@ def build_studio_runner(
             binding_review=binding_review,
             alerts=SqlHeldRunAlerts(sessions),
             expressions=CelCppEngine(),
+            # The run's principal's scopes now, at every take (R6.12).
+            live_scopes=SqlLiveScopes(sessions),
         ),
     )
 

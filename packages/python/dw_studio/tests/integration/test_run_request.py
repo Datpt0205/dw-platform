@@ -31,9 +31,11 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
+from dw_agent_runtime.adapters.studio_resume import WorkflowEngineFacts
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.resolver import ModelResolver, StaticPlanModelProfiles, pin_entry
+from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_kernel.canonical import content_hash
 from dw_kernel.errors import (
     ConfigError,
@@ -88,6 +90,10 @@ from dw_studio.testing.run_manifests import (
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
+
+# The engine facts a manifest pins (workflow-engine R6.7), of the fixture types.
+ENGINE_FACTS = WorkflowEngineFacts(fixture_node_registry())
+
 
 REF = "sha256:" + "f" * 64
 MODELS_DIR = Path(__file__).resolve().parents[5] / "configs" / "models"
@@ -196,7 +202,9 @@ def door_of(
     return RunRequestService(
         store,
         registry,
-        RunManifestBuilder(registry, REF, shipped_models() if models is None else models),
+        RunManifestBuilder(
+            registry, REF, shipped_models() if models is None else models, ENGINE_FACTS
+        ),
         RUN_KEYS if run_keys is None else run_keys,
         RunLaneRegistry(LANES),
         SystemClock(),
@@ -635,7 +643,7 @@ async def test_r3_20_a_reused_key_with_other_content_is_refused_and_changes_noth
     # door, so the row is written as the store writes it, in `simulate`.
     async with store.for_person(world.runner.context()) as tx:
         manifest = await RunManifestBuilder(
-            ArtifactKindRegistry((FIXTURE_GATELESS,)), REF, shipped_models()
+            ArtifactKindRegistry((FIXTURE_GATELESS,)), REF, shipped_models(), ENGINE_FACTS
         ).build(tx, version_id, "simulate", tenant_id=world.runner.tenant_id, plan_id=TEST_PLAN)
         planted = replace(
             await _queued_like(migrator, first.run_id),

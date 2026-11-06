@@ -1,0 +1,205 @@
+# Mutation check of workflow-engine ticket 05: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the
+# ticket's criteria: the wait table and its two triggers (PostgreSQL holds the
+# state machine, the composite key and the cancel on every run end), the one
+# wait path (`SqlRunWaits.open`, the node wrapper's open in one transaction
+# with its step run), the decision's handler and its two conditional writes,
+# the park that reads a decision made first, the five checks and the deadline
+# before them, the empty resume, the compaction and the live scopes. The
+# migration's mutations apply in place, so their tests recreate the database
+# from the mutated revision.
+#
+# Left out, with why: R6.9 (the run keeps its pinned version and mode) has no
+# line to break, the take reads both from the run's own row and manifest;
+# R6.10 (no secret in a checkpoint or a wait) has no runtime path that carries
+# a connection's secret into a Studio run's state in W1, so no mutation of
+# this ticket's code can put one there (its test watches the rows for when a
+# connection door joins, connections-and-vault).
+mutations:
+  # ---- R6.1, R6.15, R6.40: the table ------------------------------------------------
+  - name: R6.15 the run key is a single column
+    file: db/migrations/versions/25e271c4c20a_run_waits_and_the_resume_check_.py
+    old: "            FOREIGN KEY (tenant_id, run_id)\n            REFERENCES platform.worker_runs (tenant_id, id) ON DELETE CASCADE,\n"
+    new: "            FOREIGN KEY (run_id)\n            REFERENCES platform.worker_runs (id) ON DELETE CASCADE,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_15_a_wait_never_names_another_companys_run
+  - name: R6.1 the run key restricts the delete instead of cascading
+    file: db/migrations/versions/25e271c4c20a_run_waits_and_the_resume_check_.py
+    old: "REFERENCES platform.worker_runs (tenant_id, id) ON DELETE CASCADE,\n"
+    new: "REFERENCES platform.worker_runs (tenant_id, id) ON DELETE RESTRICT,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_1_deleting_a_companys_runs_takes_its_waits_and_spares_the_rest
+  - name: R6.1 the kind check takes any kind
+    file: db/migrations/versions/25e271c4c20a_run_waits_and_the_resume_check_.py
+    old: "            CHECK (kind IN ('approval', 'incident', 'outcome_review', 'child_run')),\n"
+    new: "            CHECK (kind <> ''),\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_1_the_kind_check_takes_every_w1_kind_and_refuses_another
+  - name: R6.1 dw_app may update every column
+    file: db/migrations/versions/25e271c4c20a_run_waits_and_the_resume_check_.py
+    old: "    (\"dw_app\", \"GRANT UPDATE (status, resolved_at, resolution) ON platform.run_waits TO dw_app;\"),\n"
+    new: "    (\"dw_app\", \"GRANT UPDATE ON platform.run_waits TO dw_app;\"),\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_1_dw_app_moves_only_the_resolution_columns
+      - packages/python/dw_platform/tests/integration/test_privileges.py::test_a_run_wait_is_opened_and_moved_only_by_its_resolution_columns
+  - name: R6.40 the transition guard lets a wait move back
+    file: db/migrations/versions/25e271c4c20a_run_waits_and_the_resume_check_.py
+    old: "            (OLD.status = 'open' AND NEW.status IN ('resolved', 'cancelled'))\n            OR (OLD.status = 'resolved' AND NEW.status = 'consumed')\n"
+    new: "            true\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_40_a_wait_moves_only_forward_and_resolves_once
+  - name: R6.40 a resolution is rewritten
+    file: db/migrations/versions/25e271c4c20a_run_waits_and_the_resume_check_.py
+    old: "        IF (OLD.resolution IS NOT NULL AND NEW.resolution IS DISTINCT FROM OLD.resolution)\n"
+    new: "        IF false\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_40_a_wait_moves_only_forward_and_resolves_once
+  - name: R6.40 a resolved wait without its resolution
+    file: db/migrations/versions/25e271c4c20a_run_waits_and_the_resume_check_.py
+    old: "            (status IN ('resolved', 'consumed')) = (resolution IS NOT NULL)\n            AND "
+    new: "            "
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_40_a_wait_moves_only_forward_and_resolves_once
+  # ---- R6.13: every run end cancels the open waits ----------------------------------
+  - name: R6.13 the cancel trigger is gone
+    file: db/migrations/versions/25e271c4c20a_run_waits_and_the_resume_check_.py
+    old: "    \"CREATE TRIGGER worker_runs_cancel_run_waits\"\n    \" AFTER UPDATE OF status ON platform.worker_runs FOR EACH ROW\"\n    f\" WHEN (NEW.status IN ({_FINISHED}) AND OLD.status IS DISTINCT FROM NEW.status)\"\n    \" EXECUTE FUNCTION platform.cancel_run_waits()\",\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_13_a_run_that_ends_cancels_every_open_wait_in_the_same_transaction
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r7_1_the_golden_trace_of_a_run_cancelled_while_it_waits
+  - name: R6.13 the cancel function runs as the caller
+    file: db/migrations/versions/25e271c4c20a_run_waits_and_the_resume_check_.py
+    old: "    CREATE FUNCTION platform.cancel_run_waits() RETURNS trigger\n    LANGUAGE plpgsql\n    SECURITY DEFINER\n"
+    new: "    CREATE FUNCTION platform.cancel_run_waits() RETURNS trigger\n    LANGUAGE plpgsql\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_13_a_cross_tenant_lane_with_no_tenant_setting_still_cancels_the_waits
+  # ---- R6.1, R6.37: the one wait path --------------------------------------------------
+  - name: R6.1 open never hands back the open row
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_waits.py
+    old: "        found = await self._unused(session, pair)\n        if found is not None:\n            return found\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_1_open_again_hands_back_the_open_row_and_a_second_park_gets_a_new_id
+  - name: R6.37 the step run waits outside the wait's transaction
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/testing/step_recorder.py
+    old: "        if callable(on_commit):\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_a_wait_whose_transaction_rolls_back_leaves_no_row_and_no_step_run
+  - name: R6.37 one reason code for every kind
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "                reason_code=WAIT_REASONS[wait.kind],\n"
+    new: "                reason_code=\"approval_pending\",\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_each_kind_of_wait_records_its_reason_code
+  # ---- R6.2, R6.3, R6.6: the decision -------------------------------------------------
+  - name: R6.2 decide announces a step decision instead of handing it over
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/approval_flow.py
+    old: "                handler = self._decided_handler(request.approval_type)\n"
+    new: "                handler = None\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_approval_flow.py::test_a_decided_handler_moves_it_in_the_transaction_and_announces_nothing
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_2_r6_3_a_step_decision_resolves_the_wait_and_the_worker_goes_on
+  - name: R6.6 the wait is resolved whatever its status
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_waits.py
+    old: "                run_waits.c.interrupt_id == interrupt_id,\n                run_waits.c.status == \"open\",\n"
+    new: "                run_waits.c.interrupt_id == interrupt_id,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_6_a_decision_on_a_wait_no_longer_open_is_refused_and_rolled_back
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_6_two_concurrent_decisions_have_exactly_one_winner
+  - name: R6.6 a run neither waiting nor running takes the decision
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_waits.py
+    old: "        if status != RunStatus.RUNNING.value:\n            raise stale_interrupt(run_id, interrupt_id)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_6_a_failed_run_whose_wait_is_still_open_refuses_the_decision
+  - name: R6.3 the park ignores a decision made first
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/studio_runs.py
+    old: "            decided = any(r.status == \"resolved\" and r.interrupt_id not in used for r in held)\n"
+    new: "            decided = False\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_1_a_decision_between_the_open_and_the_park_queues_the_run
+  # ---- R6.4, R6.5, R6.7, R6.8, R6.16: a run taken again ---------------------------------
+  - name: R6.4 the waits a pass resumed are never consumed
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/studio_runs.py
+    old: "    if not consumed:\n        return\n"
+    new: "    return\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_4_two_waits_in_series_resume_each_with_its_own_resolution
+  - name: R6.5 an empty resume runs the graph
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "                INCOMPATIBLE_RESUME if resume.failed else EMPTY_RESUME if resume.empty else None\n"
+    new: "                INCOMPATIBLE_RESUME if resume.failed else None\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_a_resume_with_nothing_resolved_is_blocked_empty_resume_without_the_graph
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_5_a_resume_with_nothing_resolved_is_blocked_with_its_audit
+  - name: R6.7 (a) the compiler and the types are not checked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/resume.py
+    old: "        failed.append(\"a\")\n"
+    new: "        pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_each_engine_check_fails_on_its_own_pin
+  - name: R6.7 (b) the waiting node is not checked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/resume.py
+    old: "        failed.append(\"b\")\n"
+    new: "        pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_check_b_fails_on_a_node_that_is_not_the_waits
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_8_a_waiting_node_renamed_by_the_build_blocks_the_resume
+  - name: R6.7 (c) the state schema is not checked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/resume.py
+    old: "        failed.append(\"c\")\n"
+    new: "        pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_each_engine_check_fails_on_its_own_pin
+  - name: R6.7 (d) LangGraph is compared by patch
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/resume.py
+    old: "    return \".\".join(parts[:2]) if len(parts) >= 2 else None\n"
+    new: "    return version\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_another_patch_of_langgraph_passes_check_d
+  - name: R6.7 (d) the checkpoint format is not checked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/resume.py
+    old: "        engine.get(\"checkpoint_format\") not in build.checkpoint_formats\n        or "
+    new: ""
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_each_engine_check_fails_on_its_own_pin
+  - name: R6.7 (e) an empty resolution is resumed with
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/resume.py
+    old: "        failed.append(\"e\")\n"
+    new: "        pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_check_e_fails_on_an_empty_resolution
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_a_resume_with_an_empty_resolution_is_blocked_by_check_e
+  - name: R6.8 a failing check lets the run go on
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            if reason is not None:\n                await self._release(run, run_id, \"paused\")\n"
+    new: "            if False:\n                await self._release(run, run_id, \"paused\")\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_a_resume_with_a_failing_check_is_blocked_and_runs_nothing
+  - name: R6.16 the deadline is not asked when the run is taken again
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "        if taken.deadline_at is not None and self.clock.now() >= taken.deadline_at:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_a_resume_past_the_deadline_is_cancelled_before_any_check
+  # ---- R6.11, R6.12 ----------------------------------------------------------------------
+  - name: R6.11 the park keeps every checkpoint
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/studio_runs.py
+    old: "            await compact_thread(session, thread_id)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_1_a_waiting_step_parks_the_run_on_one_open_wait_and_one_checkpoint
+  - name: R6.12 the run keeps the scopes of its first take
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "        run = run.model_copy(update={\"scopes\": scopes})\n"
+    new: "        run = run.model_copy(update={\"scopes\": scopes or run.scopes})\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_the_run_is_given_its_principals_scopes_now_at_every_take
+  - name: R6.12 a broken scopes port lets the run go on with none
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "        if scopes is None:\n            await self._release(run, run_id, \"paused\")\n"
+    new: "        if False:\n            await self._release(run, run_id, \"paused\")\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_a_principal_gone_or_a_broken_port_holds_the_run

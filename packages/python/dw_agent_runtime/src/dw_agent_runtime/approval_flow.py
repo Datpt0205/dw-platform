@@ -8,7 +8,10 @@ An approval with no run has nothing to resume, so its decision is announced
 instead: one outbox event, `decided_event_type(approval_type)`, written in the
 decision's own transaction. A context that wants a consequence registers a
 handler for its type where the worker is composed; this service never learns
-which types exist.
+which types exist. A type whose consequence must land in the decision's own
+transaction (a Studio step's wait, workflow-engine R6.2, R6.3) registers a
+`DecidedHandler` by prefix in `decided_handlers` instead, and gets no outbox
+event, since nothing would read it.
 """
 
 from __future__ import annotations
@@ -83,6 +86,19 @@ class RuleGuard:
         self.rule(request, context)
 
 
+class DecidedHandler(Protocol):
+    """What a run-less decision of one type prefix moves in the decision's own
+    transaction, in place of the `.decided` outbox event (workflow-engine
+    R6.2, R6.3: a `studio.step.` request resolves its run's wait and queues
+    the run). Registered by prefix at the composition root, like
+    `strict_approval_prefixes`, never a branch in `decide`. Raises to refuse:
+    the decision rolls back with it and the request stays pending."""
+
+    async def decided(
+        self, uow: PlatformUnitOfWork, request: ApprovalRequest, decision: ApprovalDecision
+    ) -> None: ...
+
+
 ProposalEditor = Callable[[Mapping[str, Any], Mapping[str, Any]], None]
 """How one approval type takes a proposal the decider edited before approving:
 given the request's payload and the edit, raises to refuse it. A type with no
@@ -139,6 +155,9 @@ class ApproveAndResumeService:
     # before anything is written.
     type_admissions: Mapping[str, DecisionAdmission] = field(default_factory=dict)
     proposal_editors: Mapping[str, ProposalEditor] = field(default_factory=dict)
+    # Keyed by type prefix: a run-less type whose decision moves something in
+    # its own transaction instead of announcing it (see `DecidedHandler`).
+    decided_handlers: Mapping[str, DecidedHandler] = field(default_factory=dict)
     # Registers a tenant's published workflow before `hosts` is asked, so a
     # decision on its run is not refused by a process that has not run it yet
     # (wf-ai R6.5). The runner's own, where both are wired.
@@ -379,7 +398,11 @@ class ApproveAndResumeService:
             await uow.approvals.save(request)
             await uow.approvals.add_decision(decision)
             if request.run_id is None:
-                await uow.outbox.add(self._decided_event(request, decision))
+                handler = self._decided_handler(request.approval_type)
+                if handler is None:
+                    await uow.outbox.add(self._decided_event(request, decision))
+                else:
+                    await handler.decided(uow, request, decision)
             # Before the commit, in the decision's transaction: a decision with
             # no trail, or a trail for a decision rolled back, is not possible.
             await uow.audit.append(
@@ -414,6 +437,12 @@ class ApproveAndResumeService:
                 resume_payload=resume_payload,
             )
         return request
+
+    def _decided_handler(self, approval_type: str) -> DecidedHandler | None:
+        for prefix, handler in self.decided_handlers.items():
+            if approval_type.startswith(prefix):
+                return handler
+        return None
 
     def _check_edit(
         self, request: ApprovalRequest, approve: bool, edited: Mapping[str, Any]

@@ -76,6 +76,7 @@ from fastapi import APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from dw_agent_runtime.adapters.model_stack import build_model_resolver
+from dw_agent_runtime.adapters.studio_resume import WorkflowEngineFacts
 from dw_agent_runtime.ports import RunManifestPort
 from dw_agent_runtime.wflite.catalog import ShippedToolSpecs
 from dw_agent_runtime.wflite.registry import NodeTypeSpec, build_node_registry
@@ -289,7 +290,11 @@ def build_studio(
             pinned=SqlRunManifestEngines(sessions),
         )
     )
-    run_manifests = RunManifestBuilder(registry, release_manifest_ref(), models)
+    # The engine facts a run pins (workflow-engine R6.7), of the same step
+    # registry the kinds validate against.
+    run_manifests = RunManifestBuilder(
+        registry, release_manifest_ref(), models, WorkflowEngineFacts(node_types)
+    )
     run_lanes = RunLaneRegistry(_RUN_LANES)
 
     usability = container.connection_usability

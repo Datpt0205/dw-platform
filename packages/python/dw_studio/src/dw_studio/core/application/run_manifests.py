@@ -27,13 +27,20 @@ deployment's default, pinned by value under `engine` by `ModelRoutePinPort`
 for the tenant and plan the caller verified, before anything is written. A
 named profile the plan does not list refuses the build; the default it does
 not list is pinned as null and refuses only a call that asks for it.
+
+The run's engine (workflow-engine ticket 05; ADR-0109 decision 8): beside
+`durability`, the five facts a resume is checked against, `compiler_version`,
+`node_types`, `state_schema_hash`, `checkpoint_format` and `langgraph`, as
+`EngineFactsPort` computes them for the root's document under this build. The
+port is the runtime's (`WorkflowEngineFacts`), wired at the composition root,
+so no fact is copied here.
 """
 
 from __future__ import annotations
 
 import uuid
-from collections.abc import Awaitable, Callable, Sequence
-from typing import Any, Final
+from collections.abc import Awaitable, Callable, Mapping, Sequence
+from typing import Any, Final, Protocol
 
 from dw_kernel.canonical import content_hash
 from dw_kernel.errors import ConfigError, ConflictError, NotFoundError
@@ -54,16 +61,27 @@ Pin = Callable[[Sequence[BindingDecl]], Awaitable[PinnedBindings | None]]
 refusal raised before the manifest is written (the door's `BindingPins`)."""
 
 
+class EngineFactsPort(Protocol):
+    """The engine facts a run of `document` pins (ADR-0109 decision 8): the
+    compiler, the `type@major` set, the state schema's hash, the checkpoint
+    format and LangGraph's `major.minor`; none for a root with no graph.
+    Declared here, where the manifest is built; the runtime satisfies it."""
+
+    def facts(self, document: Mapping[str, Any]) -> Mapping[str, Any]: ...
+
+
 class RunManifestBuilder:
     def __init__(
         self,
         registry: ArtifactKindRegistry,
         release_manifest_ref: str,
         models: ModelRoutePinPort,
+        engine: EngineFactsPort,
     ) -> None:
         self.registry = registry
         self.release_manifest_ref = release_manifest_ref
         self.models = models
+        self.engine = engine
 
     async def build(
         self,
@@ -153,7 +171,7 @@ class RunManifestBuilder:
                     **({"stage": Stage.DRAFT.value} if draft else {}),
                 },
                 "closure": definition["closure"],
-                "engine": {**ENGINE, **models},
+                "engine": {**ENGINE, **self.engine.facts(version.document), **models},
                 "bindings": None if bindings is None else bindings.as_section(),
             }
         )

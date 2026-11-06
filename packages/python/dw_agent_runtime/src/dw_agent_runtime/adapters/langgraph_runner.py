@@ -44,6 +44,7 @@ from dw_agent_runtime.adapters.run_store import (
     RunStatus,
     SqlWorkerRunStore,
 )
+from dw_agent_runtime.adapters.studio_resume import build_facts, parked_interrupts
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy, lower_autonomy
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
@@ -62,6 +63,7 @@ from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.run_control import HOLDING_REASONS, RunControlDoor, RunHaltedError
 from dw_agent_runtime.studio_dispatch import (
     RUN_DEADLINE,
+    TEMPORARY_HOLD,
     BindingReviewAlert,
     Ended,
     Held,
@@ -81,6 +83,7 @@ from dw_agent_runtime.wflite.node_wrapper import (
     StudioRunPorts,
 )
 from dw_agent_runtime.wflite.outcomes import reached_outcomes
+from dw_agent_runtime.wflite.resume import ResumeVerdict, check_resume
 from dw_kernel.errors import (
     ConfigError,
     ConflictError,
@@ -114,6 +117,11 @@ _STREAM_BACKLOG_LIMIT = 256
 # Compiled graphs a process keeps (workflow-engine R4.2): the least recently
 # used goes first.
 GRAPH_CACHE_SIZE: Final = 256
+# Why a Studio run taken again is `blocked` (workflow-engine R6.5, R6.8).
+INCOMPATIBLE_RESUME: Final = "incompatible_resume"
+EMPTY_RESUME: Final = "empty_resume"
+# A run held because its principal's scopes could not be read (R6.12).
+SCOPES_UNAVAILABLE: Final = "principal_scopes_unavailable"
 _DURABILITIES: Final = frozenset({"sync", "async", "exit"})
 
 
@@ -497,18 +505,34 @@ class LangGraphWorkflowRunner:
         nothing is inserted (R3.5). A draft whose content changed since the
         run pinned it is left `blocked` and nothing is compiled (R6.14).
 
-        Then dispatch, the one place a Studio run is admitted for every
-        `trigger_kind` (`StudioAdmission`, R5.9-R5.19, R5.25): a refusal holds
-        the run `queued` or ends it, as the refusal table says, with no model
-        call. A run that passes gets its `deadline_at` at its first take
-        (R5.22), and runs with the `durability` the manifest's `engine`
-        pinned (R4.25) and a `recursion_limit` that covers every node once
-        (R4.1). Every write names the claim: checkpoints through the saver's
-        fence, the row through the store's (R5.5), and a claim another worker
-        took over raises `StudioLeaseLostError`, writing nothing. A run that
-        ends `completed` or `failed` after its graph ran records the
-        `outcomes[]` it reached in the same write (R5.24). Called by the
-        `studio_runs` lane (`dw_agent_runtime.studio_lane`) and nothing else."""
+        A run taken again (it has a `deadline_at`: after a wait, or an
+        orphan after a crash) is first held to its deadline: at or past it,
+        the run ends `cancelled` `deadline_exceeded` and nothing else runs
+        (R6.16). Then dispatch, the one place a Studio run is admitted for
+        every `trigger_kind` (`StudioAdmission`, R5.9-R5.19, R5.25): a refusal
+        holds the run `queued` or ends it, as the refusal table says, with no
+        model call. A run taken again then passes the five checks of
+        ADR-0109 decision 8 (`check_resume`, R6.7): one that fails leaves it
+        `blocked` `incompatible_resume`, a resume with nothing to resume with
+        `blocked` `empty_resume` (R6.5, R6.8), audited, nothing run. Its
+        scopes are its principal's now (`LiveScopesPort`, R6.12), never the
+        ones it began with; a principal no longer a member, or a port that
+        cannot say, holds it `queued`.
+
+        A run that passes gets its `deadline_at` at its first take (R5.22),
+        and runs with the `durability` the manifest's `engine` pinned (R4.25)
+        and a `recursion_limit` that covers every node once (R4.1), resuming
+        each pending interrupt by its LangGraph id with its wait's resolution
+        (R6.4). A run that stops at an interrupt parks (`waiting`, or `queued`
+        when its wait was decided first) with its checkpoints compacted
+        (R6.1, R6.11); the waits it resumed are `consumed` in the write that
+        parks or ends it, after their node's checkpoint went on. Every write
+        names the claim: checkpoints through the saver's fence, the row
+        through the store's (R5.5), and a claim another worker took over
+        raises `StudioLeaseLostError`, writing nothing. A run that ends
+        `completed` or `failed` after its graph ran records the `outcomes[]`
+        it reached in the same write (R5.24). Called by the `studio_runs` lane
+        (`dw_agent_runtime.studio_lane`) and nothing else."""
         studio = self.studio
         if studio is None:
             raise ConfigError(
@@ -529,6 +553,11 @@ class LangGraphWorkflowRunner:
                 error={"code": "engine_unpinned"},
             )
             return RunStatus.FAILED
+        again = taken.deadline_at is not None
+        if taken.deadline_at is not None and self.clock.now() >= taken.deadline_at:
+            # R6.16: before dispatch and before any check, nothing runs.
+            await runs.cancel_past_deadline(tenant_id, run_id, lease_token=lease_token)
+            return RunStatus.CANCELLED
         run = _studio_run_context(taken)
         verdict = await StudioAdmission(
             run_control=self.run_control,
@@ -546,6 +575,35 @@ class LangGraphWorkflowRunner:
             )
             return RunStatus(verdict.status)
         lease = verdict.lease
+        resume = ResumeVerdict()
+        if again:
+            resume = await self._resume_verdict(studio, taken)
+            reason = (
+                INCOMPATIBLE_RESUME if resume.failed else EMPTY_RESUME if resume.empty else None
+            )
+            if reason is not None:
+                await self._release(run, run_id, "paused")
+                await runs.block(
+                    tenant_id,
+                    run_id,
+                    lease_token=lease_token,
+                    reason_code=reason,
+                    details={"checks": list(resume.failed)} if resume.failed else None,
+                )
+                self.telemetry.add_metric(
+                    DW_RUN_TOTAL,
+                    1,
+                    {"worker": f"studio:{taken.artifact_kind}", "status": "blocked"},
+                )
+                return RunStatus.BLOCKED
+        scopes = await self._live_scopes(studio, taken)
+        if scopes is None:
+            await self._release(run, run_id, "paused")
+            await self._hold_studio(
+                studio, taken, run, Held(SCOPES_UNAVAILABLE, TEMPORARY_HOLD), lease_token
+            )
+            return RunStatus.QUEUED
+        run = run.model_copy(update={"scopes": scopes})
         deadline_at = await runs.admitted(
             tenant_id, run_id, lease_token=lease_token, deadline=RUN_DEADLINE
         )
@@ -597,13 +655,19 @@ class LangGraphWorkflowRunner:
                 error=error,
                 result=None if error is not None else _jsonable(state),
                 outcomes=outcomes,
+                consumed=resume.consumed,
             )
             return RunStatus(status)
 
         try:
-            snapshot = await graph.aget_state(config)
-            work = {k: v for k, v in taken.input.items() if k != "approval_decisions"}
-            payload = None if snapshot.next else {"work": work}
+            payload: Any
+            if resume.resume:
+                # R6.4: each pending interrupt by its id, never by position.
+                payload = Command(resume=dict(resume.resume))
+            else:
+                snapshot = await graph.aget_state(config)
+                work = {k: v for k, v in taken.input.items() if k != "approval_decisions"}
+                payload = None if snapshot.next else {"work": work}
             async with self._beating(lease, run):
                 state = await graph.ainvoke(payload, config, context=context, durability=durability)
         except (StudioLeaseLostError, asyncio.CancelledError):
@@ -640,7 +704,50 @@ class LangGraphWorkflowRunner:
         except Exception as exc:
             logger.exception("a Studio run failed", extra={"run_id": str(run_id)})
             return await end("failed", error={"code": "step_failed", "type": type(exc).__name__})
+        if isinstance(state, dict) and state.get("__interrupt__"):
+            # R6.1, R6.11: the run waits where it stopped.
+            await self._release(run, run_id, "paused")
+            parked = await runs.park(
+                tenant_id,
+                run_id,
+                lease_token=lease_token,
+                thread_id=taken.thread_id,
+                consumed=resume.consumed,
+            )
+            return RunStatus(parked)
         return await end("completed", state=state)
+
+    async def _resume_verdict(self, studio: StudioRunPorts, taken: StudioRun) -> ResumeVerdict:
+        """The five checks of a run taken again (R6.7), on its pinned
+        `engine`, its pinned document under this build's registry, the
+        interrupts its checkpoint has pending and its waits not yet used."""
+        parked = await parked_interrupts(
+            self.checkpoint_saver,
+            thread_id=taken.thread_id,
+            tenant_id=taken.tenant_id,
+            workspace_id=taken.workspace_id,
+        )
+        return check_resume(
+            taken.engine, taken.document, build_facts(studio.registry), parked, taken.waits
+        )
+
+    async def _live_scopes(self, studio: StudioRunPorts, taken: StudioRun) -> frozenset[str] | None:
+        """What the run's principal holds now in the run's workspace (R6.12);
+        None, holding the run, when it is no longer a member or the port
+        cannot say. No port: no scopes, never the ones stamped at the start."""
+        if studio.live_scopes is None:
+            return frozenset()
+        try:
+            return await studio.live_scopes.scopes(
+                taken.tenant_id, taken.workspace_id, taken.run_as_principal_id
+            )
+        except Exception:
+            logger.warning(
+                "a Studio run's scopes could not be read",
+                exc_info=True,
+                extra={"run_id": str(taken.run_id)},
+            )
+            return None
 
     async def _hold_studio(
         self,

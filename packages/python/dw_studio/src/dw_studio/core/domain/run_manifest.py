@@ -20,7 +20,11 @@ setting) cannot ride in: the body holds no secret, and ticket 05 adds
   version, V4.35) under the `content_hash` of exactly those routes, with
   `default_model_profile`, the deployment's profile at admission or null when
   the plan did not list it. `ModelResolver` reads them on every call of the
-  run. The other per-kind pins of decision 8 join in workflow-engine/05.
+  run. The five facts of decision 8 a resume is checked against
+  (workflow-engine/05, R6.7): `compiler_version`, `node_types`,
+  `state_schema_hash`, `checkpoint_format` and `langgraph`, all or none,
+  pinned for a root with a graph (a workflow) and left out of the body for
+  any other.
 - `bindings` (ticket 05; R7.4, V4.35): only when the root's closure declares
   one: the approved Binding set's id, and for each name a connection's id, a
   principal's id or a variable's `content_hash`. No secret version and no
@@ -89,10 +93,25 @@ class ModelRoutePin(_Strict):
         return self
 
 
+# The facts of ADR-0109 decision 8 a resume compares (workflow-engine R6.7).
+ENGINE_FACTS: Final = (
+    "compiler_version",
+    "node_types",
+    "state_schema_hash",
+    "checkpoint_format",
+    "langgraph",
+)
+
+
 class EngineSection(_Strict):
     durability: Literal["sync"]
     model_routes: dict[str, ModelRoutePin]
     default_model_profile: str | None
+    compiler_version: str | None = Field(default=None, min_length=1)
+    node_types: list[str] | None = None
+    state_schema_hash: str | None = Field(default=None, pattern=_HASH)
+    checkpoint_format: str | None = Field(default=None, min_length=1)
+    langgraph: str | None = Field(default=None, pattern=r"^\d+\.\d+(\.\d+)?")
 
     @model_validator(mode="after")
     def _default_is_pinned(self) -> EngineSection:
@@ -100,6 +119,8 @@ class EngineSection(_Strict):
             self.default_model_profile not in self.model_routes
         ):
             raise ValueError("the default model profile is one the run pinned")
+        if len({getattr(self, fact) is None for fact in ENGINE_FACTS}) != 1:
+            raise ValueError("the engine pins all five facts of a graph, or none")
         return self
 
 
@@ -143,6 +164,9 @@ class RunManifest(_Strict):
         body = self.model_dump(mode="json", by_alias=True)
         if body["root"]["stage"] is None:
             del body["root"]["stage"]
+        if body["engine"]["compiler_version"] is None:
+            for fact in ENGINE_FACTS:
+                del body["engine"][fact]
         if body["bindings"] is None:
             del body["bindings"]
         else:

@@ -15,10 +15,11 @@ from dataclasses import dataclass
 from datetime import datetime
 from uuid import UUID
 
-from dw_agent_runtime.ports import LanePath, StepRun, check_step_run
+from dw_agent_runtime.ports import LanePath, StepRun, check_step_run, check_step_waiting
 from dw_kernel.ports import UtcClock
 from dw_observability.semconv import DW_NODE
 from dw_observability.telemetry import TelemetryPort
+from dw_platform.application.ports import PlatformUnitOfWork
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,23 @@ class TelemetryStepRecorder:
     ) -> datetime:
         check_step_run(attempt, lane_path, iteration_path)
         return self.clock.now()
+
+    async def step_waiting(
+        self,
+        uow: PlatformUnitOfWork,
+        *,
+        tenant_id: UUID,
+        run_id: UUID,
+        node_id: str,
+        lane_path: LanePath,
+        iteration_path: str,
+        attempt: int,
+        started_at: datetime,
+        reason_code: str,
+    ) -> None:
+        """No store: the waiting step run is telemetry-and-audit/03's row; the
+        arguments are checked as the real adapter checks them."""
+        check_step_waiting(attempt, lane_path, iteration_path, reason_code)
 
     async def step_finished(self, step: StepRun) -> None:
         check_step_run(step.attempt, step.lane_path, step.iteration_path)

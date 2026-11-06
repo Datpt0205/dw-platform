@@ -117,6 +117,7 @@ READERS: dict[str, str] = {
     "effect_door": "dw_agent_runtime.wflite.node_wrapper:StudioNode._attempt",
     "body": "dw_agent_runtime.wflite.node_wrapper:StudioNode.__init__",
     "record_uses": "dw_studio.workflows.application.boundary:derive_workflow_boundary",
+    "wait": "dw_agent_runtime.wflite.compile:_StudioBuilder._block",
 }
 
 

@@ -45,11 +45,14 @@ import json
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
+from types import MappingProxyType
 from typing import Any, Final
 
 from langgraph.errors import GraphBubbleUp
 from langgraph.runtime import Runtime
+from langgraph.types import interrupt
 
+from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.dispatch import (
     NotDispatchedError,
@@ -61,12 +64,15 @@ from dw_agent_runtime.ports import (
     BindingReviewPort,
     HeldRunAlertPort,
     LanePath,
+    LiveScopesPort,
     RunControlPort,
+    RunWaitPort,
     StepRecorderPort,
     StepRun,
     StepSource,
     StepStatus,
     StudioRunStorePort,
+    WaitKind,
 )
 from dw_agent_runtime.run_control import RunControlDoor, RunHaltedError
 from dw_agent_runtime.wflite.document import Step
@@ -77,7 +83,7 @@ from dw_agent_runtime.wflite.doors import (
     Routed,
     StepDoor,
 )
-from dw_agent_runtime.wflite.registry import NodeTypeSpec, step_output_schema
+from dw_agent_runtime.wflite.registry import NodeTypeSpec, WaitOpening, step_output_schema
 from dw_agent_runtime.wflite.validate import MESSAGES
 from dw_kernel.errors import (
     ApprovalRequiredError,
@@ -95,6 +101,7 @@ from dw_observability.metrics import DW_NODE_FAILURE_TOTAL
 from dw_observability.semconv import DW_NODE
 from dw_observability.telemetry import TelemetryPort
 from dw_platform.application.json_schema import problems
+from dw_platform.application.ports import PlatformUnitOfWorkFactory
 
 MAX_OUTPUT_BYTES: Final = 65_536
 ERROR_PORT: Final = "error"
@@ -117,6 +124,7 @@ WRAPPER_CODES: Final = frozenset(
         "second_effect",
         "effect_door_unwired",
         "approval_wait_unavailable",
+        "wait_unwired",
         "approval_decision_missing",
         "idempotency_conflict",
         "permission_denied",
@@ -145,6 +153,18 @@ def port_label(port: str | None) -> str | None:
         return None
     head, dot, rest = port.partition(".")
     return rest if dot and rest else head
+
+
+# The step run's reason code while its run waits, one per kind of wait: the one
+# table of the wait path (workflow-engine R6.37; telemetry-and-audit R3.8).
+WAIT_REASONS: Final[Mapping[WaitKind, str]] = MappingProxyType(
+    {
+        "approval": "approval_pending",
+        "incident": "incident_open",
+        "outcome_review": "outcome_unknown",
+        "child_run": "child_run_pending",
+    }
+)
 
 
 # ---- signals out of the graph ---------------------------------------------------
@@ -245,6 +265,15 @@ def no_retryable_rejections(step: Step) -> frozenset[str]:
 
 
 @dataclass(frozen=True)
+class StudioWaits:
+    """What a waiting step opens its wait with (workflow-engine R6.1): a
+    transaction of the run's tenant and the one wait path in it."""
+
+    uow_factory: PlatformUnitOfWorkFactory
+    run_waits: RunWaitPort
+
+
+@dataclass(frozen=True)
 class StudioNodePorts:
     """What every node of every Studio graph uses, built once at the
     composition root; nothing here belongs to one run."""
@@ -259,6 +288,9 @@ class StudioNodePorts:
     retryable_rejections: Callable[[Step], frozenset[str]] = no_retryable_rejections
     sleep: Callable[[float], Awaitable[None]] = asyncio.sleep
     backoff_seconds: float = 1.0
+    # A waiting step's wait (workflow-engine/05); None for a runner that runs
+    # no waiting step, whose waiting steps end the run `wait_unwired`.
+    waits: StudioWaits | None = None
 
 
 @dataclass(frozen=True)
@@ -305,7 +337,7 @@ class StudioNode:
         lane_taken: Callable[[str | None], str | None] = lambda port: port,
         iteration_path: str = "",
     ) -> None:
-        if spec.body is None:
+        if spec.body is None and spec.wait is None:
             raise ValueError(f"{spec.type} has no body for a Studio run")
         self.step = step
         self.spec = spec
@@ -413,6 +445,7 @@ class StudioNode:
             "dw.step_type": self.step.type,
             "dw.run_mode": ctx.run.run_mode,
         }
+        assert self.body is not None  # a waiting step runs `open_wait`, never this
         with self.ports.telemetry.span(DW_NODE, attributes):
             try:
                 async with asyncio.timeout(self.step.timeout_s):
@@ -511,6 +544,98 @@ class StudioNode:
             )
         )
 
+    # ---- a wait (R6.1, R6.37; ADR-0112 decision 4) ----
+
+    def _inputs(self, state: Mapping[str, Any]) -> dict[str, Any]:
+        inputs = self.resolve(self.step.config, state)
+        return dict(inputs) if isinstance(inputs, Mapping) else {}
+
+    async def open_wait(
+        self, state: Mapping[str, Any], runtime: Runtime[StudioRunContext]
+    ) -> dict[str, Any]:
+        """The node before the waiting node: the run's guards, then in one
+        transaction of the run's tenant the wait's row (`RunWaitPort.open`),
+        what the type opens beside it, and the step run `waiting` with the
+        kind's reason code (R6.37). A step run again after a crash meets the
+        same row; a transaction that rolls back leaves neither."""
+        ctx = runtime.context
+        await self._guard(ctx)
+        wait, waits = self.spec.wait, self.ports.waits
+        assert wait is not None
+        if waits is None:
+            raise StudioRunFailedError("wait_unwired", self.step.id)
+        run = ctx.run
+        inputs = self._inputs(state)
+        attempt = 1 + await self.ports.recorder.attempts(
+            tenant_id=run.tenant_id,
+            run_id=run.run_id,
+            node_id=self.step.id,
+            iteration_path=self.iteration_path,
+        )
+        started_at = await self._started(run, attempt)
+        async with waits.uow_factory(access_context_from_run(run)) as uow:
+            interrupt_id = await waits.run_waits.open(
+                uow, run.run_id, self.step.id, self.iteration_path, wait.kind
+            )
+            if wait.opener is not None:
+                await wait.opener(
+                    WaitOpening(
+                        uow=uow,
+                        run=run,
+                        node_id=self.step.id,
+                        iteration_path=self.iteration_path,
+                        interrupt_id=interrupt_id,
+                        config=self.step.config,
+                        inputs=inputs,
+                    )
+                )
+            await self.ports.recorder.step_waiting(
+                uow,
+                tenant_id=run.tenant_id,
+                run_id=run.run_id,
+                node_id=self.step.id,
+                lane_path=self.lane_path,
+                iteration_path=self.iteration_path,
+                attempt=attempt,
+                started_at=started_at,
+                reason_code=WAIT_REASONS[wait.kind],
+            )
+            await uow.commit()
+        held = {
+            "interrupt_id": interrupt_id,
+            "attempt": attempt,
+            "started_at": started_at.isoformat(),
+        }
+        return {wait_channel(self.step.id): held}
+
+    async def resume_wait(
+        self, state: Mapping[str, Any], runtime: Runtime[StudioRunContext]
+    ) -> dict[str, Any]:
+        """The waiting node: `interrupt()` first, so a resumed node repeats
+        nothing before it; then, with the wait's resolution, the run's guards
+        and the step's output and lane (`WaitSpec.resume`)."""
+        held = state.get(wait_channel(self.step.id)) or {}
+        resolution = interrupt(
+            {"interrupt_id": held.get("interrupt_id"), "node": wait_node(self.step.id)}
+        )
+        ctx = runtime.context
+        await self._guard(ctx)
+        wait = self.spec.wait
+        assert wait is not None
+        routed = wait.resume(
+            self.step.config, resolution if isinstance(resolution, Mapping) else {}
+        )
+        outcome = self._succeeded(routed)
+        await self._record(
+            ctx.run,
+            int(held.get("attempt") or 1),
+            datetime.fromisoformat(str(held["started_at"])),
+            outcome,
+            self._inputs(state),
+            "door",
+        )
+        return outcome.update
+
     # ---- a pinned result (R4.27-R4.29) ----
 
     def _check_pinned(self, pinned: Any) -> tuple[Mapping[str, Any] | None, Failure | None]:
@@ -560,9 +685,23 @@ class StudioNode:
         return outcome.update
 
 
+def wait_node(step_id: str) -> str:
+    """The node a waiting step's `interrupt()` runs in (R6.1), and the name
+    its interrupt records: the one owner of the name check (b) of a resume
+    reads back from a checkpoint (R6.7)."""
+    return f"wait__{step_id}"
+
+
+def wait_channel(step_id: str) -> str:
+    """The channel a waiting step's open node hands its wait to the waiting
+    node in (a node and a channel never share a name in LangGraph)."""
+    return f"waiting__{step_id}"
+
+
 __all__ = [
     "ERROR_PORT",
     "MAX_OUTPUT_BYTES",
+    "WAIT_REASONS",
     "WRAPPER_CODES",
     "Failure",
     "OutcomeUnknownSignal",
@@ -572,11 +711,13 @@ __all__ = [
     "StudioRunContext",
     "StudioRunFailedError",
     "StudioRunPorts",
+    "StudioWaits",
     "classify",
     "error_type_label",
     "no_retryable_rejections",
     "output_bytes",
     "port_label",
+    "wait_channel",
 ]
 
 
@@ -594,3 +735,6 @@ class StudioRunPorts:
     alerts: HeldRunAlertPort
     # What evaluates the document's `outcomes[]` when the run ends (R5.24).
     expressions: ExpressionEngine
+    # What the run's principal holds now, asked at every take (workflow-engine
+    # R6.12); None gives a run no scopes at all.
+    live_scopes: LiveScopesPort | None = None

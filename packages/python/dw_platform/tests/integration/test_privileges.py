@@ -2376,6 +2376,64 @@ async def test_a_config_version_is_proposed_decided_by_column_and_only_purged(
     assert trigger_call is False
 
 
+# workflow-engine ticket 05 (migration 25e271c4c20a): a run's wait is opened by
+# `dw_app` and moved only through its three resolution columns, so what it was
+# opened with cannot be rewritten; no DELETE (the run's CASCADE takes it);
+# `dw_agent_ro` reads nothing; nobody calls the two trigger functions.
+
+_WAIT_RESOLUTION_COLUMNS = ("status", "resolved_at", "resolution")
+_WAIT_OPENED_COLUMNS = (
+    "tenant_id",
+    "id",
+    "run_id",
+    "interrupt_id",
+    "node_id",
+    "iteration_path",
+    "kind",
+    "detail",
+    "created_at",
+)
+
+
+async def test_a_run_wait_is_opened_and_moved_only_by_its_resolution_columns(
+    db_urls: DatabaseUrls,
+) -> None:
+    table = "platform.run_waits"
+    migrator = create_async_engine(db_urls.migrator, poolclass=NullPool)
+    try:
+        async with migrator.connect() as conn:
+            held = {(r.rolname, r.verb) for r in await conn.execute(_HELD_VERBS, {"t": table})}
+            updatable = {
+                column: await conn.scalar(
+                    sa.text("SELECT has_column_privilege('dw_app', :t, :col, 'UPDATE')"),
+                    {"t": table, "col": column},
+                )
+                for column in (*_WAIT_RESOLUTION_COLUMNS, *_WAIT_OPENED_COLUMNS)
+            }
+            trigger_calls = {
+                function: await conn.scalar(
+                    sa.text("SELECT has_function_privilege('public', :f, 'EXECUTE')"),
+                    {"f": function},
+                )
+                for function in (
+                    "platform.guard_run_wait_transition()",
+                    "platform.cancel_run_waits()",
+                )
+            }
+            definer = await conn.scalar(
+                sa.text(
+                    "SELECT prosecdef FROM pg_proc"
+                    " WHERE oid = 'platform.cancel_run_waits()'::regprocedure"
+                )
+            )
+    finally:
+        await migrator.dispose()
+    assert held == {("dw_app", "SELECT"), ("dw_app", "INSERT")}
+    assert {c for c, granted in updatable.items() if granted} == set(_WAIT_RESOLUTION_COLUMNS)
+    assert not any(trigger_calls.values())
+    assert definer is True
+
+
 # agent-lifecycle ticket 01 (migration 8efd60e59d32): a company's switch is
 # inserted and lifted by `dw_app` (only the lift columns), deleted only by
 # the offboarding lane (its trigger refuses it elsewhere, R7.5, R10.1); the

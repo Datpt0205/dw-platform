@@ -1,5 +1,5 @@
 """SQLAlchemy Core tables for runtime persistence (migrations 0002, 0024, 3f1cb1d4cece,
-28a94cda6fdf and 703be798341f)."""
+28a94cda6fdf, 703be798341f and 25e271c4c20a)."""
 
 from __future__ import annotations
 
@@ -177,4 +177,26 @@ tool_execution_claims = sa.Table(
     sa.Column("claim_token", UUID(as_uuid=True), nullable=False),
     sa.Column("claimed_at", sa.TIMESTAMP(timezone=True), nullable=False),
     sa.Column("expires_at", sa.TIMESTAMP(timezone=True), nullable=False),
+)
+
+
+# workflow-engine 05 (migration 25e271c4c20a): one row per point a Studio run
+# waits at; written by `SqlRunWaits` and the Studio run store, moved only
+# through `status`, `resolved_at` and `resolution`.
+run_waits = sa.Table(
+    "run_waits",
+    metadata,
+    sa.Column("tenant_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("id", UUID(as_uuid=True), nullable=False),
+    sa.Column("run_id", UUID(as_uuid=True), nullable=False),
+    sa.Column("interrupt_id", sa.Text, nullable=False),
+    sa.Column("node_id", sa.Text, nullable=False),
+    sa.Column("iteration_path", sa.Text, nullable=False),
+    sa.Column("kind", sa.Text, nullable=False),
+    sa.Column("status", sa.Text, nullable=False),
+    sa.Column("detail", JSONB, nullable=True),
+    sa.Column("resolution", JSONB, nullable=True),
+    sa.Column("created_at", sa.TIMESTAMP(timezone=True), nullable=False),
+    sa.Column("resolved_at", sa.TIMESTAMP(timezone=True), nullable=True),
+    sa.PrimaryKeyConstraint("tenant_id", "id"),
 )

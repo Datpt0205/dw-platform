@@ -67,6 +67,8 @@ from dw_agent_runtime.wflite.node_wrapper import (
     StudioNode,
     StudioNodePorts,
     port_label,
+    wait_channel,
+    wait_node,
 )
 from dw_agent_runtime.wflite.registry import KeyedPorts, NodeTypeSpec, build_node_registry
 from dw_kernel.errors import ConfigError, DWError
@@ -592,26 +594,62 @@ async def _noop(state: Mapping[str, Any]) -> dict[str, Any]:
     return {}
 
 
+def studio_channels(steps: Sequence[Step], registry: Mapping[str, NodeTypeSpec]) -> dict[str, Any]:
+    """The state channels of a Studio graph, by name: what `_StudioBuilder`
+    builds the graph with and what `state_schema` hashes, so the two never
+    disagree (R6.7 (c))."""
+    channels: dict[str, Any] = {"work": dict, "trail": Annotated[list, operator.add]}
+    for step in steps:
+        channels[f"out__{step.id}"] = dict
+        channels[f"port__{step.id}"] = str
+        channels[f"err__{step.id}"] = bool
+        spec = registry.get(step.type)
+        if spec is not None and spec.wait is not None:
+            channels[wait_channel(step.id)] = dict
+    return channels
+
+
+def _channel_label(kind: Any) -> str:
+    """A channel's type as text: its class, and its reducer when it has one."""
+    metadata = getattr(kind, "__metadata__", ())
+    origin = getattr(kind, "__origin__", kind)
+    label = getattr(origin, "__name__", str(origin))
+    reducers = [getattr(m, "__name__", str(m)) for m in metadata]
+    return "+".join([label, *reducers])
+
+
+def state_schema(
+    document: WorkflowDocument, registry: Mapping[str, NodeTypeSpec]
+) -> dict[str, str]:
+    """The names and types of the channels the compiler builds for
+    `document` (ADR-0109 decision 8 (c)): what the manifest's
+    `state_schema_hash` hashes when a run is pinned and when it resumes."""
+    steps = [placed.step for placed in lower(document, registry).steps]
+    return {name: _channel_label(kind) for name, kind in studio_channels(steps, registry).items()}
+
+
 class _StudioBuilder(_Builder):
     """The same lowering, chains and node names as a pack's, with a Studio
-    run's wrapper and routing (workflow-engine/03)."""
+    run's wrapper and routing (workflow-engine/03). A step whose type waits
+    (`NodeTypeSpec.wait`, workflow-engine/05) is two nodes: its own, which
+    opens the wait, then `wait__<id>`, whose first line is `interrupt()`; its
+    lanes leave from the second."""
 
     def __init__(self, workflow: StudioWorkflow, ports: StudioNodePorts) -> None:
         self.workflow = workflow
         self.studio = ports
         self._lower(workflow.document, workflow.registry)
-        channels: dict[str, Any] = {"work": dict, "trail": Annotated[list, operator.add]}
-        for step in self.steps:
-            channels[f"out__{step.id}"] = dict
-            channels[f"port__{step.id}"] = str
-            channels[f"err__{step.id}"] = bool
-        self._graph_of(channels)
+        self._graph_of(studio_channels(self.steps, self.registry))
 
     def _spec(self, step: Step) -> NodeTypeSpec:
         spec = self.registry.get(step.type)
-        # Parallel lanes and loops are workflow-engine/06's; a type without a
-        # body (a wait) needs workflow-engine/05's durable wait.
-        if spec is None or spec.body is None or spec.block in ("parallel", "loop"):
+        # Parallel lanes and loops are workflow-engine/06's; a type with
+        # neither a body nor a wait cannot run in a Studio run.
+        if (
+            spec is None
+            or (spec.body is None and spec.wait is None)
+            or spec.block in ("parallel", "loop")
+        ):
             raise ConfigError(
                 "this step type cannot run in a Studio run yet",
                 details={"reason_code": "step_type_unavailable", "type": step.type},
@@ -643,7 +681,7 @@ class _StudioBuilder(_Builder):
             """The lane a body's port names, or the type's default lane."""
             return port if port in lanes else fallback
 
-        node: Callable[..., Awaitable[dict[str, Any]]] = StudioNode(
+        studio_node = StudioNode(
             step=step,
             spec=spec,
             lane_path=self._lane_path(step),
@@ -651,10 +689,20 @@ class _StudioBuilder(_Builder):
             resolve=_resolve,
             has_error_lane=errors is not None,
             lane_taken=lane_taken,
-        ).__call__
-        self.graph.add_node(step.id, node)
+        )
+        tail = step.id
+        if spec.wait is not None:
+            tail = wait_node(step.id)
+            opens: Callable[..., Awaitable[dict[str, Any]]] = studio_node.open_wait
+            resumes: Callable[..., Awaitable[dict[str, Any]]] = studio_node.resume_wait
+            self.graph.add_node(step.id, opens)
+            self.graph.add_node(tail, resumes)
+            self.graph.add_edge(step.id, tail)
+        else:
+            node: Callable[..., Awaitable[dict[str, Any]]] = studio_node.__call__
+            self.graph.add_node(step.id, node)
         if not lanes and errors is None and spec.block == "none":
-            return step.id, step.id
+            return step.id, tail
         join = f"join__{step.id}"
         self.graph.add_node(join, _studio_join(step.id))
         targets = {port: self.chain(lane, join) for port, lane in lanes.items()}
@@ -668,7 +716,7 @@ class _StudioBuilder(_Builder):
         destinations = {*targets.values(), join}
         if error_entry is not None:
             destinations.add(error_entry)
-        self.graph.add_conditional_edges(step.id, route, sorted(destinations))
+        self.graph.add_conditional_edges(tail, route, sorted(destinations))
         return step.id, join
 
 

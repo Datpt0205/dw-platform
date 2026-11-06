@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import AsyncIterator, Iterable, Sequence
-from typing import Any, cast
+from typing import Any, Final, cast
 
 import sqlalchemy as sa
 from langchain_core.runnables import RunnableConfig
@@ -38,6 +38,7 @@ from langgraph.checkpoint.serde.base import SerializerProtocol as SerializerProt
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dw_agent_runtime.adapters.checkpoint_compaction import compact_thread
 from dw_agent_runtime.adapters.runtime_tables import run_checkpoint_writes, run_checkpoints
 from dw_agent_runtime.ports import StudioLeaseLostError
 from dw_kernel.errors import TenantContextMissingError
@@ -67,6 +68,13 @@ def allowlisted_serializer(allowed: Iterable[tuple[str, str]]) -> SerializerProt
     decision 10). The composition root owns ``allowed``."""
     return JsonPlusSerializer(allowed_msgpack_modules=tuple(allowed))
 
+
+# The layout this saver stores a checkpoint in, and every layout it reads back
+# (ADR-0109 decision 8 (d)): raised when the stored format changes, the old one
+# kept readable for as long as a run may still wait on it. A run's manifest
+# pins the format it was written in (workflow-engine R6.7).
+CHECKPOINT_FORMAT: Final = "1"
+READABLE_CHECKPOINT_FORMATS: Final = frozenset({CHECKPOINT_FORMAT})
 
 # A Studio run's claim, in its config's `configurable` (workflow-engine R5.5).
 FENCE_RUN_ID = "dw_fence_run_id"
@@ -299,12 +307,23 @@ class SqlAlchemyCheckpointSaver(BaseCheckpointSaver[str]):
                     statement = statement.on_conflict_do_nothing()
                 await session.execute(statement)
 
+    @staticmethod
+    async def compact(session: AsyncSession, thread_id: uuid.UUID) -> int:
+        """Keep a thread's latest checkpoint with its pending writes and delete
+        every older one (workflow-engine R6.11, DO-41), in the caller's
+        transaction: the park of a Studio run that waits, so a run waiting
+        for days holds one checkpoint. How many checkpoints went. The SQL is
+        `checkpoint_compaction`'s, which the Studio run store calls in its
+        park without importing LangGraph."""
+        return await compact_thread(session, thread_id)
+
     async def adelete_thread(self, thread_id: str) -> None:
-        # The runtime never deletes checkpoints on its own: a thread's rows go
-        # by the retention term (`SqlCheckpointRetention`, the worker's
-        # `checkpoint_retention` lane) or with the tenant (offboarding). A
-        # delete here would skip the check that no run on the thread is still
-        # waiting to resume from them.
+        # Only `compact` (a waiting Studio run's older checkpoints, in its
+        # park) and the `checkpoint_retention` lane delete checkpoints: a
+        # thread's rows go by the retention term (`SqlCheckpointRetention`)
+        # or with the tenant (offboarding). A whole-thread delete here would
+        # skip the check that no run on the thread is still waiting to resume
+        # from them.
         raise NotImplementedError(
             "checkpoints are deleted by the worker's checkpoint_retention lane "
             "(SqlCheckpointRetention, configs/policies/retention@*.yaml) and by "

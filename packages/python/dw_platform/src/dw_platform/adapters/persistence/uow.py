@@ -89,6 +89,15 @@ class SqlPlatformUnitOfWork:
             await self._session.close()
             self._session = None
 
+    @property
+    def session(self) -> AsyncSession:
+        """The transaction's session, for an adapter that writes beside the
+        repositories above in the same transaction (a run's wait in a
+        decision's, workflow-engine R6.3). Adapters only: the application
+        sees `PlatformUnitOfWork`."""
+        assert self._session is not None, "UoW not entered"
+        return self._session
+
     async def commit(self) -> None:
         assert self._session is not None, "UoW not entered"
         await self._session.commit()

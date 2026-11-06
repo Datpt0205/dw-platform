@@ -39,6 +39,7 @@ from studio_run_stack import DIED, FileDoor, build_runner, claimed, run_claimed
 
 from dw_agent_runtime.adapters.run_control import SqlRunControl
 from dw_agent_runtime.adapters.run_store import RunStatus
+from dw_agent_runtime.adapters.studio_resume import WorkflowEngineFacts
 from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_kernel.errors import ConflictError, DomainError
 from dw_kernel.http_conditions import ExpectedVersion
@@ -82,6 +83,10 @@ from dw_studio.testing.workflows import (
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
+
+# The engine facts a manifest pins (workflow-engine R6.7), of the fixture types.
+ENGINE_FACTS = WorkflowEngineFacts(fixture_node_registry())
+
 
 REF = "sha256:" + "f" * 64
 REGISTRY = fixture_node_registry()
@@ -179,7 +184,7 @@ def door_of(store: Any, *, derivers: Mapping[str, Any] | None = None) -> RunRequ
     return RunRequestService(
         store,
         registry,
-        RunManifestBuilder(registry, REF, shipped_models()),
+        RunManifestBuilder(registry, REF, shipped_models(), ENGINE_FACTS),
         {("workflow", "test"): WORKFLOWS_TEST_SCOPE},
         RunLaneRegistry(LANES),
         SystemClock(),

@@ -26,12 +26,14 @@ from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
 from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.run_store import SqlWorkerRunStore
+from dw_agent_runtime.adapters.run_waits import SqlRunWaits
 from dw_agent_runtime.adapters.studio_run_queue import SqlStudioRunQueue
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.ports import (
     BindingReviewPort,
     HeldRunAlertPort,
     LimitsPort,
+    LiveScopesPort,
     ReapedRuns,
     RunControlPort,
     StudioClaim,
@@ -43,7 +45,8 @@ from dw_agent_runtime.testing.step_recorder import FakeStepRecorder
 from dw_agent_runtime.testing.studio_runs import FakeBindingReview, FakeClaims, RecordingAlerts
 from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_agent_runtime.wflite.doors import DoorCall, EffectDoor, StepDoor
-from dw_agent_runtime.wflite.node_wrapper import StudioNodePorts, StudioRunPorts
+from dw_agent_runtime.wflite.node_wrapper import StudioNodePorts, StudioRunPorts, StudioWaits
+from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_kernel.expressions import ExpressionEngine
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_observability.telemetry import RecordingTelemetry
@@ -135,14 +138,19 @@ def build_runner(
     binding_review: BindingReviewPort | None = None,
     alerts: HeldRunAlertPort | None = None,
     expressions: ExpressionEngine | None = None,
+    live_scopes: LiveScopesPort | None = None,
+    registry: Mapping[str, NodeTypeSpec] | None = None,
+    recorder: FakeStepRecorder | None = None,
 ) -> tuple[LangGraphWorkflowRunner, FakeStepRecorder]:
     """`run_control` is the node head's (agent-lifecycle 05 passes a real
     `SqlRunControl`) and `dispatch_control` the one dispatch asks; open by
     default, as are the limits. A trigger's run is let on by the binding
-    review unless a test passes one."""
+    review unless a test passes one. A waiting step opens its wait through
+    the real `SqlRunWaits` in a transaction of the real platform unit of work
+    (workflow-engine/05)."""
     clock, ids = SystemClock(), Uuid7Generator()
     graphs = GraphRegistry()
-    recorder = FakeStepRecorder()
+    recorder = recorder if recorder is not None else FakeStepRecorder()
     nodes = StudioNodePorts(
         doors=dict(doors),
         claims=FakeClaims(),
@@ -151,6 +159,7 @@ def build_runner(
         recorder=recorder,
         telemetry=RecordingTelemetry(),
         clock=clock,
+        waits=StudioWaits(SqlPlatformUnitOfWorkFactory(sessions), SqlRunWaits(ids)),
     )
     runner = LangGraphWorkflowRunner(
         worker_registry=WorkerRegistry(graph_registry=graphs),
@@ -165,10 +174,11 @@ def build_runner(
         run_control=dispatch_control or OpenRunControl(),
         studio=StudioRunPorts(
             nodes=nodes,
-            registry=fixture_node_registry(),
+            registry=registry if registry is not None else fixture_node_registry(),
             binding_review=binding_review or FakeBindingReview(),
             alerts=alerts or RecordingAlerts(),
             expressions=expressions or CelCppEngine(),
+            live_scopes=live_scopes,
         ),
     )
     return runner, recorder

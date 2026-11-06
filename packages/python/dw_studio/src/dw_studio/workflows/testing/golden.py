@@ -32,6 +32,9 @@ class GoldenTrace:
     nodes: tuple[str, ...]
     # None when the run completed; the failure code otherwise.
     failed: str | None = None
+    # The status of each of the run's waits at the end, in the order they
+    # opened (workflow-engine/05); a runner with no store sees none.
+    waits: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -64,6 +67,8 @@ def compare(expected: GoldenTrace, observed: GoldenTrace) -> list[str]:
             break
     if len(expected.nodes) != len(observed.nodes):
         problems.append(f"{len(observed.nodes)} nodes ran, not {len(expected.nodes)}")
+    if expected.waits != observed.waits:
+        problems.append(f"the waits ended {observed.waits!r}, not {expected.waits!r}")
     return problems
 
 
@@ -152,4 +157,17 @@ CASES: tuple[GoldenCase, ...] = (
         GoldenTrace((), "outcome_unknown"),
         tool_script=(OutcomeUnknownError("may have been applied"),),
     ),
+)
+
+
+# workflow-engine/05 (R6.13, R7.1; V4.34): a run cancelled while it waits has
+# its wait cancelled in the same transaction. A trace of the database's
+# trigger, so it runs on a runner with the real store
+# (`dw_studio/tests/integration/test_run_waits_db.py`); `failed` is the run's
+# status, `cancelled`. The node trace is the steps recorded: `truoc` done, `cho`
+# waiting.
+CANCELLED_WHILE_WAITING = GoldenCase(
+    "a run cancelled while it waits cancels its wait in the same transaction",
+    _document(_send("truoc"), _step("cho", "fixture.wait@1")),
+    GoldenTrace(("truoc", "cho"), "cancelled", waits=("cancelled",)),
 )

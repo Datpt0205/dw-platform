@@ -40,6 +40,7 @@ from dw_agent_runtime.wflite.node_wrapper import (
     StudioNodePorts,
     StudioRunContext,
     StudioRunFailedError,
+    StudioWaits,
 )
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_kernel.expressions import ExpressionEnv
@@ -131,8 +132,31 @@ class FakeStudioRuns:
         error: Mapping[str, Any] | None = None,
         result: Mapping[str, Any] | None = None,
         outcomes: Sequence[str] = (),
+        consumed: Sequence[str] = (),
     ) -> None:
         self.finished.append((run_id, status, error))
+
+    async def park(
+        self,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        *,
+        lease_token: str,
+        thread_id: uuid.UUID,
+        consumed: Sequence[str] = (),
+    ) -> Literal["waiting", "queued"]:
+        raise NotImplementedError("not exercised by the node wrapper")
+
+    async def block(
+        self,
+        tenant_id: uuid.UUID,
+        run_id: uuid.UUID,
+        *,
+        lease_token: str,
+        reason_code: str,
+        details: Mapping[str, Any] | None = None,
+    ) -> bool:
+        raise NotImplementedError("not exercised by the node wrapper")
 
     async def cancel_past_deadline(
         self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str
@@ -237,6 +261,8 @@ class StudioHarness:
     retryable: frozenset[str] = frozenset()
     slept: list[float] = field(default_factory=list)
     compiled: int = 0
+    # A waiting step's wait path (workflow-engine/05); None leaves it unwired.
+    waits: StudioWaits | None = None
 
     async def _sleep(self, seconds: float) -> None:
         self.slept.append(seconds)
@@ -253,6 +279,7 @@ class StudioHarness:
             clock=self.clock,
             retryable_rejections=lambda step: retryable,
             sleep=self._sleep,
+            waits=self.waits,
         )
 
     def compile(

@@ -809,6 +809,10 @@ _TENANT_WIDE_ON_PURPOSE: dict[tuple[str, str], str] = {
     ("platform", "run_manifest_keys"): (
         "khóa của bản kê lượt chạy, con của bản kê, chỉ tới qua nó (tenant-config ticket 04)"
     ),
+    ("platform", "run_waits"): (
+        "dòng chờ của một lượt chạy, bảng con của `platform.worker_runs` qua FK ghép CASCADE;"
+        " workspace của nó là của lượt chạy (workflow-engine ticket 05, DO-01)"
+    ),
     ("platform", "service_principals"): (
         "a service principal is an identity of the company (ADR-0103 decision 2); its "
         "workspace is `owning_workspace_id`, held by the RESTRICT composite key"

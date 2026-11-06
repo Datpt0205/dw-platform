@@ -34,6 +34,7 @@ from dw_agent_runtime.adapters.checkpoint_retention import SqlCheckpointRetentio
 from dw_agent_runtime.adapters.killed_runs import SqlKilledRuns
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.run_control import SqlRunControl
+from dw_agent_runtime.adapters.run_waits import SqlRunWaits
 from dw_agent_runtime.adapters.studio_run_queue import SqlStudioRunQueue
 from dw_agent_runtime.adapters.tool_claim_retention import SqlToolClaimRetention
 from dw_agent_runtime.adapters.wf_drafts import SqlWorkflowDrafts
@@ -51,6 +52,11 @@ from dw_agent_runtime.studio_lane import LANE_INTERVAL_SECONDS as STUDIO_LANE_IN
 from dw_agent_runtime.studio_lane import REAPER_INTERVAL_SECONDS as STUDIO_REAPER_INTERVAL_SECONDS
 from dw_agent_runtime.studio_lane import REAPER_LANE as STUDIO_REAPER_LANE
 from dw_agent_runtime.studio_lane import StudioRunReaper, StudioRunsLane
+from dw_agent_runtime.studio_step_decisions import (
+    STUDIO_STEP_PREFIX,
+    StudioStepDecisions,
+    UnwiredStepWaitLookup,
+)
 from dw_agent_runtime.wflite.catalog import load_shipped_packs
 from dw_agent_runtime.wflite.publish import (
     DW_WORKFLOW_PREFIX,
@@ -341,6 +347,13 @@ def build_channel_decision_command(
     # Publishing a Studio version takes a person who is not its submitter,
     # here as in the API (agent-lifecycle R5.2; ADR-0104 decision 11).
     flow.strict_approval_prefixes |= {PUBLISH_PREFIX}
+    # A Studio step's decision resolves its run's wait and queues the run in the
+    # decision's own transaction, here as in the API (workflow-engine R6.2, R6.3);
+    # its link to the wait is workflow-nodes/06's, unwired until then.
+    flow.decided_handlers = {
+        **flow.decided_handlers,
+        STUDIO_STEP_PREFIX: StudioStepDecisions(UnwiredStepWaitLookup(), SqlRunWaits(ids)),
+    }
     secret = settings.approval_code_secret.get_secret_value()
     return ChannelDecisionCommand(
         ChannelApprovalDecisionService(

@@ -31,6 +31,8 @@ from sqlalchemy.pool import NullPool
 
 from dw_agent_runtime.adapters.run_store import TERMINAL_STATUSES, RunStatus
 from dw_agent_runtime.adapters.runtime_tables import worker_runs
+from dw_agent_runtime.adapters.studio_resume import WorkflowEngineFacts
+from dw_agent_runtime.testing.workflow_types import fixture_node_registry
 from dw_kernel.ports import SystemClock, Uuid7Generator
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
 from dw_studio.core.application.registry import ArtifactKindRegistry
@@ -42,6 +44,10 @@ from dw_studio.testing.run_manifests import TEST_PLAN, draft_of, fixture_documen
 from dw_studio.testing.world import Person, StudioWorld, plant_world
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
+
+# The engine facts a manifest pins (workflow-engine R6.7), of the fixture types.
+ENGINE_FACTS = WorkflowEngineFacts(fixture_node_registry())
+
 
 REF = "sha256:" + "a" * 64
 SHA = "sha256:" + "c" * 64
@@ -94,7 +100,7 @@ async def roots(app_engine: AsyncEngine, world: StudioWorld) -> Roots:
         async_sessionmaker(app_engine, class_=AsyncSession, expire_on_commit=False), ids
     )
     service = ArtifactService(store, registry, SystemClock(), ids)
-    builder = RunManifestBuilder(registry, REF, shipped_models())
+    builder = RunManifestBuilder(registry, REF, shipped_models(), ENGINE_FACTS)
 
     async def root(who: Person) -> Root:
         artifact_id, version_id, _ = await draft_of(service, who, fixture_document())
