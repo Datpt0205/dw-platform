@@ -34,3 +34,4 @@ fea6cf2ac96b0ee8085b46915e4c827cdfe310f1:apps/api/tests/integration/test_wf_ai_w
 88cf0e4e52b3cf621a3e1d86b460c5debab83a07:apps/api/tests/integration/test_api_send_floor_root.py:generic-api-key:57
 88cf0e4e52b3cf621a3e1d86b460c5debab83a07:tests/support/send_floor_root.py:generic-api-key:32
 a5c3acacbfc209014dc3563778842dd56ca79f41:apps/api/tests/integration/test_kill_api.py:generic-api-key:59
+3008b01b83f83cb9aaa49bb5d847638cb4128fbe:apps/api/tests/integration/test_wf_ai_wiring.py:generic-api-key:53
