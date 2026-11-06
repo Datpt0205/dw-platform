@@ -34,6 +34,7 @@ block, cut, never as an instruction (R6.8; ADR-0010).
 
 from __future__ import annotations
 
+import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
@@ -107,6 +108,23 @@ def _refuse(message: str, reason: str, **details: object) -> ConfigError:
 
 # ---- the fixed words -------------------------------------------------------------
 
+_PLACEHOLDER: Final = re.compile(r"\{([a-z_]+)\}")
+
+
+def _fill(template: str, values: Mapping[str, str]) -> str:
+    """``template``'s `{name}` placeholders replaced in one pass, never
+    `str.format` (ADR-0114 decision 1): a value is put in as it is and never
+    read as a template itself, and a placeholder with no value is a
+    `ConfigError` naming it, as a copy code that does not exist is."""
+
+    def value(found: re.Match[str]) -> str:
+        name = found.group(1)
+        if name not in values:
+            raise ConfigError(f"copy placeholder {name!r} has no value")
+        return values[name]
+
+    return _PLACEHOLDER.sub(value, template)
+
 
 @dataclass(frozen=True)
 class ObjectToolCopy:
@@ -126,11 +144,14 @@ class ObjectToolCopy:
         return self.codes.text(f"{COPY_ID}.{code}")
 
     def description(self, operation: str, api_name: str, block: str | None) -> str:
-        text = self._text("template").format(
-            summary=self._text(f"{operation}.summary").format(object=api_name),
-            when=self._text(f"{operation}.when"),
-            when_not=self._text(f"{operation}.when_not"),
-            returns=self._text(f"{operation}.returns"),
+        text = _fill(
+            self._text("template"),
+            {
+                "summary": _fill(self._text(f"{operation}.summary"), {"object": api_name}),
+                "when": self._text(f"{operation}.when"),
+                "when_not": self._text(f"{operation}.when_not"),
+                "returns": self._text(f"{operation}.returns"),
+            },
         )
         if block is None:
             return text
