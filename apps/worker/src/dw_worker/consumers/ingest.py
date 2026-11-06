@@ -1,8 +1,17 @@
 """Knowledge ingest consumer: drains the durable upload queue (B5).
 
-Per tick: claim due jobs → fetch the staged bytes → parse (an API call for
-everything but plaintext) → hand the extracted text to the gateway (chunk →
-embed → index) → mark done, or requeue with backoff until the budget is spent.
+Per tick: claim due jobs → take the ingestion's operation lease → fetch the
+staged bytes → parse (an API call for everything but plaintext) → hand the
+extracted text to the gateway (chunk → embed → index) → mark done, or requeue
+with backoff until the budget is spent.
+
+The lease comes first (usage-and-limits R6.2; gate 4/11/2026 (a)): an
+ingestion is a model call outside any run, so it spends against the company's
+money and token limits of the uploader's workspace, never against `runs`, and
+the embedder refuses without it. A company whose period is spent gets no call
+at all: the job ends `failed` with `limit_exceeded` and when the period resets,
+which the upload's status shows; the staged file and every document already
+indexed stay, and uploading it again after the reset ingests it.
 
 A finished job is also the moment a file on a CRM record stops being bytes and
 starts being something that can be quoted. That is the news the lead scorer
@@ -17,6 +26,8 @@ import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 
+from dw_agent_runtime.leases import held_operation
+from dw_kernel.limits import LIMIT_EXCEEDED, LimitExceededError
 from dw_kernel.residency import RESIDENCY_REFUSED, ResidencyRefusedError, TenantRouteScope
 from dw_knowledge.gateway import IngestDocumentCommand
 from dw_knowledge.ingest_jobs import (
@@ -46,6 +57,27 @@ def _context_for(job: IngestJob) -> AccessContext:
 
 
 async def _process(job: IngestJob, components: IngestComponents) -> None:
+    async with held_operation(
+        components.limits,
+        tenant_id=job.tenant_id,
+        workspace_id=job.workspace_id,
+        purpose="ingestion",
+        operation_id=job.id,
+        # The uploader, whom the usage records name (R6.2).
+        actor_id=job.created_by,
+    ):
+        await _ingest(job, components)
+
+
+def _refused(refused: LimitExceededError) -> str:
+    """What the upload's status says of a spent limit: the code, and the moment
+    the period resets when it has one."""
+    resets_at = refused.details.get("resets_at")
+    tail = f" (resets_at={resets_at})" if resets_at else ""
+    return f"{LIMIT_EXCEEDED}: {refused.message}{tail}"
+
+
+async def _ingest(job: IngestJob, components: IngestComponents) -> None:
     data = await components.object_storage.get_object(job.storage_key)
     # The job row's tenant and workspace, written from the uploader's verified
     # context when the job was made (compliance-pdpl R2.3).
@@ -135,6 +167,11 @@ def build_ingest_consumer(
         beat = asyncio.create_task(_beat(job))
         try:
             await asyncio.wait_for(_process(job, components), timeout=job_timeout_seconds)
+        except LimitExceededError as refused:
+            # A spent period, not a provider's bad minute: retrying before it
+            # resets is refused the same way, so the job ends and says when.
+            logger.warning("ingest job %s refused by its company's limits", job.id)
+            await components.job_store.mark_failed(job, error=_refused(refused), terminal=True)
         except ResidencyRefusedError as refused:
             # A policy answer, not a provider's bad minute: retrying sends the
             # same file to the same place the tenant's class does not allow.

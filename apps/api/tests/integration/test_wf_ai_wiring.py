@@ -37,3 +37,37 @@ async def test_the_assistant_calls_through_the_runtime_model_stack(api_db: Datab
         assert assistant.gateway.inner is runtime.gateway
     finally:
         await container.shutdown()
+
+
+async def test_every_door_the_seam_hands_out_is_built_metered(api_db: DatabaseUrls) -> None:
+    """usage-and-limits R6.1 (UL4), on what the composition root built: the
+    chat factory is the limited one, and knowledge and memory embed and rerank
+    through metered doors only."""
+    from dw_agent_runtime.adapters.chat_model import LimitedChatModelFactory
+    from dw_knowledge.metering import MeteredEmbeddings, MeteredRerank
+
+    container = build_container(
+        ApiSettings(
+            profile="test",
+            database_url=api_db.app,
+            dev_secret="integration-secret-0123456789abcdef",
+            s3_endpoint_url="http://localhost:9000",
+            s3_access_key="placeholder",
+            s3_secret_key="placeholder",
+            model_provider="mock",
+        )
+    )
+    try:
+        runtime = container.runtime
+        assert runtime is not None
+        assert runtime.chat_models is None or isinstance(
+            runtime.chat_models, LimitedChatModelFactory
+        )
+        assert isinstance(runtime.knowledge.embeddings, MeteredEmbeddings)
+        reranker = runtime.knowledge.reranker
+        assert reranker is None or isinstance(reranker, MeteredRerank)
+        ranker = runtime.memory.ranker
+        embedder = getattr(ranker, "embedder", None)
+        assert embedder is None or isinstance(embedder, MeteredEmbeddings)
+    finally:
+        await container.shutdown()

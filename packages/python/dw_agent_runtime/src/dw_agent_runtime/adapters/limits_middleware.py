@@ -8,7 +8,9 @@ asked for a permit for what the call sends: refused, the turn ends with
 holds. After the call, its usage is recorded keyed by the permit, which is the
 call's settlement into the lease and the ledger in one transaction (R5.11), and
 the tokens are claimed from the invocation's usage meter so they are not
-recorded a second time (`claim_usage`).
+recorded a second time (`claim_usage`). The permit is in force for the call it
+was asked for and no other (`permitted`), which is what lets a chat model from
+`LimitedChatModelFactory` through (usage-and-limits R6.1, R6.2).
 
 It sits after `ResidencyGateMiddleware`, so a call the residency gate refuses
 asks for no permit and is recorded nowhere (R6.5); agent-builder/03 keeps that
@@ -28,7 +30,7 @@ from langgraph.runtime import get_runtime
 from dw_agent_runtime.adapters.langchain_usage import claim_usage
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.gateway import ModelUsage, UsageRecorderPort
-from dw_agent_runtime.model.limits import approximate_tokens, estimate_call
+from dw_agent_runtime.model.limits import approximate_tokens, estimate_call, permitted
 from dw_agent_runtime.model.pricing import PricingPort, route_cost
 from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.model.resolver import ModelResolver
@@ -88,7 +90,10 @@ class LimitsMiddleware(AgentMiddleware[Any, Any]):
             model_settings={**request.model_settings, "max_tokens": permit.max_output_tokens}
         )
         try:
-            response = await handler(bounded)
+            # The permit in force for exactly this call: a chat model from
+            # `LimitedChatModelFactory` refuses one made without it (R6.2).
+            with permitted(permit):
+                response = await handler(bounded)
         except BaseException:
             await lease.abandon(permit)
             raise

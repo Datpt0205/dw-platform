@@ -21,9 +21,13 @@ import dataclasses
 import sys
 import time
 import uuid
+from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
 
 import httpx
+
+if TYPE_CHECKING:
+    from dw_kernel.limits import LeaseInForce, MeteredCall, MeterPermit
 
 _QUERY = "Chính sách đổi trả hàng trong bao nhiêu ngày?"
 _DOCUMENTS = {
@@ -68,16 +72,19 @@ async def probe() -> int:
     host = urlsplit(settings.rerank_base_url or "").hostname or "(no DW_API_RERANK_BASE_URL)"
     print(f"provider={settings.rerank_provider} model={settings.rerank_model} endpoint={host}")
     try:
-        reranker = build_reranker(settings, gate)
+        metered = build_reranker(settings, gate, _UnusedMeter())
     except Exception as exc:  # a probe reports the failure, it does not trace it
         print(f"FAIL configuration: {type(exc).__name__}: {exc}")
         return 1
-    if reranker is None:
+    if metered is None:
         print("FAIL no reranker configured (DW_API_RERANK_PROVIDER=none)")
         return 1
 
     from dw_knowledge.adapters.cohere_rerank import CohereCompatibleRerankAdapter
 
+    # The adapter inside the API's metered door: an operator's probe of a route
+    # spends no company's lease (usage-and-limits R6.1).
+    reranker = metered.inner
     if not isinstance(reranker, CohereCompatibleRerankAdapter):
         print(f"FAIL this probe knows no reranker of type {type(reranker).__name__}")
         return 1
@@ -101,6 +108,20 @@ async def probe() -> int:
     ok = bool(ranked) and ranked[0].id == "answer"
     print(f"{'ok  ' if ok else 'FAIL'} status={_status(recorder)} latency={latency_ms:.0f}ms")
     return 0 if ok else 1
+
+
+class _UnusedMeter:
+    """The meter the API's builder asks for; the probe calls the adapter inside
+    the door, so nothing reaches it."""
+
+    async def before_call(self, holder: LeaseInForce, call: MeteredCall) -> MeterPermit:
+        raise NotImplementedError("not exercised by the rerank probe")
+
+    async def settle(self, holder: LeaseInForce, permit: MeterPermit, call: MeteredCall) -> None:
+        raise NotImplementedError("not exercised by the rerank probe")
+
+    async def abandon(self, holder: LeaseInForce, permit: MeterPermit) -> None:
+        raise NotImplementedError("not exercised by the rerank probe")
 
 
 def _status(recorder: _StatusRecorder) -> str:

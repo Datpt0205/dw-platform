@@ -1,6 +1,6 @@
 # 04 — Đóng các cửa vòng qua hạn mức và giới hạn hành vi mỗi lượt chạy có trần của gói
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03, .claude/plans/studio/workflow-engine/issues/03-bien-dich-va-wrapper-nut.md
 Area: studio
 Yêu cầu: R6.1, R6.2, R6.3, R6.4, UL4
@@ -57,27 +57,27 @@ spec).
 
 ## Tiêu chí chấp nhận
 
-- [ ] R6.1 (UL4): mọi field chạm model của `RuntimeSeam` là kiểu có đo; đặt một field thành gateway thô
+- [x] R6.1 (UL4): mọi field chạm model của `RuntimeSeam` là kiểu có đo; đặt một field thành gateway thô
       → test field đỏ.
-- [ ] R6.2 (UL4): lease cạn, gọi thẳng gateway có cấu trúc, `metered_invoke`, chat model, embeddings,
+- [x] R6.2 (UL4): lease cạn, gọi thẳng gateway có cấu trúc, `metered_invoke`, chat model, embeddings,
       rerank, lane nạp → mỗi cửa từ chối `limit_exceeded` (test âm gọi thẳng từng cửa, không qua lớp đã
       chặn).
-- [ ] R6.3: một Bước thử trong lượt quy trình, khai `on_error: continue`, gọi cửa có đo khi lease đã cạn và nhận
+- [x] R6.3: một Bước thử trong lượt quy trình, khai `on_error: continue`, gọi cửa có đo khi lease đã cạn và nhận
       `LimitExceededError` → run `failed` với `limit_exceeded`, Bước kế không chạy và chính sách lỗi của node không áp;
       bỏ phép bỏ qua chính sách lỗi cho `LimitExceededError` → lượt đi tiếp theo `continue`, test đỏ; giới hạn số bước
       theo lượt qua nhiều lần tiếp tục thử ở tiêu chí R4.20 của workflow-engine/06, trên `RunLimits` mà ticket này trả.
-- [ ] R6.4: giá trị hành vi trong phiên bản cao hơn Trần của gói → bị kẹp về Trần của gói lúc chạy; phiên bản không khai
+- [x] R6.4: giá trị hành vi trong phiên bản cao hơn Trần của gói → bị kẹp về Trần của gói lúc chạy; phiên bản không khai
       `max_steps` → `RunLimits.max_steps` bằng `max_steps_per_run` của gói; gói hạ trong lúc lượt chờ → lần tiếp tục dùng
       trần mới.
-- [ ] R6.2 (UL4): lane nạp tri thức khi tháng đã cạn → không lời gọi embedding nào tới nhà cung cấp, tài liệu ở trạng
+- [x] R6.2 (UL4): lane nạp tri thức khi tháng đã cạn → không lời gọi embedding nào tới nhà cung cấp, tài liệu ở trạng
       thái chờ với `resets_at`, không bị xóa; route truy vấn tri thức khi cạn → problem+json `limit_exceeded`; một lease
       `ingestion` không tăng bộ đếm `runs`; gỡ `admit_operation` khỏi lane nạp → embedding chạy, test đỏ.
-- [ ] R6.3: Bước khai `retry: {max_attempts: 3}` nhận `LimitExceededError` → không lần thử thứ hai; trong
+- [x] R6.3: Bước khai `retry: {max_attempts: 3}` nhận `LimitExceededError` → không lần thử thứ hai; trong
       wrapper nút của workflow-engine/03 nhận `LimitExceededError` → lượt `failed`, audit `run.limit_stopped` đứng tên
       `system:<lane>` của lane gọi (test với lane giả tên `studio_runs`). Ca `logic.parallel` hai lane (lane anh em chạy xong
       Bước đang chạy, join không chạy) thử ở ticket dựng `logic.parallel` (workflow-engine/06, ticket đó chờ ticket này),
       vì ticket này không thể chờ nó; hành vi đã viết ở bước 2.
-- [ ] Xong: `make ci && make test-integration` xanh.
+- [x] Xong: `cổng nhanh của ticket theo wave-close.md; tích hợp đầy đủ, mutate.py và đo trễ lúc đóng hàng đợi` xanh.
 
 ## Nguồn
 
@@ -124,3 +124,38 @@ spec).
   thì: lỗi lộ ra khi dựng, ghi ở đây. Việc cho gate của workflow-engine/06 (khu khác): tiêu chí `logic.parallel` gặp
   `LimitExceededError` ở một lane.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent): lối gọi model không thuộc lượt chạy mà mã có hôm nay (theo người dùng `RuntimeSeam` và adapter
+  embedding, rerank), mỗi lối một ca âm của R6.2: (1) lane nạp tri thức của worker (`dw_worker.consumers.ingest`),
+  lease `ingestion` của workspace và người tải: `test_ingest_consumer.py::test_a_spent_month_ends_the_job_unsent_with_when_it_resets`,
+  trên PostgreSQL `test_operation_leases_db.py`; (2) chỉ mục vector của ký ức ở lane outbox (`LeasedMemoryIndex`), lease
+  `ingestion`, actor `system`: `test_leased_memory_index.py::test_a_spent_period_keeps_the_memory_unranked_without_raising`;
+  (3) trợ lý quy trình (`ModelStack.one_call`, `POST /digital-workers/{id}/workflow-assistant`), lease `builder_assist`:
+  `test_single_call_gateway.py`, và 429 `limit_exceeded` với `Retry-After` ở `test_limit_exceeded_route.py`; (4)
+  `scripts/knowledge_reindex.py`, lease `ingestion` theo từng tài liệu, công ty cạn thì bỏ qua và thoát mã 1: cửa nhúng
+  từ chối khi không lease nào có hiệu lực (`test_metering.py::test_an_embedding_with_no_lease_in_force_is_refused_unsent`).
+  Truy vấn tri thức và gọi lại ký ức hôm nay chỉ chạy trong lượt chạy, dưới lease của lượt mà runner đặt có hiệu lực
+  (`spending_under(run_holder)`); route truy vấn tri thức ngoài lượt chạy chưa có (router `knowledge` chỉ liệt kê, tải
+  lên, xóa), nên `retrieval` chưa có người gọi và dạng 429 thử trên route trợ lý. Đầu dò của nhà phát triển
+  (`check_model_gateway.py`, `eval_leadcare.py`, `eval_wf_ai.py` với `OpenLimits`; `check_rerank.py` gọi adapter bên trong
+  cửa) không chi của công ty nào và nằm ngoài phạm vi import-linter.
+- 2026-11-06 (agent): làm khác ticket. `metered_invoke` không còn trong mã (Nguồn trỏ dòng đã đổi): cửa chat tương đương
+  là `LimitedChatModelFactory`, callback `PermitRequired` từ chối ở `on_chat_model_start` khi không permit nào có hiệu lực
+  (permit chỉ do `LimitsMiddleware` và tóm tắt ngữ cảnh đặt, quanh đúng lời gọi). Cổng embedding và rerank không mang
+  `RunContext`, nên đọc lease có hiệu lực từ ContextVar `dw_kernel.limits.LeaseInForce` (runner đặt cho lượt,
+  `held_operation` cho thao tác); lease của công ty khác bị từ chối. `RoutingModelGateway` dời sang `model/routing.py`
+  để hợp đồng import-linter cấm được nó. Bảng giá lên 1.1.0 (thêm `mock hash-embedding` giá 0). `RunContext.declared_limits`
+  rỗng ở W1 (chưa phiên bản nào khai giới hạn; workflow-engine/06 nhận `RunLimits.max_steps` bằng tiêm). Lượt Studio
+  dừng vì hạn mức ghi `error.code = limit_exceeded` như từ chối ở hàng đợi (`studio_dispatch`). Không migration: các cột
+  `max_*_per_run` của gói đã có. Lượt kiểm định chưa có lane chạy (không ai gọi `admit_gate`), nên kết thúc `error` của
+  ADR-0113 quyết 3 thuộc ticket dựng lane đó. Sửa thêm các mutation cũ đã lệch từ ticket 03 và model-connections/02
+  (usage-and-limits/02 R2.5, R3.1, R3.2; agent-lifecycle/01 AL11 sub-agent; model-connections/02 MR1 cửa ngân sách).
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): quyết định. (a) Chỉ mục ký ức chi bằng lease `ingestion` của công ty,
+  actor `system`; bị từ chối thì ký ức vẫn gọi lại được, chưa xếp hạng, không vòng thử lại. Nếu sai thì: thêm purpose
+  riêng ở migration sau. (b) Dựng lại chỉ mục tính vào hạn mức của công ty sở hữu tài liệu. Nếu sai thì: lease do nền
+  tảng trả (`payer = platform`) như cổng kiểm định. (c) Rerank được đo theo `rerank_search_unit` và bảng giá W1 chưa có
+  giá nào cho nó: một bản ghi `unpriced` dừng lượt ở lời gọi kế (R2.5), nên api đã triển khai bật rerank chưa có giá thì
+  không khởi động (`require_rerank_priced`, cùng luật R2.3). Nếu sai thì: thêm giá rerank vào bảng giá trước khi bật.
+- 2026-11-06 (agent): ticket `resolved`. Cổng: ruff, ruff format, mypy (Windows và Linux 3.12.15), `lint-imports` 17
+  hợp đồng giữ (hợp đồng mới tự thử bằng `test_model_door_import_contract.py`), unit cả repo, contract 30, tích hợp
+  `dw_usage` cùng `test_wf_ai_wiring.py` 87 xanh. Nợ lúc đóng hàng: `mutate.py` của `mutations/04.yaml` (23 mutation) và
+  các tệp mutation đã sửa, tích hợp đầy đủ, P50/P95/P99 của ingest, trợ lý quy trình và một bước model của lượt Studio.

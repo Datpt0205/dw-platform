@@ -113,12 +113,33 @@ class CallEstimate:
 class CallPermit:
     """A call the lease let through: at most `max_output_tokens` of output, and
     the usage record's key, set before the call (ADR-0121 decision 1), so the
-    settlement after it and the reaper's estimate are one record."""
+    settlement after it and the reaper's estimate are one record. `purpose` is
+    the lease's, which the usage record names (a builder's assistance is not
+    a run)."""
 
     lease_id: UUID
     call_id: UUID
     occurred_at: datetime
     max_output_tokens: int
+    purpose: str = "run"
+
+
+@dataclass(frozen=True, slots=True)
+class RunLimits:
+    """The behavioural limits of one run (usage-and-limits R6.4; ADR-0121
+    decision 4): what its version declares, clamped by the plan's ceilings,
+    computed at each `admit` and `resume` from the version the run pinned and
+    the plan as it stands then, so a plan lowered while a run waits binds
+    its resume. A workflow run counts its steps against `max_steps`
+    (workflow-engine R4.20, which takes it by injection), an agent loop its
+    calls against `max_model_calls` and `max_tool_calls` (usage-and-limits/06);
+    the lease is capped by `max_cost_usd` and `max_tokens`."""
+
+    max_steps: int
+    max_model_calls: int
+    max_tool_calls: int
+    max_cost_usd: Decimal
+    max_tokens: int
 
 
 class RunLease(Protocol):
@@ -133,6 +154,13 @@ class RunLease(Protocol):
 
     @property
     def root_run_id(self) -> UUID: ...
+
+    @property
+    def run_limits(self) -> RunLimits | None:
+        """What the `admit` or `resume` that returned this lease computed for
+        the run (R6.4); `None` on a door's handle (`LimitsPort.lease`), an
+        operation's lease and a gate's."""
+        ...
 
     async def before_call(self, run_context: RunContext, estimate: CallEstimate) -> CallPermit:
         """A permit for one call, topped up from the counters when the lease
@@ -196,10 +224,42 @@ class LimitsPort(Protocol):
         platform-paid gate touches no counter of the tenant (DO-29.2 (a))."""
         ...
 
+    async def admit_operation(
+        self,
+        *,
+        tenant_id: UUID,
+        workspace_id: UUID,
+        purpose: OperationPurpose,
+        operation_id: UUID,
+    ) -> RunLease:
+        """The lease of a model call that belongs to no run (usage-and-limits
+        R6.2; gate 4/11/2026 (a)): an ingestion, a retrieval, a builder's
+        assistance. It counts against the money and token limits of the scope
+        chain and never against `runs`, and only the period limits bound it,
+        never a run's ceiling. Refused, `LimitExceededError` with `resets_at`.
+        Its holder beats it while the operation lasts and releases it after."""
+        ...
+
     def lease(self, run_context: RunContext) -> RunLease:
         """The lease of `run_context.lease_root`, for a model door: no admission,
         and a call finds it open or is refused."""
         ...
+
+
+# The purposes of an operation's lease (`platform.budget_leases.purpose`).
+OperationPurpose = Literal["ingestion", "retrieval", "builder_assist"]
+
+
+class MeteredModelGateway(TracedModelGateway, Protocol):
+    """The structured model door a bounded context is handed
+    (`RuntimeSeam.gateway`; usage-and-limits R6.1; ADR-0121 decision 7): every
+    attempt asks the run's lease for a permit before it is sent, refused when
+    the lease is spent or closed, and its usage is recorded keyed by that
+    permit. `limits` is the port it asks. Only a composition root names the
+    implementation, `dw_agent_runtime.model.routing.RoutingModelGateway`."""
+
+    @property
+    def limits(self) -> LimitsPort: ...
 
 
 class RunControlPort(Protocol):

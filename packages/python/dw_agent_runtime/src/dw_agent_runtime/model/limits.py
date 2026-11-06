@@ -11,22 +11,42 @@ the same call's price, so a tier picked by the input's size prices both alike.
 A route the book cannot price estimates `None` money: the lease bounds it by
 tokens, and its settlement records it `unpriced`, which stops the run at its
 next call (R2.5). Never zero.
+
+Also here, because every door of the run reads them:
+
+- `clamp_run_limits`: a run's behavioural limits, the version's value where it
+  declares one and the plan's ceiling otherwise, never above the ceiling
+  (usage-and-limits R6.4);
+- `permitted` and `permit_in_force`: the permit a lease gave the chat model
+  call about to be made, set around exactly that call by the door that asked
+  for it (`LimitsMiddleware`, context compaction), so a chat model built by
+  `LimitedChatModelFactory` refuses any call made without one, however it was
+  reached (R6.1, R6.2).
 """
 
 from __future__ import annotations
 
 import math
 import uuid
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from datetime import datetime
 from decimal import Decimal
 from typing import Final
 
+from dw_agent_runtime.contracts import DeclaredLimits
 from dw_agent_runtime.model.pricing import PriceKey, PricingPort, chat_quantities
-from dw_agent_runtime.ports import CallEstimate
+from dw_agent_runtime.ports import CallEstimate, CallPermit, RunLimits
 from dw_kernel.errors import PriceNotFoundError
 
-__all__ = ["approximate_tokens", "estimate_call"]
+__all__ = [
+    "approximate_tokens",
+    "clamp_run_limits",
+    "estimate_call",
+    "permit_in_force",
+    "permitted",
+]
 
 # What one token is taken to be, in characters (LangChain's
 # `count_tokens_approximately` default).
@@ -85,3 +105,45 @@ def estimate_call(
         price_book_version=quote.price_book_version,
         max_output_tokens=max_output_tokens,
     )
+
+
+def clamp_run_limits(declared: DeclaredLimits, ceiling: RunLimits) -> RunLimits:
+    """The run's limits: each field the version declares, at most the plan's
+    ceiling for it; each one it does not, the ceiling (R6.4)."""
+
+    def lower(value: int | None, cap: int) -> int:
+        return cap if value is None else min(value, cap)
+
+    return RunLimits(
+        max_steps=lower(declared.max_steps, ceiling.max_steps),
+        max_model_calls=lower(declared.max_model_calls, ceiling.max_model_calls),
+        max_tool_calls=lower(declared.max_tool_calls, ceiling.max_tool_calls),
+        max_cost_usd=(
+            ceiling.max_cost_usd
+            if declared.max_cost_usd is None
+            else min(declared.max_cost_usd, ceiling.max_cost_usd)
+        ),
+        max_tokens=lower(declared.max_tokens, ceiling.max_tokens),
+    )
+
+
+# One permit, for the one chat call it was asked for. A ContextVar for the
+# reason the usage meter's tally is one: it belongs to this call, not to the
+# shared, compiled-once model.
+_PERMIT: ContextVar[CallPermit | None] = ContextVar("dw_chat_permit", default=None)
+
+
+def permit_in_force() -> CallPermit | None:
+    """The permit of the chat call being made now, or `None`."""
+    return _PERMIT.get()
+
+
+@contextmanager
+def permitted(permit: CallPermit) -> Iterator[None]:
+    """Make `permit` the one in force for the block: the call it was asked for
+    is made inside it, and nothing after it is permitted by it."""
+    token = _PERMIT.set(permit)
+    try:
+        yield
+    finally:
+        _PERMIT.reset(token)

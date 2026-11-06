@@ -42,18 +42,14 @@ mutations:
     tests:
       - packages/python/dw_usage/tests/unit/test_price_book.py::test_a_call_nothing_covers_is_refused_not_free
       - packages/python/dw_usage/tests/unit/test_recording.py::test_an_unpriced_call_keeps_its_answer_and_stops_the_run_next
-  - name: R2.5 the gateway reads an unpriced call as free and lets the run go on
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
-    old: "            self.budget.mark_unpriced(run_context.run_id)\n"
-    new: ""
+  # The in-process budget ledger (`model/budget.py`) left with ticket 03: an
+  # unpriced record now marks the run's lease, mutated in `03.yaml` ("R2.5 an
+  # unpriced call does not stop the run"); the gateway's half is its record.
+  - name: R2.5 the gateway records an unpriced call as priced
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/routing.py
+    old: "                cost_source=\"unpriced\",\n"
+    new: "                cost_source=\"computed\",\n"
     tests:
-      - packages/python/dw_usage/tests/unit/test_recording.py::test_an_unpriced_call_keeps_its_answer_and_stops_the_run_next
-  - name: R2.5 the ledger forgets a run marked unpriced
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/budget.py
-    old: "        if current.unpriced:\n"
-    new: "        if False:\n"
-    tests:
-      - packages/python/dw_agent_runtime/tests/unit/test_run_budget.py::TestLedger::test_an_unpriced_call_stops_the_run_at_its_next_call
       - packages/python/dw_usage/tests/unit/test_recording.py::test_an_unpriced_call_keeps_its_answer_and_stops_the_run_next
   - name: R2.3 a deployed service starts with an unpriced paid route
     file: packages/python/dw_usage/src/dw_usage/application/coverage.py
@@ -65,7 +61,7 @@ mutations:
   # ---- R3.1-R3.3: one record per call -------------------------------------
   - name: R3.1 the worker's composite records into no ledger
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/model_stack.py
-    old: "            # One row per call, the source of the usage screen (R3.1).\n            ledger,\n"
+    old: "            # settlement of a permitted call into its lease (R5.11).\n            ledger,\n"
     new: ""
     tests:
       - apps/worker/tests/unit/test_worker_model_stack.py::test_every_recorded_call_reaches_the_usage_ledger_priced_by_the_book
@@ -76,13 +72,13 @@ mutations:
     tests:
       - packages/python/dw_usage/tests/unit/test_recording.py::test_one_chat_call_writes_one_attributed_record
   - name: R3.2 a second settle writes a second row
-    file: packages/python/dw_usage/src/dw_usage/adapters/sql.py
+    file: packages/python/dw_usage/src/dw_usage/adapters/ledger_rows.py
     old: '    " ON CONFLICT (id, occurred_at) DO NOTHING RETURNING id"'
     new: '    " RETURNING id"'
     tests:
       - packages/python/dw_usage/tests/integration/test_usage_ledger_db.py::test_a_record_is_stored_with_its_route_and_settled_once
   - name: R3.3 a call the provider did not count is recorded free
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/routing.py
     old: "            if not usage.reported:\n                usage = _estimated(usage, prompt, raw)\n"
     new: ""
     tests:

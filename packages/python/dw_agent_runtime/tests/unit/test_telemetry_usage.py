@@ -12,9 +12,10 @@ from pydantic import BaseModel
 from dw_agent_runtime.adapters.mock_model import MockModelAdapter
 from dw_agent_runtime.adapters.telemetry_usage import TelemetryUsageRecorder
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.gateway import ModelUsage, RoutingModelGateway
+from dw_agent_runtime.model.gateway import ModelUsage
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
+from dw_agent_runtime.model.routing import RoutingModelGateway
 from dw_agent_runtime.ports import ModelRequest
 from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import resolver as model_resolver

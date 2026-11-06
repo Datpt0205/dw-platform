@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dw_agent_runtime.adapters.chat_model import LimitedChatModelFactory
 from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
 from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.langchain_usage import LangchainUsageMeter
@@ -35,7 +36,7 @@ from dw_agent_runtime.autonomy import AutonomyApprovalPolicy
 from dw_agent_runtime.model.copy import load_runtime_copy
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.resolver import ModelResolver
-from dw_agent_runtime.ports import LimitsPort, RunControlPort
+from dw_agent_runtime.ports import RunControlPort
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
@@ -71,7 +72,7 @@ from dw_knowledge.adapters.evidence_store import SqlEvidenceStore
 from dw_knowledge.attachment_policy import load_attachment_policy
 from dw_knowledge.gateway import KnowledgeGateway
 from dw_knowledge.ingest_jobs import IngestJobStore
-from dw_knowledge.ports import ObjectStoragePort
+from dw_knowledge.ports import ObjectStoragePort, UsageMeterPort
 from dw_memory.adapters.qdrant_ranker import QdrantMemoryRanker
 from dw_memory.policy import MemoryWritePolicy
 from dw_memory.review import MEMORY_REVIEW, require_clearance_for_review
@@ -96,8 +97,11 @@ from dw_platform.application.dw_autonomy import (
 from dw_platform.application.ports import PlatformUnitOfWorkFactory
 from dw_platform.application.work_queue import WorkQueue
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestEngines
+from dw_usage.adapters.limits_sql import SqlLimits
+from dw_usage.adapters.metering import SqlUsageMeter
 from dw_usage.adapters.price_book_file import enforce_price_coverage, load_price_book
 from dw_usage.adapters.sql import SqlUsageLedger
+from dw_usage.application.coverage import require_rerank_priced
 from dw_usage.application.recorder import LedgerUsageRecorder
 
 
@@ -121,7 +125,7 @@ class RuntimeWiring:
 
 
 def _build_memory_ranker(
-    settings: ApiSettings, models: ModelResolver, residency: ResidencyGate
+    settings: ApiSettings, models: ModelResolver, residency: ResidencyGate, meter: UsageMeterPort
 ) -> QdrantMemoryRanker | None:
     """The memory ranker, when this deployment has a vector store to rank with.
 
@@ -141,7 +145,7 @@ def _build_memory_ranker(
 
     return _Ranker(
         client=AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key),
-        embedder=build_embeddings(settings, models, residency),
+        embedder=build_embeddings(settings, models, residency, meter),
     )
 
 
@@ -151,7 +155,7 @@ def build_runtime(
     session_factory: async_sessionmaker[AsyncSession],
     uow_factory: PlatformUnitOfWorkFactory,
     run_store: SqlWorkerRunStore,
-    limits: LimitsPort,
+    limits: SqlLimits,
     object_storage: ObjectStoragePort,
     packs: PackCatalog,
     work_queue: WorkQueue,
@@ -183,6 +187,16 @@ def build_runtime(
     enforce_price_coverage(
         price_book, MODEL_PROFILES_DIR, at=clock.now(), is_deployed=settings.is_deployed
     )
+    if settings.rerank_provider != "none":
+        # The reranker is configured beside the profiles and metered like them
+        # (usage-and-limits R6.1): the same rule holds for it.
+        require_rerank_priced(
+            settings.rerank_provider,
+            settings.rerank_model,
+            price_book,
+            clock.now(),
+            is_deployed=settings.is_deployed,
+        )
     ledger = LedgerUsageRecorder(
         ledger=SqlUsageLedger(session_factory),
         ids=ids,
@@ -222,17 +236,25 @@ def build_runtime(
     usage_meter = LangchainUsageMeter(
         models=models, recorder=usage_recorder, pricing=price_book, clock=clock
     )
-    chat_models = build_chat_model_factory(settings, models, copy)
+    # Every chat model a context resolves refuses a call no lease permitted
+    # (usage-and-limits R6.1, R6.2).
+    bare_chat_models = build_chat_model_factory(settings, models, copy)
+    chat_models = None if bare_chat_models is None else LimitedChatModelFactory(bare_chat_models)
+    # The embeddings and the reranks, held to the lease in force and recorded
+    # into the same ledger (R6.1, R6.2).
+    meter = SqlUsageMeter(
+        limits=limits, ledger=SqlUsageLedger(session_factory), pricing=price_book, clock=clock
+    )
 
     # ---- retrieval -------------------------------------------------------
     knowledge_gateway = KnowledgeGateway(
         session_factory=session_factory,
         vector_index=build_vector_index(settings),
-        embeddings=build_embeddings(settings, models, residency),
+        embeddings=build_embeddings(settings, models, residency, meter),
         object_storage=object_storage,
         clock=clock,
         id_generator=ids,
-        reranker=build_reranker(settings, residency),
+        reranker=build_reranker(settings, residency, meter),
         telemetry=telemetry,
     )
     # Upload path: the API stages the raw file and enqueues; the worker ingests.
@@ -304,7 +326,7 @@ def build_runtime(
         # Orders a long list of recalled facts by what the turn is about. Absent
         # without Qdrant, and absence costs only the ordering: recall still
         # answers, confidence-first, exactly as it did before ranking existed.
-        ranker=_build_memory_ranker(settings, models, residency),
+        ranker=_build_memory_ranker(settings, models, residency, meter),
     )
 
     # ---- graphs, workers, runner ----------------------------------------

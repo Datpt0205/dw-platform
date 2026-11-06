@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
+from dw_kernel.limits import LeaseInForce, MeteredCall, MeterPermit
 from dw_kernel.residency import TenantRouteScope
 from dw_knowledge.contracts import EvidenceChunk, SearchQuery
 from dw_platform.application.access_context import AccessContext
@@ -206,6 +207,31 @@ class EmbeddingPort(Protocol):
         """`scope`: the tenant and workspace whose content this is, from a
         verified context or a job row, never from a request; an adapter that
         sends it out asks `ResidencyGate` first (compliance-pdpl R2.3)."""
+        ...
+
+
+class UsageMeterPort(Protocol):
+    """The lease an embedding or a rerank spends against, asked before the call
+    and settled after it (usage-and-limits R6.1, R6.2; ADR-0121 decision 7).
+
+    Declared here, the consumer, and satisfied by `dw_usage` at the composition
+    root, so knowledge reads no limit and no ledger; the call and the permit
+    are kernel types, which both sides read. The lease is the one in
+    force (`dw_kernel.limits.lease_in_force`): a run's while the runner runs
+    one, an operation's inside `held_operation`."""
+
+    async def before_call(self, holder: LeaseInForce, call: MeteredCall) -> MeterPermit:
+        """A permit, or `LimitExceededError` when the lease cannot hold what
+        the call sends: nothing is sent then."""
+        ...
+
+    async def settle(self, holder: LeaseInForce, permit: MeterPermit, call: MeteredCall) -> None:
+        """The call answered: its usage record, keyed by the permit, written
+        and settled into the lease in one transaction."""
+        ...
+
+    async def abandon(self, holder: LeaseInForce, permit: MeterPermit) -> None:
+        """The call never answered: its hold goes back to the lease."""
         ...
 
 

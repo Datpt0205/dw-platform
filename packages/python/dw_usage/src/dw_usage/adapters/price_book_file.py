@@ -23,7 +23,7 @@ __all__ = ["PRICE_BOOK_PATH", "enforce_price_coverage", "load_price_book", "plat
 # The image sets DW_REPO_ROOT=/app and ships `configs/` there; in a checkout the
 # root is six levels up from this file.
 _REPO_ROOT = Path(os.environ.get("DW_REPO_ROOT", str(Path(__file__).resolve().parents[6])))
-PRICE_BOOK_PATH: Final = _REPO_ROOT / "configs" / "pricing" / "price_book@1.0.0.yaml"
+PRICE_BOOK_PATH: Final = _REPO_ROOT / "configs" / "pricing" / "price_book@1.1.0.yaml"
 
 
 def load_price_book(path: Path = PRICE_BOOK_PATH) -> PriceBook:

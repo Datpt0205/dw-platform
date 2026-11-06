@@ -12,6 +12,13 @@ Locks, always in one order so two admissions never wait on each other in a
 circle: the lease row first, then the counters by scope rank, scope id, metric,
 window kind and window start (ADR-0121 decision 5).
 
+A run's lease is capped by its `RunLimits` (R6.4): what its version declares,
+clamped by the plan as it stands at this `admit` or `resume`. An operation's
+lease (`admit_operation`, a model call that belongs to no run, R6.2) is capped
+by the period limits alone, holds a run's ceiling at a time and tops up by what
+each call needs, so a long ingestion never holds the whole month while runs
+wait for it.
+
 What a lease holds of each of its counters is `reserved - rolled`, at least 0
 (`held`). Counters move only at admission, a top-up, a heartbeat's roll and the
 close; a call's settlement moves the lease alone (`settle_into_lease`, written
@@ -38,8 +45,9 @@ import sqlalchemy as sa
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.ports import CallEstimate, CallPermit, RunLease
+from dw_agent_runtime.contracts import DeclaredLimits, RunContext
+from dw_agent_runtime.model.limits import clamp_run_limits
+from dw_agent_runtime.ports import CallEstimate, CallPermit, OperationPurpose, RunLease, RunLimits
 from dw_kernel.ids import TenantId, WorkspaceId
 from dw_kernel.limits import LEASE_EXPIRED, LimitExceededError, LimitsUnavailableError
 from dw_kernel.ports import IdGenerator, UtcClock
@@ -50,6 +58,7 @@ from dw_platform.domain.audit import lane_audit_event
 from dw_usage.adapters.ledger_rows import insert_usage_event
 from dw_usage.domain.events import UsageEvent
 from dw_usage.domain.limits import (
+    OPERATION_PURPOSES,
     PLAN_COLUMNS,
     CounterKey,
     LeasePurpose,
@@ -71,6 +80,7 @@ __all__ = [
     "SqlRunLease",
     "counter_now",
     "period_usage",
+    "run_limits",
     "settle_into_lease",
 ]
 
@@ -80,6 +90,10 @@ _LOG = logging.getLogger("dw_usage.limits")
 LEASE_TTL: Final = timedelta(seconds=300)
 _REAPER_LANE: Final = "reaper"
 _ZERO: Final = Decimal(0)
+# What caps an operation's lease when no period limit does (R6.2): the lease
+# arithmetic needs a number, and only the counters bound an operation.
+_UNCAPPED_USD: Final = Decimal(10**9)
+_UNCAPPED_TOKENS: Final = 10**15
 
 _SET_TENANT = sa.text("SELECT set_config('app.tenant_id', :t, true)")
 _SET_DRAIN = sa.text("SELECT set_config('app.worker_drain', 'on', true)")
@@ -88,7 +102,8 @@ _SET_DRAIN = sa.text("SELECT set_config('app.worker_drain', 'on', true)")
 _PLAN = sa.text(
     "SELECT e.plan_id, t.timezone, l.plan_id AS limits_plan, l.runs_per_day,"
     " l.cost_usd_per_day, l.cost_usd_per_month, l.tokens_per_month,"
-    " l.max_cost_usd_per_run, l.max_tokens_per_run"
+    " l.max_cost_usd_per_run, l.max_tokens_per_run, l.max_steps_per_run,"
+    " l.max_model_calls_per_run, l.max_tool_calls_per_run"
     " FROM platform.tenants t"
     " LEFT JOIN platform.entitlements e ON e.tenant_id = t.id"
     " LEFT JOIN platform.plan_limits l ON l.plan_id = e.plan_id"
@@ -194,6 +209,9 @@ async def _chain(
         },
         max_cost_usd_per_run=Decimal(row["max_cost_usd_per_run"]),
         max_tokens_per_run=int(row["max_tokens_per_run"]),
+        max_steps_per_run=int(row["max_steps_per_run"]),
+        max_model_calls_per_run=int(row["max_model_calls_per_run"]),
+        max_tool_calls_per_run=int(row["max_tool_calls_per_run"]),
     )
     policies = [
         PolicyLimit(
@@ -214,6 +232,21 @@ async def _chain(
         ).all()
     ]
     return _Chain(plan, chain_limits(tenant_id, plan, policies), row["timezone"])
+
+
+def run_limits(plan: PlanCaps, declared: DeclaredLimits) -> RunLimits:
+    """A run's limits: its version's declared values clamped by the plan's
+    per-run ceilings as they stand now (R6.4)."""
+    return clamp_run_limits(
+        declared,
+        RunLimits(
+            max_steps=plan.max_steps_per_run,
+            max_model_calls=plan.max_model_calls_per_run,
+            max_tool_calls=plan.max_tool_calls_per_run,
+            max_cost_usd=plan.max_cost_usd_per_run,
+            max_tokens=plan.max_tokens_per_run,
+        ),
+    )
 
 
 def _key(limit: ScopeLimit, timezone: str | None, at: datetime) -> CounterKey:
@@ -564,6 +597,26 @@ class SqlLimits:
     async def resume(self, run_context: RunContext) -> RunLease:
         return await self._open(run_context, purpose="run", counts_run=False)
 
+    async def admit_operation(
+        self,
+        *,
+        tenant_id: uuid.UUID,
+        workspace_id: uuid.UUID,
+        purpose: OperationPurpose,
+        operation_id: uuid.UUID,
+    ) -> RunLease:
+        return await self._open_for(
+            tenant_id=tenant_id,
+            workspace_id=workspace_id,
+            run_id=None,
+            root=operation_id,
+            artifact_id=None,
+            purpose=purpose,
+            payer="tenant",
+            counts_run=False,
+            cap_usd=None,
+        )
+
     async def admit_gate(
         self,
         *,
@@ -601,6 +654,7 @@ class SqlLimits:
             payer="tenant",
             counts_run=counts_run,
             cap_usd=None,
+            declared=run_context.declared_limits,
         )
 
     async def _open_for(
@@ -615,17 +669,23 @@ class SqlLimits:
         payer: Literal["tenant", "platform"],
         counts_run: bool,
         cap_usd: Decimal | None,
+        declared: DeclaredLimits | None = None,
     ) -> RunLease:
+        """`declared` is a run's; `None` for a gate (capped by `cap_usd`) and
+        for an operation (capped by the period limits alone)."""
         now = self.clock.now()
+        operation = purpose in OPERATION_PURPOSES
         try:
             async with self.session_factory() as session, session.begin():
                 await session.execute(_SET_TENANT, {"t": str(tenant_id)})
-                if (await session.execute(_OPEN_LEASE, {"t": tenant_id, "r": root})).first():
+                joined = (await session.execute(_OPEN_LEASE, {"t": tenant_id, "r": root})).first()
+                chain = await _chain(session, tenant_id, workspace_id, artifact_id)
+                limits_now = None if declared is None else run_limits(chain.plan, declared)
+                if joined:
                     # A root re-taken while its lease is open (a process died and
                     # the run was handed out again, two children going on at once)
                     # joins it, and is not counted again (gate 4/11/2026 (l)).
-                    return SqlRunLease(self, tenant_id, root)
-                chain = await _chain(session, tenant_id, workspace_id, artifact_id)
+                    return SqlRunLease(self, tenant_id, root, limits_now)
                 spent = (await session.execute(_ROOT_SPENT, {"t": tenant_id, "r": root})).one()
                 # `runs` counts once per root, at its first lease (R5.1).
                 count = counts_run and int(spent.leases) == 0
@@ -641,17 +701,30 @@ class SqlLimits:
                     )
                     by_key[counter.key] = limit
                     counters.append(counter)
-                cap = cap_usd if cap_usd is not None else chain.plan.max_cost_usd_per_run
+                if operation:
+                    # Only the counters bound it; it holds a run's ceiling at a
+                    # time and tops up by what each call needs (R6.2).
+                    cap, cap_tokens = _UNCAPPED_USD, _UNCAPPED_TOKENS
+                    first_usd = chain.plan.max_cost_usd_per_run
+                    first_tokens = chain.plan.max_tokens_per_run
+                else:
+                    if limits_now is not None:
+                        cap, cap_tokens = limits_now.max_cost_usd, limits_now.max_tokens
+                    else:
+                        cap = cap_usd if cap_usd is not None else chain.plan.max_cost_usd_per_run
+                        cap_tokens = chain.plan.max_tokens_per_run
+                    first_usd = cap - Decimal(spent.usd)
+                    first_tokens = cap_tokens - int(spent.tokens)
                 hold_usd = self._hold(
-                    counters, by_key, "cost_usd", cap - Decimal(spent.usd), cap, Decimal(spent.usd)
+                    counters, by_key, "cost_usd", first_usd, cap, Decimal(spent.usd)
                 )
                 hold_tokens = int(
                     self._hold(
                         counters,
                         by_key,
                         "tokens",
-                        Decimal(chain.plan.max_tokens_per_run - int(spent.tokens)),
-                        Decimal(chain.plan.max_tokens_per_run),
+                        Decimal(first_tokens),
+                        Decimal(cap_tokens),
                         Decimal(spent.tokens),
                     )
                 )
@@ -677,7 +750,7 @@ class SqlLimits:
                         "counted": count,
                         "keys": json.dumps([_key_json(c.key) for c in counters]),
                         "cap_usd": cap,
-                        "cap_tokens": chain.plan.max_tokens_per_run,
+                        "cap_tokens": cap_tokens,
                         "usd": hold_usd,
                         "tokens": hold_tokens,
                         "now": now,
@@ -693,7 +766,7 @@ class SqlLimits:
             raise
         except SQLAlchemyError as exc:
             raise _unavailable(exc) from exc
-        return SqlRunLease(self, tenant_id, root)
+        return SqlRunLease(self, tenant_id, root, limits_now)
 
     def _hold(
         self,
@@ -750,17 +823,39 @@ class SqlRunLease:
     limits: SqlLimits
     tenant_id: uuid.UUID
     root: uuid.UUID
+    # What the `admit` or `resume` that returned this lease computed (R6.4).
+    limits_at_admission: RunLimits | None = None
 
     @property
     def root_run_id(self) -> uuid.UUID:
         return self.root
 
+    @property
+    def run_limits(self) -> RunLimits | None:
+        return self.limits_at_admission
+
     async def before_call(self, run_context: RunContext, estimate: CallEstimate) -> CallPermit:
+        return await self.permit(
+            run_id=run_context.run_id,
+            cost_ceiling_usd=run_context.cost_ceiling_usd,
+            estimate=estimate,
+        )
+
+    async def permit(
+        self,
+        *,
+        run_id: uuid.UUID | None,
+        cost_ceiling_usd: Decimal | None,
+        estimate: CallEstimate,
+    ) -> CallPermit:
+        """`before_call` for a door that holds no run context (an embedding, a
+        rerank): the run it spends for, `None` for an operation, and a gate
+        attempt's own ceiling."""
         now = self.limits.clock.now()
         try:
             async with self.limits.session_factory() as session, session.begin():
                 await session.execute(_SET_TENANT, {"t": str(self.tenant_id)})
-                permit = await self._permit(session, run_context, estimate, now)
+                permit = await self._permit(session, run_id, cost_ceiling_usd, estimate, now)
         except LimitExceededError as refused:
             self.limits.telemetry.add_metric(
                 DW_LIMIT_REFUSALS_TOTAL, 1, {"reason": str(refused.details["metric"])}
@@ -775,7 +870,8 @@ class SqlRunLease:
     async def _permit(
         self,
         session: AsyncSession,
-        run_context: RunContext,
+        run_id: uuid.UUID | None,
+        cost_ceiling_usd: Decimal | None,
         estimate: CallEstimate,
         now: datetime,
     ) -> CallPermit:
@@ -803,29 +899,34 @@ class SqlRunLease:
         avail_usd = lease.reserved_usd - lease.settled_usd - lease.flying_usd
         avail_tokens = lease.reserved_tokens - lease.settled_tokens - lease.flying_tokens
         if avail_usd <= input_usd or avail_tokens < need_tokens:
-            lease = await self._top_up(session, lease, now)
+            lease = await self._top_up(
+                session,
+                lease,
+                now,
+                gap_usd=input_usd - avail_usd,
+                gap_tokens=need_tokens - avail_tokens,
+            )
             avail_usd = lease.reserved_usd - lease.settled_usd - lease.flying_usd
             avail_tokens = lease.reserved_tokens - lease.settled_tokens - lease.flying_tokens
-        if run_context.cost_ceiling_usd is not None and run_context.run_id is not None:
+        if cost_ceiling_usd is not None and run_id is not None:
             spent = Decimal(
-                await session.scalar(_RUN_SPENT, {"t": self.tenant_id, "run": run_context.run_id})
-                or 0
+                await session.scalar(_RUN_SPENT, {"t": self.tenant_id, "run": run_id}) or 0
             )
             flying = sum(
                 (
                     Decimal(str(c["usd"]))
                     for c in lease.in_flight.values()
-                    if c.get("run_id") == str(run_context.run_id)
+                    if c.get("run_id") == str(run_id)
                 ),
                 _ZERO,
             )
-            ceiling_left = run_context.cost_ceiling_usd - spent - flying
+            ceiling_left = cost_ceiling_usd - spent - flying
             if ceiling_left <= input_usd:
                 raise LimitExceededError(
                     "Lần thử đã dùng hết trần chi phí của nó",
                     metric="cost_usd",
                     scope_type="run",
-                    limit=run_context.cost_ceiling_usd,
+                    limit=cost_ceiling_usd,
                     used=spent,
                     reason="cost_ceiling",
                 )
@@ -852,7 +953,8 @@ class SqlRunLease:
             allowed = min(allowed, math.floor((avail_usd - input_usd) / price))
         if estimate.max_output_tokens is not None:
             allowed = min(allowed, estimate.max_output_tokens)
-        if allowed < 1:
+        # A call with no output (an embedding, a rerank) asks for none.
+        if allowed < 1 and estimate.max_output_tokens != 0:
             raise LimitExceededError(
                 "Phần giữ trước không còn chỗ cho câu trả lời",
                 metric="cost_usd",
@@ -877,7 +979,7 @@ class SqlRunLease:
                             "tokens": estimate.input_tokens + allowed,
                             "input_tokens": estimate.input_tokens,
                             "output_tokens": allowed,
-                            "run_id": str(run_context.run_id),
+                            "run_id": None if run_id is None else str(run_id),
                             "provider": estimate.provider,
                             "model": estimate.model,
                             "price_book_version": estimate.price_book_version,
@@ -887,18 +989,34 @@ class SqlRunLease:
             },
         )
         return CallPermit(
-            lease_id=lease.id, call_id=call_id, occurred_at=now, max_output_tokens=allowed
+            lease_id=lease.id,
+            call_id=call_id,
+            occurred_at=now,
+            max_output_tokens=max(allowed, 0),
+            purpose=lease.purpose,
         )
 
-    async def _top_up(self, session: AsyncSession, lease: _Lease, now: datetime) -> _Lease:
+    async def _top_up(
+        self,
+        session: AsyncSession,
+        lease: _Lease,
+        now: datetime,
+        *,
+        gap_usd: Decimal,
+        gap_tokens: int,
+    ) -> _Lease:
         """Take more from the counters, up to what every scope and the run's
-        ceiling still have left, under their locks in canonical order (R5.8)."""
+        ceiling still have left, under their locks in canonical order (R5.8).
+        An operation's lease takes what the call lacks and a run's ceiling
+        beyond it, never all that is left (R6.2)."""
         spent = (await session.execute(_ROOT_SPENT, {"t": self.tenant_id, "r": self.root})).one()
         prior_usd = Decimal(spent.usd) - lease.settled_usd
         prior_tokens = int(spent.tokens) - lease.settled_tokens
         limits: dict[tuple[str, uuid.UUID, str, str], ScopeLimit] = {}
+        chain_plan: PlanCaps | None = None
         if lease.payer != "platform":
             chain = await _chain(session, self.tenant_id, lease.workspace_id, lease.artifact_id)
+            chain_plan = chain.plan
             limits = {
                 (each.scope_type, each.scope_id, each.metric, each.window_kind): each
                 for each in chain.limits
@@ -926,6 +1044,9 @@ class SqlRunLease:
                 )
         extra_usd = max(room["cost_usd"], _ZERO)
         extra_tokens = max(int(room["tokens"]), 0)
+        if lease.purpose in OPERATION_PURPOSES and chain_plan is not None:
+            extra_usd = min(extra_usd, max(gap_usd, _ZERO) + chain_plan.max_cost_usd_per_run)
+            extra_tokens = min(extra_tokens, max(gap_tokens, 0) + chain_plan.max_tokens_per_run)
         if not extra_usd and not extra_tokens:
             return lease
         grown = replace(

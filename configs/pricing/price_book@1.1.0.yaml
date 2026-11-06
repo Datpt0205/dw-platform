@@ -16,7 +16,7 @@
 # không tính phí ghi cache: `cache_write_*` bằng giá input.
 schema_version: "1.0"
 price_book_id: platform
-version: 1.0.0
+version: 1.1.0
 currency: USD
 models:
   # ---- mock: không trả phí, giá 0, nên định giá không có nhánh riêng ----------
@@ -40,6 +40,14 @@ models:
     effective_from: "2025-01-01T00:00:00+00:00"
     source: route mock, không gọi nhà cung cấp nào
     prices: *free
+  # 1.1.0 (usage-and-limits/04): bộ nhúng băm của local/test, được đo như mọi
+  # cửa nhúng (R6.1), giá 0 vì không gọi nhà cung cấp nào.
+  - provider: mock
+    model: hash-embedding
+    effective_from: "2025-01-01T00:00:00+00:00"
+    source: bộ nhúng băm trong tiến trình, không gọi nhà cung cấp nào
+    prices:
+      embedding_input: "0"
 
   # ---- gateway của người đặt yêu cầu ------------------------------------------
   - provider: openai_responses

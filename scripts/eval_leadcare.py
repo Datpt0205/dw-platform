@@ -62,9 +62,10 @@ def step_schemas(node: object) -> dict[str, dict[str, Any]]:
 async def run() -> int:
     from dw_agent_runtime.adapters.model_stack import build_model_adapters, build_model_resolver
     from dw_agent_runtime.contracts import RunContext
-    from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, RoutingModelGateway
+    from dw_agent_runtime.model.gateway import InMemoryUsageRecorder
     from dw_agent_runtime.model.prompts import PromptRegistry
     from dw_agent_runtime.model.resolver import StaticPlanModelProfiles
+    from dw_agent_runtime.model.routing import RoutingModelGateway
     from dw_agent_runtime.ports import ModelRequest
     from dw_api.bootstrap.models import model_provider_config
     from dw_api.bootstrap.paths import MOCK_MODEL_FIXTURES

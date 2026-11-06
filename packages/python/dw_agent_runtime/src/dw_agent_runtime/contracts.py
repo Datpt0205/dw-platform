@@ -127,6 +127,22 @@ class WorkerDefinition(BaseModel):
         return value
 
 
+class DeclaredLimits(BaseModel):
+    """The behavioural limits a version declares for one run of it
+    (usage-and-limits R6.4; ADR-0121 decision 4): read from what the run
+    pinned, clamped by the plan where the run is admitted and resumed into
+    `RunLimits`. A field the version does not declare is `None`, and the
+    plan's ceiling holds for it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    max_steps: int | None = Field(default=None, ge=1)
+    max_model_calls: int | None = Field(default=None, ge=1)
+    max_tool_calls: int | None = Field(default=None, ge=1)
+    max_cost_usd: Decimal | None = Field(default=None, gt=0)
+    max_tokens: int | None = Field(default=None, ge=1)
+
+
 class RunContext(BaseModel):
     """Per-run trusted context, created at the boundary and passed explicitly."""
 
@@ -225,6 +241,13 @@ class RunContext(BaseModel):
     # (agent-lifecycle R4.5): `before_call` clamps by what is left of it. None:
     # no ceiling beyond the lease's.
     cost_ceiling_usd: Decimal | None = Field(default=None, ge=0)
+    # What the version this run runs declares of its behavioural limits, from
+    # what the run pinned, set where the run is taken and resumed; `LimitsPort`
+    # clamps it by the plan at each `admit` and `resume` (usage-and-limits
+    # R6.4). Empty, the plan's ceilings hold: no version declares any in W1
+    # until workflow-engine's document `limits` and agent-builder's W2
+    # section set it.
+    declared_limits: DeclaredLimits = Field(default_factory=DeclaredLimits)
 
     @property
     def lease_root(self) -> UUID:

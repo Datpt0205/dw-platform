@@ -462,6 +462,48 @@ source_modules = ["dw_agent_runtime", "dw_platform"]
 forbidden_modules = ["dw_usage"]
 
 [[tool.importlinter.contracts]]
+# usage-and-limits R6.1 (ADR-0121 decision 7): the model doors a process hands
+# out are metered (`MeteredModelGateway`, `LimitedChatModelFactory`,
+# `MeteredEmbeddings`, `MeteredRerank`); the concrete gateway and the concrete
+# embedding and rerank adapters are named only by the two builders and the
+# composition roots, so no module can reach a model without a lease.
+name = "Only a composition root imports a concrete model door"
+type = "forbidden"
+# `.**` for the two packages that hold a door: a whole root package named as a
+# source is blind to imports inside itself (measured on import-linter 2.15,
+# 5/11/2026), and those are exactly the second doors this is here to catch.
+source_modules = [
+    "dw_kernel",
+    "dw_platform",
+    "dw_agent_runtime.**",
+    "dw_knowledge.**",
+    "dw_memory",
+    "dw_connectors",
+    "dw_observability",
+    "dw_evals",
+    "dw_studio",
+    "dw_usage",
+    "dw_api",
+    "dw_docgen",
+    "dw_worker",
+]
+forbidden_modules = [
+    "dw_agent_runtime.model.routing",
+    "dw_knowledge.adapters.openai_embedding",
+    "dw_knowledge.adapters.hash_embedding",
+    "dw_knowledge.adapters.cohere_rerank",
+]
+ignore_imports = [
+    "dw_agent_runtime.adapters.model_stack -> dw_agent_runtime.model.routing",
+    "dw_knowledge.adapters.embedding_factory -> dw_knowledge.adapters.openai_embedding",
+    "dw_knowledge.adapters.embedding_factory -> dw_knowledge.adapters.hash_embedding",
+    "dw_api.bootstrap.** -> dw_knowledge.adapters.cohere_rerank",
+]
+# A route reaches `dw_api.bootstrap` through its container dependency, and
+# bootstrap is a composition root: only a direct import is a second door.
+allow_indirect_imports = true
+
+[[tool.importlinter.contracts]]
 # Only a composition root (`dw_api.bootstrap`, `dw_worker`) names a `dw_usage`
 # adapter; its own layers take them through ports.
 name = "dw_usage inner layers never import its adapters"

@@ -24,13 +24,16 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+import uuid
 from typing import Any
 
 import sqlalchemy as sa
 
 
 async def main() -> None:
+    from dw_agent_runtime.leases import held_operation
     from dw_api import bootstrap
+    from dw_kernel.limits import LimitExceededError
     from dw_kernel.residency import TenantRouteScope
     from dw_knowledge import tables
     from dw_knowledge.adapters.qdrant_index import QdrantVectorIndexAdapter
@@ -51,6 +54,13 @@ async def main() -> None:
         print(f"DW_REINDEX_TARGET must differ from the live collection ({target})", file=sys.stderr)
         raise SystemExit(2)
 
+    # The embedder is metered (usage-and-limits R6.1, R6.2): each document is
+    # re-embedded under an `ingestion` lease of its own company and workspace,
+    # as the worker embeds it at upload, so a company whose period is spent is
+    # skipped and reported rather than embedded unmetered.
+    assert container.runtime is not None, "the runtime is not wired"
+    limits = container.runtime.limits
+    skipped = 0
     embeddings = gateway.embeddings
     index = QdrantVectorIndexAdapter(client=live.client, collection=target)
     await index.ensure_ready(embeddings.dimension)
@@ -111,12 +121,26 @@ async def main() -> None:
                 # it knows and this script should not have to.
                 # The document's own tenant and workspace, from its row
                 # (compliance-pdpl R2.3): the gate reads their class.
-                vectors = await embeddings.embed(
-                    texts,
-                    scope=TenantRouteScope(
-                        tenant_id=document.tenant_id, workspace_id=document.workspace_id
-                    ),
-                )
+                try:
+                    async with held_operation(
+                        limits,
+                        tenant_id=document.tenant_id,
+                        workspace_id=document.workspace_id,
+                        purpose="ingestion",
+                        operation_id=uuid.uuid4(),
+                        actor_id=None,
+                        actor_kind="system",
+                    ):
+                        vectors = await embeddings.embed(
+                            texts,
+                            scope=TenantRouteScope(
+                                tenant_id=document.tenant_id, workspace_id=document.workspace_id
+                            ),
+                        )
+                except LimitExceededError as refused:
+                    skipped += 1
+                    print(" -", document.title, ": skipped, limit_exceeded", refused.details)
+                    continue
 
                 await index.upsert(
                     [
@@ -150,6 +174,10 @@ async def main() -> None:
                 print(" -", document.title, ":", len(rows), "chunks")
 
     print(f"TOTAL points written to {target}: {total}")
+    if skipped:
+        # The target is incomplete: do not point readers at it yet.
+        print(f"{skipped} documents were refused by their company's limits", file=sys.stderr)
+        raise SystemExit(1)
     print("Now set QDRANT_COLLECTION and restart; drop the old collection later.")
 
 

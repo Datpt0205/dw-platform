@@ -19,7 +19,9 @@ from typing import Any
 import httpx
 import pytest
 
+from dw_agent_runtime.testing.limits import OpenLimits
 from dw_kernel.errors import InfrastructureError
+from dw_kernel.limits import LeaseInForce, LimitExceededError, lease_in_force
 from dw_kernel.residency import Destination, ResidencyGate, TenantRouteScope
 from dw_knowledge.adapters.api_parsers import DeepgramTranscriptParser
 from dw_knowledge.attachment_policy import load_attachment_policy
@@ -117,9 +119,13 @@ class _FakeJobStore:
 
 @dataclass
 class _FakeGateway:
+    # The lease in force while each ingestion ran: what its embedder spends.
+    held: list[LeaseInForce | None] = field(default_factory=list)
+
     async def ingest_document(
         self, command: IngestDocumentCommand, context: AccessContext
     ) -> IngestedDocument:
+        self.held.append(lease_in_force())
         return IngestedDocument(document_id=INDEXED, chunk_count=4, storage_key=command.title)
 
 
@@ -165,15 +171,18 @@ def _drain(
     job: IngestJob | None,
     *,
     parser: _FakeParser | None = None,
+    limits: OpenLimits | None = None,
+    gateway: _FakeGateway | None = None,
 ) -> tuple[_FakeJobStore, IngestComponents]:
     store = _FakeJobStore(job=job)
     components = IngestComponents(
         engine=None,  # type: ignore[arg-type]
-        gateway=_FakeGateway(),  # type: ignore[arg-type]
+        gateway=gateway or _FakeGateway(),  # type: ignore[arg-type]
         job_store=store,  # type: ignore[arg-type]
         job_queue=store,  # type: ignore[arg-type]
         parser=parser or _FakeParser(),  # type: ignore[arg-type]
         object_storage=_FakeStorage(),  # type: ignore[arg-type]
+        limits=limits or OpenLimits(),
     )
     return store, components
 
@@ -347,3 +356,56 @@ async def test_a_recording_a_vn_only_tenant_may_not_send_abroad_fails_the_job_un
     assert len(store.failed) == 1 and store.failed[0].startswith("residency_refused")
     assert store.terminal == [True]
     assert sent == []
+
+
+# ---- the ingestion's operation lease (usage-and-limits/04, R6.2) -----------
+
+
+async def test_an_ingestion_spends_an_operation_lease_of_the_uploaders_workspace() -> None:
+    """R6.2: the embedder spends an `ingestion` lease, in force while the
+    gateway runs, naming the uploader, never `runs`; released when done."""
+    limits, gateway = OpenLimits(), _FakeGateway()
+    job = _job()
+    store, components = _drain(job, limits=limits, gateway=gateway)
+
+    await _run(components)
+
+    assert store.done == [job.id]
+    assert limits.operations == [(job.id, "ingestion")]
+    assert limits.admitted == []
+    (held,) = gateway.held
+    assert held is not None
+    assert (held.tenant_id, held.workspace_id, held.lease_root) == (TENANT, WORKSPACE, job.id)
+    assert (held.purpose, held.run_id, held.actor_id) == ("ingestion", None, ACTOR)
+    assert limits.released == [(job.id, "completed")]
+    assert lease_in_force() is None
+
+
+async def test_a_spent_month_ends_the_job_unsent_with_when_it_resets() -> None:
+    """R6.2 (UL4): the month spent, no file is read and no embedding is sent;
+    the job ends `failed` with `limit_exceeded` and `resets_at`, for good, and
+    nothing indexed is touched. Removing the lane's `admit_operation` sends it."""
+    resets_at = datetime(2026, 12, 1, tzinfo=UTC)
+    limits = OpenLimits(
+        refuse=LimitExceededError(
+            "spent",
+            metric="cost_usd",
+            scope_type="tenant",
+            window="month",
+            resets_at=resets_at,
+        )
+    )
+    parser, gateway = _FakeParser(), _FakeGateway()
+    job = _job()
+    store, components = _drain(job, parser=parser, limits=limits, gateway=gateway)
+
+    await _run(components)
+
+    assert gateway.held == []
+    assert parser.scopes == []
+    assert store.done == []
+    assert store.terminal == [True]
+    (error,) = store.failed
+    assert error.startswith("limit_exceeded: ")
+    assert resets_at.isoformat() in error
+    assert limits.released == []

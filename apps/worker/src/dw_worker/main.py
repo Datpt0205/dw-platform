@@ -66,6 +66,7 @@ from dw_connectors.ports import ChatSenderPort
 from dw_kernel.ports import IdGenerator, SystemClock, UtcClock, Uuid7Generator
 from dw_kernel.residency import ResidencyGate
 from dw_knowledge.adapters.evidence_store import SqlEvidenceStore
+from dw_knowledge.ports import UsageMeterPort
 from dw_knowledge.retention import SqlKnowledgeRetention
 from dw_memory.policy import MemoryWritePolicy
 from dw_memory.retention import SqlMemoryRetention
@@ -178,6 +179,7 @@ from dw_worker.composition import (
     build_studio_kinds,
     build_studio_lifecycle,
     build_studio_runner,
+    build_usage_meter,
     build_vector_index,
     build_wflite_runtime,
 )
@@ -209,7 +211,7 @@ from dw_worker.consumers.egress_allowlist import (
     build_allowed_host_handler,
 )
 from dw_worker.consumers.ingest import build_ingest_consumer
-from dw_worker.consumers.memory import memory_handlers
+from dw_worker.consumers.memory import LeasedMemoryIndex, memory_handlers
 from dw_worker.consumers.offboarding import INTERVAL_SECONDS as OFFBOARDING_INTERVAL_SECONDS
 from dw_worker.consumers.offboarding import TenantOffboardingLane, build_offboarding_consumer
 from dw_worker.consumers.outbox import EventHandler, build_outbox_consumer
@@ -254,7 +256,7 @@ def _build_worker_telemetry(settings: WorkerSettings) -> TelemetryPort:
 
 
 def _build_memory_vectors(
-    settings: WorkerSettings, residency: ResidencyGate
+    settings: WorkerSettings, residency: ResidencyGate, meter: UsageMeterPort
 ) -> QdrantMemoryRanker | None:
     """The memory ranker's store: written by the outbox handler, purged by
     supersession, retention and offboarding. One instance for all four, so
@@ -270,7 +272,7 @@ def _build_memory_vectors(
 
     return QdrantMemoryRanker(
         client=AsyncQdrantClient(url=settings.qdrant_url, api_key=settings.qdrant_api_key),
-        embedder=build_embeddings(settings, residency),
+        embedder=build_embeddings(settings, residency, meter),
     )
 
 
@@ -681,7 +683,10 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
         # Absent without Qdrant, and absent is survivable: the memory is stored
         # and recalled either way, it simply sorts with the ones nothing has an
         # opinion about — and there are no points to purge.
-        memory_vectors = _build_memory_vectors(settings, build_residency_gate(sessions, telemetry))
+        memory_meter = build_usage_meter(sessions, clock=clock)
+        memory_vectors = _build_memory_vectors(
+            settings, build_residency_gate(sessions, telemetry), memory_meter
+        )
         handlers: dict[str, EventHandler] = dict(
             memory_handlers(
                 MemoryService(
@@ -693,8 +698,12 @@ def build_registry(settings: WorkerSettings) -> ConsumerRegistry:
                     # A superseded memory's point goes with it.
                     vector_purge=memory_vectors,
                 ),
-                # Writes the vector that lets a later recall order a long list.
-                memory_vectors,
+                # Writes the vector that lets a later recall order a long list,
+                # each embedding under an operation lease of the memory's
+                # company (usage-and-limits R6.2).
+                None
+                if memory_vectors is None
+                else LeasedMemoryIndex(memory_vectors, memory_meter.limits, ids),
             )
         )
         # A decided raise of a DW's earned level (digital-worker R8.6).

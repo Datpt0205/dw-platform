@@ -31,12 +31,17 @@ was decided from the approval row, which the service reads itself.
 
 from __future__ import annotations
 
+import logging
 import uuid
+from dataclasses import dataclass
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from dw_agent_runtime.leases import held_operation
+from dw_agent_runtime.ports import LimitsPort
 from dw_kernel.errors import DomainError, NotFoundError
+from dw_kernel.ports import IdGenerator
 from dw_memory.contracts import MemoryItem
 from dw_memory.policy import MemoryCandidate
 from dw_memory.review import MEMORY_REVIEW_DECIDED
@@ -66,6 +71,8 @@ MEMORY_CANDIDATE_PROPOSED = "memory.candidate_proposed"
 # the plan here refuses rather than grants.
 _NO_PLAN = "background"
 
+logger = logging.getLogger("dw_worker.memory")
+
 
 class MemoryIndexPort(Protocol):
     """What makes a stored memory rankable later.
@@ -84,6 +91,56 @@ class MemoryIndexPort(Protocol):
         workspace_id: uuid.UUID,
         worker_id: str,
     ) -> None: ...
+
+
+@dataclass(frozen=True)
+class LeasedMemoryIndex:
+    """Implements `MemoryIndexPort`: `inner`'s indexing, its embedding under an
+    operation lease of the memory's company (usage-and-limits R6.2; gate
+    4/11/2026 (a)), since no run is in force on the outbox lane.
+
+    `ingestion`, the lease purpose of content indexed for later retrieval.
+    It never raises, as `inner` does not: a company whose month is spent keeps
+    the memory, unranked, and the delivery is not sent round the retry loop."""
+
+    inner: MemoryIndexPort
+    limits: LimitsPort
+    ids: IdGenerator
+
+    async def index(
+        self,
+        *,
+        memory_id: uuid.UUID,
+        content: str,
+        tenant_id: uuid.UUID,
+        workspace_id: uuid.UUID,
+        worker_id: str,
+    ) -> None:
+        try:
+            async with held_operation(
+                self.limits,
+                tenant_id=tenant_id,
+                workspace_id=workspace_id,
+                purpose="ingestion",
+                operation_id=self.ids.new_uuid(),
+                actor_id=None,
+                actor_kind="system",
+            ):
+                await self.inner.index(
+                    memory_id=memory_id,
+                    content=content,
+                    tenant_id=tenant_id,
+                    workspace_id=workspace_id,
+                    worker_id=worker_id,
+                )
+        except Exception:
+            # A refused or unreadable lease: nothing was sent, and the memory
+            # stays recallable, unranked, as when the vector store is down.
+            logger.warning(
+                "a memory was not indexed under a lease; it stays recallable but unranked",
+                extra={"memory_id": str(memory_id), "worker_id": worker_id},
+                exc_info=True,
+            )
 
 
 class MemoryProposePort(Protocol):

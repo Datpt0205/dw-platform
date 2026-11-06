@@ -32,14 +32,11 @@ from dw_agent_runtime.adapters.run_control_middleware import RunControlMiddlewar
 from dw_agent_runtime.adapters.sub_agents import SubAgentSpec, sub_agent_spec
 from dw_agent_runtime.adapters.telemetry_usage import TelemetryUsageRecorder
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.gateway import (
-    InMemoryUsageRecorder,
-    ModelUsage,
-    RoutingModelGateway,
-)
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, ModelUsage
 from dw_agent_runtime.model.profiles import ModelProfile, ModelProfileRegistry, ModelRoute
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry, RenderedPrompt
 from dw_agent_runtime.model.resolver import pin_entry
+from dw_agent_runtime.model.routing import RoutingModelGateway
 from dw_agent_runtime.ports import ModelRequest
 from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import AnyManifest

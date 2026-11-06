@@ -10,6 +10,16 @@ the budget door's per-call ``ModelResolver.resolve`` (model-connections R1.1).
 Choosing a model per tenant for an agent is ``StudioModelSelection``
 (agent-builder/03).
 
+A bounded context is handed `LimitedChatModelFactory` (`RuntimeSeam.chat_models`;
+usage-and-limits R6.1; ADR-0121 decision 7), never a bare factory: every model
+it builds refuses a call made without a lease's permit in force, which only the
+doors that asked the lease for one set (`LimitsMiddleware`, context compaction),
+so a node or a tool that calls the model directly is refused before a token is
+sent (R6.2). The refusal is a callback that raises on `on_chat_model_start`,
+which LangChain runs before the provider is called on every path (`invoke`,
+`ainvoke`, a bound model, a stream; measured on the pinned langchain-core,
+5/11/2026).
+
 LangChain types stay behind this adapter (import-linter enforced).
 """
 
@@ -19,7 +29,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from langchain_core.callbacks import CallbackManagerForLLMRun
+from langchain_core.callbacks import BaseCallbackHandler, CallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import AIMessage, BaseMessage, SystemMessage
 from langchain_core.outputs import ChatGeneration, ChatResult
@@ -27,9 +37,11 @@ from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
 from pydantic import Field
 
+from dw_agent_runtime.model.limits import permit_in_force
 from dw_agent_runtime.model.profiles import ModelRoute, Provider
 from dw_agent_runtime.model.resolver import ModelResolver
 from dw_agent_runtime.registry import ConfigError
+from dw_kernel.limits import NO_LEASE, LimitExceededError
 
 
 class ChatModelFactory(Protocol):
@@ -39,6 +51,50 @@ class ChatModelFactory(Protocol):
 
 
 CHAT_PROVIDERS = (Provider.OPENAI_COMPATIBLE, Provider.OPENAI_RESPONSES)
+
+
+class PermitRequired(BaseCallbackHandler):
+    """Refuses a chat call no lease permitted (usage-and-limits R6.2).
+
+    `raise_error` makes LangChain re-raise what this raises instead of logging
+    it; `run_inline` runs it in the caller's context, where the permit is."""
+
+    raise_error = True
+    run_inline = True
+
+    def on_chat_model_start(
+        self, serialized: dict[str, Any], messages: list[list[BaseMessage]], **kwargs: Any
+    ) -> None:
+        if permit_in_force() is None:
+            raise LimitExceededError(
+                "Lời gọi model không có phần giữ trước nào cho phép",
+                metric="cost_usd",
+                scope_type="run",
+                reason=NO_LEASE,
+            )
+
+
+@dataclass(frozen=True)
+class LimitedChatModelFactory:
+    """The chat model factory a bounded context is handed: `inner`'s models,
+    each refusing a call made without a permit in force."""
+
+    inner: ChatModelFactory
+
+    def resolve(self, profile_id: str) -> BaseChatModel:
+        model = self.inner.resolve(profile_id)
+        model.callbacks = [*_handlers(model.callbacks), PermitRequired()]
+        return model
+
+
+def _handlers(callbacks: Any) -> list[Any]:
+    """A model's own callbacks as a list: LangChain allows none, a list, or a
+    manager, and a manager's handlers are what it would call."""
+    if callbacks is None:
+        return []
+    if isinstance(callbacks, list):
+        return list(callbacks)
+    return list(getattr(callbacks, "handlers", []))
 
 
 @dataclass(frozen=True)

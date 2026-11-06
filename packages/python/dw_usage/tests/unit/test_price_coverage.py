@@ -15,7 +15,7 @@ from dw_usage.adapters.price_book_file import (
     load_price_book,
     platform_profiles,
 )
-from dw_usage.application.coverage import require_paid_routes_priced
+from dw_usage.application.coverage import require_paid_routes_priced, require_rerank_priced
 from dw_usage.domain.pricing import price_book_from_document
 
 pytestmark = pytest.mark.unit
@@ -49,6 +49,13 @@ _BOOK = price_book_from_document(
                 "effective_from": "2026-01-01T00:00:00+00:00",
                 "source": "test",
                 "prices": {"input_uncached": "0", "output": "0"},
+            },
+            {
+                "provider": "cohere_compatible",
+                "model": "priced-reranker",
+                "effective_from": "2026-01-01T00:00:00+00:00",
+                "source": "test",
+                "prices": {"rerank_search_unit": "2"},
             },
         ],
     }
@@ -93,3 +100,20 @@ def test_the_shipped_book_prices_every_shipped_paid_route() -> None:
         for profile in platform_profiles(REPO_ROOT / "configs" / "models")
         for route in (profile.structured_extraction, profile.reasoning)
     ), "no paid route is shipped, so the check above checked nothing"
+
+
+def test_a_deployed_api_with_an_unpriced_reranker_does_not_start() -> None:
+    """usage-and-limits R6.1 with R2.3: a metered reranker the book cannot price
+    would record `unpriced` and stop every run at its next call (R2.5)."""
+    with pytest.raises(ConfigError) as raised:
+        require_rerank_priced(
+            "cohere_compatible", "bge-reranker-v2-m3", _BOOK, NOW, is_deployed=True
+        )
+    assert (
+        "rerank (cohere_compatible bge-reranker-v2-m3): rerank_search_unit" in raised.value.message
+    )
+
+
+def test_a_priced_reranker_starts_and_local_starts_regardless() -> None:
+    require_rerank_priced("cohere_compatible", "priced-reranker", _BOOK, NOW, is_deployed=True)
+    require_rerank_priced("cohere_compatible", "bge-reranker-v2-m3", _BOOK, NOW, is_deployed=False)

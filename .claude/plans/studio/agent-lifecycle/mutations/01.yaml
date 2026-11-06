@@ -29,7 +29,7 @@ mutations:
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_a_tool_call_under_a_switch_is_halted_before_anything_resolves
   - name: AL11 R7.1 the structured gateway renders before it asks
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/routing.py
     old: "        await self.run_control.require_open(run_context, door=RunControlDoor.MODEL)\n"
     new: ""
     tests:
@@ -42,7 +42,7 @@ mutations:
       - packages/python/dw_agent_runtime/tests/unit/test_agent_factory.py::test_every_middleware_is_load_bearing
   - name: AL11 R7.1 the sub-agent stack drops its model door
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/sub_agents.py
-    old: "        RunControlMiddleware(parent.executor.run_control),\n"
+    old: "        RunControlMiddleware(\n            parent.executor.run_control,\n            artifacts=() if child.artifact_id is None else (child.artifact_id,),\n        ),\n"
     new: ""
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_run_control.py::test_a_delegated_turn_asks_the_parents_port_at_its_model_call

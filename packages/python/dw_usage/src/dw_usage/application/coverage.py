@@ -19,13 +19,22 @@ from dw_agent_runtime.model.profiles import ModelProfile, ModelRoute, Provider
 from dw_kernel.errors import ConfigError
 from dw_usage.domain.pricing import PriceBook
 
-__all__ = ["CHAT_KINDS", "EMBEDDING_KINDS", "require_paid_routes_priced", "unpriced_paid_routes"]
+__all__ = [
+    "CHAT_KINDS",
+    "EMBEDDING_KINDS",
+    "RERANK_KINDS",
+    "require_paid_routes_priced",
+    "require_rerank_priced",
+    "unpriced_paid_routes",
+]
 
-# What each route type's adapter reports: chat (every generating route) and
-# embedding. No profile carries a rerank route in W1; `rerank_search_unit` joins
-# when one does.
+# What each route type's adapter reports: chat (every generating route),
+# embedding, and rerank. No profile carries a rerank route in W1: the API
+# configures its reranker beside the profiles, checked by
+# `require_rerank_priced`.
 CHAT_KINDS: Final = ("input_uncached", "cache_read", "cache_write_5m", "cache_write_1h", "output")
 EMBEDDING_KINDS: Final = ("embedding_input",)
+RERANK_KINDS: Final = ("rerank_search_unit",)
 
 
 def _routes(profile: ModelProfile) -> Iterable[tuple[str, ModelRoute, tuple[str, ...]]]:
@@ -66,4 +75,22 @@ def require_paid_routes_priced(
         raise ConfigError(
             f"price book {book.version} does not price every paid route: {'; '.join(missing)}",
             details={"routes": missing},
+        )
+
+
+def require_rerank_priced(
+    provider: str, model: str, book: PriceBook, at: datetime, *, is_deployed: bool
+) -> None:
+    """R2.3 for the reranker a deployment configures beside its profiles. It is
+    metered like every model door (usage-and-limits R6.1), so an unpriced one
+    records `unpriced`, which stops the run at its next call (R2.5): a deployed
+    API with one does not start, rather than stop every run that reranks."""
+    if not is_deployed:
+        return
+    missing = [kind for kind in RERANK_KINDS if not book.covers(provider, model, kind, at)]
+    if missing:
+        routes = [f"rerank ({provider} {model}): {kind}" for kind in missing]
+        raise ConfigError(
+            f"price book {book.version} does not price the reranker: {'; '.join(routes)}",
+            details={"routes": routes},
         )

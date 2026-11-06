@@ -89,7 +89,7 @@ from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.model.copy import RuntimeCopy
 from dw_agent_runtime.model.gateway import ModelUsage, UsageRecorderPort
-from dw_agent_runtime.model.limits import approximate_tokens, estimate_call
+from dw_agent_runtime.model.limits import approximate_tokens, estimate_call, permitted
 from dw_agent_runtime.model.pricing import PricingPort, route_cost
 from dw_agent_runtime.model.profiles import ModelRoute
 from dw_agent_runtime.model.resolver import ModelResolver
@@ -274,9 +274,11 @@ class PlatformSummarizationMiddleware(SummarizationMiddleware):
                 ),
             )
             try:
-                summary, input_tokens, output_tokens, model_name = await self._summarise(
-                    rendered, permit.max_output_tokens
-                )
+                # In force for this summary call alone (usage-and-limits R6.2).
+                with permitted(permit):
+                    summary, input_tokens, output_tokens, model_name = await self._summarise(
+                        rendered, permit.max_output_tokens
+                    )
             except asyncio.CancelledError:
                 await lease.abandon(permit)
                 raise

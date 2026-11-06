@@ -15,9 +15,10 @@ from pydantic import BaseModel
 
 from dw_agent_runtime.adapters.mock_model import MockModelAdapter
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, ModelUsage, RoutingModelGateway
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, ModelUsage
 from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry, RenderedPrompt
+from dw_agent_runtime.model.routing import RoutingModelGateway
 from dw_agent_runtime.model.single_call import SingleCallModelGateway
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
 from dw_agent_runtime.testing.limits import OpenLimits
@@ -126,16 +127,21 @@ _REQUEST = ModelRequest(
 
 
 async def test_a_one_call_run_takes_a_lease_that_counts_no_run_and_gives_it_back() -> None:
+    """R6.2 (usage-and-limits/04): a call outside any run takes a
+    `builder_assist` operation lease, never a run's, and the call spends it."""
     limits = OpenLimits()
-    gateway, _ = _gateway(_answering({"answer": "ok"}), limits)
+    gateway, recorder = _gateway(_answering({"answer": "ok"}), limits)
     single = SingleCallModelGateway(inner=gateway, limits=limits)
     context = _run_context()
 
     result = await single.generate_structured(_REQUEST, Answer, run_context=context)
 
     assert result.answer == "ok"
-    assert limits.admitted == [(context.run_id, False)]
+    assert limits.admitted == []
+    assert limits.operations == [(context.run_id, "builder_assist")]
     assert limits.released == [(context.run_id, "completed")]
+    ((_, usage),) = recorder.records
+    assert usage.permit is not None and usage.permit.purpose == "builder_assist"
 
 
 async def test_a_one_call_run_gives_its_lease_back_when_the_call_fails() -> None:

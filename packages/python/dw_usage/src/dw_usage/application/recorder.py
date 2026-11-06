@@ -16,7 +16,8 @@ The call was priced where its route was known (the gateway, the meter); this
 class reads that price off the usage and never prices a second time. A call that
 reached it unpriced is stored `unpriced` with no cost, logged as an error and
 counted in `dw_usage_unpriced_total` (R2.5): the gap shows, it is never zero.
-A call is `purpose = 'run'`, `payer = 'platform'`, `root_run_id` its tree's
+A call is the `purpose` of the lease that permitted it (`run` when none did),
+`payer = 'platform'`, `root_run_id` its tree's
 root, with NULL artifact and node columns, and NULL lease when no permit came
 with it; the route columns are the usage's, which the sending door sets.
 """
@@ -91,7 +92,8 @@ class LedgerUsageRecorder:
             root_run_id=run_context.root_run_id or run_context.run_id,
             lease_id=None if permit is None else permit.lease_id,
             operation="chat",
-            purpose="run",
+            # The lease's: a builder's assistance is not a run (R6.2).
+            purpose="run" if permit is None else permit.purpose,
             payer="platform",
             actor_kind="service" if service else "user",
             user_id=None if service else run_context.actor_id,

@@ -139,9 +139,10 @@ async def probe_flags(route: ModelRoute, *, base_url: str, api_key: str) -> dict
 async def probe(profile_id: str | None = None) -> int:
     from dw_agent_runtime.adapters.model_stack import build_model_adapters, build_model_resolver
     from dw_agent_runtime.contracts import RunContext
-    from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, RoutingModelGateway
+    from dw_agent_runtime.model.gateway import InMemoryUsageRecorder
     from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
     from dw_agent_runtime.model.resolver import StaticPlanModelProfiles
+    from dw_agent_runtime.model.routing import RoutingModelGateway
     from dw_agent_runtime.ports import ModelRequest, RouteKind
     from dw_api.bootstrap.models import model_provider_config
     from dw_api.bootstrap.paths import MOCK_MODEL_FIXTURES

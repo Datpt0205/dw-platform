@@ -34,6 +34,9 @@ def _plan(**periods: str | None) -> PlanCaps:
         },
         max_cost_usd_per_run=Decimal(2),
         max_tokens_per_run=200_000,
+        max_steps_per_run=50,
+        max_model_calls_per_run=50,
+        max_tool_calls_per_run=200,
     )
 
 

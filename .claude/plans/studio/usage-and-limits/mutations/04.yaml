@@ -1,0 +1,164 @@
+# Mutation check of usage-and-limits ticket 04: scripts/mutate.py runs this file
+# at the queue's close (wave-close.md). One mutation per control of the ticket
+# (R6.1-R6.4; UL4, UL13), and one per layer where a rule is held twice (the
+# ingestion lane's lease and the embedding door's refusal; the agent loop's
+# permit and the chat model's guard; the seam's annotation and what the
+# composition root builds).
+#
+# The import-linter contract's own check is
+# `test_model_door_import_contract.py`, which plants a second door and requires
+# the contract to name it; it is not a source mutation.
+mutations:
+  # ---- R6.1 (UL4): the seam hands out metered doors only ---------------------
+  - name: UL4 R6.1 the seam's chat factory is the bare one
+    file: apps/api/src/dw_api/bootstrap/container.py
+    old: "    chat_models: LimitedChatModelFactory | None\n"
+    new: "    chat_models: \"ChatModelFactory | None\"\n"
+    tests:
+      - apps/api/tests/unit/test_runtime_seam_doors.py::test_each_model_door_of_the_seam_is_its_metered_type
+  - name: UL4 R6.1 the composition root hands out the bare chat factory
+    file: apps/api/src/dw_api/bootstrap/runtime.py
+    old: "    chat_models = None if bare_chat_models is None else LimitedChatModelFactory(bare_chat_models)\n"
+    new: "    chat_models = bare_chat_models\n"
+    tests:
+      - apps/api/tests/integration/test_wf_ai_wiring.py::test_every_door_the_seam_hands_out_is_built_metered
+
+  # ---- R6.2 (UL4): each door refuses on its own --------------------------------
+  - name: UL4 R6.2 a chat model sends a call no lease permitted
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/chat_model.py
+    old: "        if permit_in_force() is None:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_doors_and_run_limits.py::test_a_chat_model_called_directly_is_refused_before_it_is_sent
+      - packages/python/dw_agent_runtime/tests/unit/test_model_doors_and_run_limits.py::test_a_bound_or_synchronous_call_is_refused_the_same_way
+  - name: R6.2 the agent loop sends without its permit in force
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/limits_middleware.py
+    old: "            with permitted(permit):\n"
+    new: "            if True:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_doors_and_run_limits.py::test_the_agent_loop_sends_a_limited_model_under_its_permit
+  - name: R6.2 a summary is sent without its permit in force
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/context_compaction.py
+    old: "                with permitted(permit):\n"
+    new: "                if True:\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_doors_and_run_limits.py::test_a_limited_summariser_compacts_under_the_summarys_own_permit
+  - name: UL4 R6.2 an embedding is sent with no lease asked
+    file: packages/python/dw_knowledge/src/dw_knowledge/metering.py
+    old: "            return []\n        holder = _holder_for(scope)\n        tokens = estimated_tokens(texts)\n"
+    new: "            return []\n        return await self.inner.embed(texts, scope=scope)\n        holder = _holder_for(scope)\n        tokens = estimated_tokens(texts)\n"
+    tests:
+      - packages/python/dw_knowledge/tests/unit/test_metering.py::test_an_embedding_on_a_spent_lease_is_refused_unsent
+      - packages/python/dw_knowledge/tests/unit/test_metering.py::test_an_embedding_with_no_lease_in_force_is_refused_unsent
+      - packages/python/dw_knowledge/tests/unit/test_metering.py::test_a_search_on_a_spent_lease_is_refused_before_the_vector_store
+  - name: UL4 R6.2 an embedding spends another company's lease
+    file: packages/python/dw_knowledge/src/dw_knowledge/metering.py
+    old: "    if holder is None or holder.tenant_id != scope.tenant_id:\n"
+    new: "    if holder is None:\n"
+    tests:
+      - packages/python/dw_knowledge/tests/unit/test_metering.py::test_an_embedding_under_another_companys_lease_is_refused_unsent
+  - name: UL4 R6.2 a rerank is sent with no lease asked
+    file: packages/python/dw_knowledge/src/dw_knowledge/metering.py
+    old: "            return []\n        holder = _holder_for(scope)\n        call = MeteredCall(\n            operation=\"rerank\",\n"
+    new: "            return []\n        return await self.inner.rerank(query, candidates, top_k, scope=scope)\n        holder = _holder_for(scope)\n        call = MeteredCall(\n            operation=\"rerank\",\n"
+    tests:
+      - packages/python/dw_knowledge/tests/unit/test_metering.py::test_a_rerank_on_a_spent_lease_is_refused_unsent
+      - packages/python/dw_knowledge/tests/unit/test_metering.py::test_a_rerank_with_no_lease_in_force_is_refused_unsent
+  - name: UL4 R6.2 the ingestion lane embeds before its operation lease
+    file: apps/worker/src/dw_worker/consumers/ingest.py
+    old: "async def _process(job: IngestJob, components: IngestComponents) -> None:\n    async with held_operation(\n"
+    new: "async def _process(job: IngestJob, components: IngestComponents) -> None:\n    await _ingest(job, components)\n    async with held_operation(\n"
+    tests:
+      - apps/worker/tests/unit/test_ingest_consumer.py::test_a_spent_month_ends_the_job_unsent_with_when_it_resets
+  - name: R6.2 a spent month retries the ingestion instead of ending it
+    file: apps/worker/src/dw_worker/consumers/ingest.py
+    old: "            await components.job_store.mark_failed(job, error=_refused(refused), terminal=True)\n"
+    new: "            await components.job_store.mark_failed(job, error=_refused(refused))\n"
+    tests:
+      - apps/worker/tests/unit/test_ingest_consumer.py::test_a_spent_month_ends_the_job_unsent_with_when_it_resets
+  - name: R6.2 a memory is embedded before its operation lease
+    file: apps/worker/src/dw_worker/consumers/memory.py
+    old: "        try:\n            async with held_operation(\n                self.limits,\n"
+    new: "        await self.inner.index(\n            memory_id=memory_id,\n            content=content,\n            tenant_id=tenant_id,\n            workspace_id=workspace_id,\n            worker_id=worker_id,\n        )\n        try:\n            async with held_operation(\n                self.limits,\n"
+    tests:
+      - apps/worker/tests/unit/test_leased_memory_index.py::test_a_spent_period_keeps_the_memory_unranked_without_raising
+  - name: R6.2 a builder's call takes a run's lease, not an operation's
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/single_call.py
+    old: "            purpose=\"builder_assist\",\n"
+    new: "            purpose=\"retrieval\",\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_single_call_gateway.py::test_a_one_call_run_takes_a_lease_that_counts_no_run_and_gives_it_back
+  - name: R6.2 an operation's usage is recorded as a run's
+    file: packages/python/dw_usage/src/dw_usage/application/recorder.py
+    old: "            purpose=\"run\" if permit is None else permit.purpose,\n"
+    new: "            purpose=\"run\",\n"
+    tests:
+      - packages/python/dw_usage/tests/unit/test_recording.py::test_a_builders_call_is_recorded_under_its_operations_purpose
+  - name: R6.2 an operation counts a run
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "            root=operation_id,\n            artifact_id=None,\n            purpose=purpose,\n            payer=\"tenant\",\n            counts_run=False,\n"
+    new: "            root=operation_id,\n            artifact_id=None,\n            purpose=purpose,\n            payer=\"tenant\",\n            counts_run=True,\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_operation_leases_db.py::test_an_ingestion_lease_counts_no_run
+  - name: R6.2 an operation is capped by a run's ceiling
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "                    cap, cap_tokens = _UNCAPPED_USD, _UNCAPPED_TOKENS\n"
+    new: "                    cap, cap_tokens = chain.plan.max_cost_usd_per_run, chain.plan.max_tokens_per_run\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_operation_leases_db.py::test_an_operation_is_bounded_by_the_period_not_by_a_runs_ceiling
+  - name: R6.2 an operation's top-up holds the whole month
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "        if lease.purpose in OPERATION_PURPOSES and chain_plan is not None:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_operation_leases_db.py::test_an_operation_is_bounded_by_the_period_not_by_a_runs_ceiling
+  - name: R6.2 a route that is no Studio run answers 429 without Retry-After
+    file: apps/api/src/dw_api/exception_handlers.py
+    old: "            headers=_retry_after(exc.details.get(\"resets_at\")),\n"
+    new: "            headers=None,\n"
+    tests:
+      - apps/api/tests/unit/test_limit_exceeded_route.py::test_a_spent_month_is_429_limit_exceeded_with_retry_after_its_reset
+
+  # ---- R6.3 (UL13): a spent limit stops the run cleanly ------------------------
+  - name: UL13 R6.3 a spent limit is a step's error for its retry and on_error
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
+    old: "            except (GraphBubbleUp, RunHaltedError, ResidencyRefusedError, LimitExceededError):"
+    new: "            except (GraphBubbleUp, RunHaltedError, ResidencyRefusedError):"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_run_limits.py::test_a_step_that_would_continue_ends_the_run_at_a_spent_limit
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_run_limits.py::test_a_step_with_retries_is_tried_once_at_a_spent_limit
+  - name: R6.3 the lane does not audit the stop
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            await self._lane_audit(run, LIMIT_STOPPED, details=_limit_stopped(stopped))\n"
+    new: "            pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_run_limits.py::test_the_lane_audits_the_stop_as_itself_with_the_metric_and_scope
+  - name: R6.3 the inline path does not audit the stop
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/langgraph_runner.py
+    old: "            await self._audit(run_context, LIMIT_STOPPED, str(run_id), details=_limit_stopped(exc))\n"
+    new: "            pass\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_studio_run_limits.py::test_on_the_inline_path_the_stop_is_audited_in_the_runs_actors_name
+
+  # ---- R6.4: the version's limits, clamped by the plan -------------------------
+  - name: R6.4 a version's value above the plan is kept
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/limits.py
+    old: "        return cap if value is None else min(value, cap)\n"
+    new: "        return cap if value is None else value\n"
+    tests:
+      - packages/python/dw_agent_runtime/tests/unit/test_model_doors_and_run_limits.py::test_a_value_above_the_plans_ceiling_is_clamped_to_it
+      - packages/python/dw_usage/tests/integration/test_operation_leases_db.py::test_a_versions_value_above_the_plan_is_clamped_and_a_lowered_plan_binds_the_resume
+  - name: R6.4 a run's lease is capped by the plan, not by its limits
+    file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
+    old: "                        cap, cap_tokens = limits_now.max_cost_usd, limits_now.max_tokens\n"
+    new: "                        cap, cap_tokens = Decimal(9), limits_now.max_tokens\n"
+    tests:
+      - packages/python/dw_usage/tests/integration/test_operation_leases_db.py::test_a_versions_value_above_the_plan_is_clamped_and_a_lowered_plan_binds_the_resume
+
+  # ---- R6.1 with R2.3: a metered reranker the book cannot price ----------------
+  - name: R6.1 a deployed API starts with an unpriced reranker
+    file: packages/python/dw_usage/src/dw_usage/application/coverage.py
+    old: "    missing = [kind for kind in RERANK_KINDS if not book.covers(provider, model, kind, at)]\n"
+    new: "    missing = []\n"
+    tests:
+      - packages/python/dw_usage/tests/unit/test_price_coverage.py::test_a_deployed_api_with_an_unpriced_reranker_does_not_start

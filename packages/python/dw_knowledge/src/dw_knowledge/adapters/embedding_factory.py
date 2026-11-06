@@ -9,17 +9,27 @@ one of them is edited, so there is one.
 It takes the provider and the RESOLVED route, not a settings object: each
 process has its own settings class, and which profile names the route is the
 composition root's business.
+
+A process holds an embedder only metered (`build_metered_embeddings`): every
+call held to the lease in force and recorded, priced by the route it names
+(usage-and-limits R6.1, R6.2). `build_embeddings` is the bare adapter that
+wraps, for this module and its tests.
 """
 
 from __future__ import annotations
 
-from typing import Protocol
+from typing import Final, Protocol
 
 from dw_kernel.errors import ConfigError
 from dw_kernel.residency import Destination, ResidencyGate
-from dw_knowledge.ports import EmbeddingPort
+from dw_knowledge.metering import MeteredEmbeddings
+from dw_knowledge.ports import EmbeddingPort, UsageMeterPort
 
-__all__ = ["EmbeddingRoute", "build_embeddings"]
+__all__ = ["HASH_PRICE_KEY", "EmbeddingRoute", "build_embeddings", "build_metered_embeddings"]
+
+# The hash embedder's key in the price book, at zero like every mock route: it
+# calls no provider, and pricing has no branch for a free one.
+HASH_PRICE_KEY: Final = ("mock", "hash-embedding")
 
 
 class EmbeddingRoute(Protocol):
@@ -94,4 +104,40 @@ def build_embeddings(
     raise ConfigError(
         "unknown embedding provider; use 'openai_compatible' or 'hash'",
         details={"embedding_provider": provider},
+    )
+
+
+def build_metered_embeddings(
+    provider: str,
+    route: EmbeddingRoute | None,
+    *,
+    base_url: str | None,
+    api_key: str | None,
+    profile_id: str,
+    residency: ResidencyGate,
+    meter: UsageMeterPort,
+) -> MeteredEmbeddings:
+    """The embedder a process holds: `build_embeddings`'s adapter, each call
+    held to the lease in force and recorded under its route's price key."""
+    inner = build_embeddings(
+        provider,
+        route,
+        base_url=base_url,
+        api_key=api_key,
+        profile_id=profile_id,
+        residency=residency,
+    )
+    if provider == "hash" or route is None:
+        price_provider, model = HASH_PRICE_KEY
+        location = processor = None
+    else:
+        price_provider, model = provider, route.model
+        location, processor = route.data_location, route.processor
+    return MeteredEmbeddings(
+        inner=inner,
+        meter=meter,
+        provider=price_provider,
+        model=model,
+        data_location=location,
+        processor=processor,
     )

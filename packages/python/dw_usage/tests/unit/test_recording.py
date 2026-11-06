@@ -16,9 +16,10 @@ from pydantic import BaseModel
 from dw_agent_runtime.adapters.mock_model import MockModelAdapter
 from dw_agent_runtime.adapters.usage_recorders import CompositeUsageRecorder
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.gateway import ModelUsage, RoutingModelGateway
+from dw_agent_runtime.model.gateway import ModelUsage
 from dw_agent_runtime.model.profiles import ModelProfileRegistry, ModelRoute
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry, RenderedPrompt
+from dw_agent_runtime.model.routing import RoutingModelGateway
 from dw_agent_runtime.ports import ModelRequest
 from dw_agent_runtime.testing.limits import OpenLimits
 from dw_agent_runtime.testing.models import resolver as model_resolver
@@ -263,3 +264,34 @@ async def test_the_same_record_settled_twice_is_one_record() -> None:
     )
     assert await ledger.settle(event) is True
     assert await ledger.settle(event) is False
+
+
+async def test_a_builders_call_is_recorded_under_its_operations_purpose() -> None:
+    """usage-and-limits R6.2: a call outside any run, permitted by a
+    `builder_assist` operation lease, is recorded `builder_assist`, not `run`."""
+    from dw_agent_runtime.model.single_call import SingleCallModelGateway
+
+    ledger, telemetry = FakeLedger(), RecordingTelemetry()
+    gateway = _gateway(_book({"extraction-mock-1": "2026-01-01T00:00:00+00:00"}), ledger, telemetry)
+    limits = gateway.limits
+    assert isinstance(limits, OpenLimits)
+
+    await SingleCallModelGateway(inner=gateway, limits=limits).generate_structured(
+        _REQUEST, Summary, run_context=_context()
+    )
+
+    [event] = ledger.events
+    assert event.purpose == "builder_assist"
+    assert event.lease_id == limits.permits[0].lease_id
+
+
+def test_a_counters_metrics_are_the_period_part_of_the_one_metric_table() -> None:
+    """Step 2: `dw_usage` counts the period metrics of `dw_kernel.limits`'
+    one table, and none of the behavioural ones a run counts itself."""
+    from typing import get_args
+
+    from dw_kernel.limits import BEHAVIOUR_METRICS, PERIOD_METRICS
+    from dw_usage.domain.limits import Metric
+
+    assert set(get_args(Metric)) == set(PERIOD_METRICS)
+    assert not set(get_args(Metric)) & set(BEHAVIOUR_METRICS)

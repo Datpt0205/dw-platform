@@ -10,6 +10,8 @@ import pytest
 
 from dw_agent_runtime.registry import ConfigError
 from dw_kernel.residency import ResidencyGate
+from dw_knowledge.metering import MeteredEmbeddings
+from dw_knowledge.testing.meter import OpenMeter
 from dw_platform.testing.residency import StaticRouteClasses
 from dw_worker.composition import build_embeddings
 from dw_worker.settings import WorkerSettings
@@ -18,21 +20,22 @@ pytestmark = pytest.mark.unit
 
 # Built, never asked here: the adapters' refusals are compliance-pdpl 03's tests.
 _GATE = ResidencyGate(classes=StaticRouteClasses({}))
+_METER = OpenMeter()
 
 
 @pytest.mark.parametrize("provider", ["tei", "openai"])
 def test_an_unknown_embedding_provider_is_refused_not_hashed(provider: str) -> None:
     with pytest.raises(ConfigError) as raised:
-        build_embeddings(WorkerSettings(embedding_provider=provider), _GATE)
+        build_embeddings(WorkerSettings(embedding_provider=provider), _GATE, _METER)
     assert raised.value.details == {"embedding_provider": provider}
 
 
 def test_hash_embeddings_still_build_locally() -> None:
     from dw_knowledge.adapters.hash_embedding import HashEmbeddingAdapter
 
-    assert isinstance(
-        build_embeddings(WorkerSettings(embedding_provider="hash"), _GATE), HashEmbeddingAdapter
-    )
+    built = build_embeddings(WorkerSettings(embedding_provider="hash"), _GATE, _METER)
+    assert isinstance(built, MeteredEmbeddings)
+    assert isinstance(built.inner, HashEmbeddingAdapter)
 
 
 def test_a_blank_env_line_means_the_default_as_it_does_in_compose(
@@ -68,8 +71,13 @@ def test_the_api_and_the_worker_build_the_same_embedder_from_one_environment(
     profiles = ModelProfileRegistry()
     profiles.load_directory(Path(__file__).resolve().parents[4] / "configs" / "models")
 
-    api = api_build_embeddings(ApiSettings(), model_resolver(profiles, "gateway"), _GATE)
-    worker = build_embeddings(WorkerSettings(), _GATE)
+    api_door = api_build_embeddings(
+        ApiSettings(), model_resolver(profiles, "gateway"), _GATE, _METER
+    )
+    worker_door = build_embeddings(WorkerSettings(), _GATE, _METER)
+    # One price key too: both doors record under the route they embed with.
+    assert (api_door.provider, api_door.model) == (worker_door.provider, worker_door.model)
+    api, worker = api_door.inner, worker_door.inner
 
     assert isinstance(api, OpenAICompatibleEmbeddingAdapter)
     assert isinstance(worker, OpenAICompatibleEmbeddingAdapter)

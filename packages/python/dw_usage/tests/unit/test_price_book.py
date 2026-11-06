@@ -200,15 +200,15 @@ def test_a_tier_is_part_of_the_overlap_key() -> None:
 
 def test_the_shipped_book_loads_and_names_its_version(tmp_path: Path) -> None:
     book = load_price_book()
-    assert book.version == "1.0.0"
+    assert book.version == "1.1.0"
     copied = tmp_path / "price_book@2.0.0.yaml"
     copied.write_text(
         (
-            Path(__file__).resolve().parents[5] / "configs" / "pricing" / "price_book@1.0.0.yaml"
+            Path(__file__).resolve().parents[5] / "configs" / "pricing" / "price_book@1.1.0.yaml"
         ).read_text(encoding="utf-8"),
         encoding="utf-8",
     )
-    with pytest.raises(ConfigError, match=r"says version 1.0.0"):
+    with pytest.raises(ConfigError, match=r"says version 1.1.0"):
         load_price_book(copied)
 
 

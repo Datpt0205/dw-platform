@@ -5,20 +5,20 @@
 mutations:
   # ---- CP2, CP3: the gate at every door ---------------------------------------
   - name: the structured gateway sends without asking the gate
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/routing.py
     old: "        attempts = await self.residency.admitted(run_context, every_attempt)"
     new: "        attempts = every_attempt"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_a_vn_only_run_never_reaches_a_foreign_route
       - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_a_studio_run_s_pinned_foreign_route_is_refused
   - name: the structured gateway checks only the first route
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/routing.py
     old: "        attempts = await self.residency.admitted(run_context, every_attempt)"
     new: "        attempts = (await self.residency.admitted(run_context, every_attempt[:1])) + every_attempt[1:]"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_residency_gate.py::test_a_failing_vn_route_does_not_fall_through_to_a_foreign_fallback
   - name: a refused fallback ends the run on the vn route's error, not refused
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/routing.py
     old: "        if len(attempts) < len(every_attempt):"
     new: "        if False:"
     tests:
@@ -181,12 +181,12 @@ mutations:
       - packages/python/dw_studio/tests/integration/test_studio_runs.py::test_the_take_reads_the_data_route_class_the_door_pinned
   - name: a residency refusal is a step's error
     file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/node_wrapper.py
-    old: "            except (GraphBubbleUp, RunHaltedError, ResidencyRefusedError):"
-    new: "            except (GraphBubbleUp, RunHaltedError):"
+    old: "            except (GraphBubbleUp, RunHaltedError, ResidencyRefusedError, LimitExceededError):"
+    new: "            except (GraphBubbleUp, RunHaltedError, LimitExceededError):"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_studio_runner.py::test_a_residency_refusal_fails_the_run_and_is_never_retried_or_routed
   - name: the call's usage names no class, location or processor
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/routing.py
     old: "                data_route_class=run_context.route_class,\n                data_location=route.data_location,\n                processor=route.processor,"
     new: ""
     tests:

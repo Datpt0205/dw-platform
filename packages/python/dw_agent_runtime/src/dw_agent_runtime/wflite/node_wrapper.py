@@ -22,6 +22,10 @@ attempt:
   `failed` `outcome_unknown` until workflow-engine/08's review wait;
 - an output over 64 KiB is `output_too_large` (R4.6), never checkpointed.
 
+A spent limit (`LimitExceededError`) is none of these: it leaves the step as
+it came, never retried and never given to `on_error`, and the run ends `failed`
+`limit_exceeded` (usage-and-limits R6.3; ADR-0121 decision 6).
+
 When the attempts are spent, `on_error` decides (R4.3, R4.12): `continue`
 writes `{status: "error", error}` to the step's channel and goes on, `route`
 does the same and takes the error lane, and `fail` (or `route` with no error
@@ -84,6 +88,7 @@ from dw_kernel.errors import (
     PermissionDeniedError,
 )
 from dw_kernel.expressions import ExpressionEngine
+from dw_kernel.limits import LimitExceededError
 from dw_kernel.ports import UtcClock
 from dw_kernel.residency import ResidencyRefusedError
 from dw_observability.metrics import DW_NODE_FAILURE_TOTAL
@@ -412,9 +417,12 @@ class StudioNode:
             try:
                 async with asyncio.timeout(self.step.timeout_s):
                     answer = await self.body(self.step.config, inputs, doors)
-            except (GraphBubbleUp, RunHaltedError, ResidencyRefusedError):
+            except (GraphBubbleUp, RunHaltedError, ResidencyRefusedError, LimitExceededError):
                 # A residency refusal ends the run `residency_refused`: a policy
                 # answer, never a retried or routed step (compliance-pdpl R2.2).
+                # A spent limit ends it `failed` `limit_exceeded` the same way:
+                # no retry, no `on_error`, no error lane, no next step
+                # (usage-and-limits R6.3; ADR-0121 decision 6).
                 raise
             except TimeoutError:
                 return await self._timed_out(ctx.run, doors), None

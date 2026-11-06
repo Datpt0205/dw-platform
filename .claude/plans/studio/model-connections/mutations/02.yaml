@@ -2,10 +2,12 @@
 # at the queue's close. One mutation per control of the spec's Kiểm soát (MR1-MR6),
 # each side of a control held twice tested on its own (failure-modes #3, #5).
 mutations:
-  - name: MR1 the budget door asks for another company (reads the platform layer)
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/run_budget.py
-    old: '        resolved = await self._models.resolve(run_context, self._profile_id, "chat")'
-    new: '        resolved = await self._models.resolve(run_context.model_copy(update={"tenant_id": run_context.workspace_id}), self._profile_id, "chat")'
+  # The budget door (`adapters/run_budget.py`) became the limits middleware with
+  # usage-and-limits 03; its route is resolved there now.
+  - name: MR1 the limits door asks for another company (reads the platform layer)
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/adapters/limits_middleware.py
+    old: '        route = (await self._models.resolve(run_context, self._profile_id, "chat")).route'
+    new: '        route = (await self._models.resolve(run_context.model_copy(update={"tenant_id": run_context.workspace_id}), self._profile_id, "chat")).route'
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_every_door_takes_the_companys_own_route
   - name: MR1 the meter prices another company's route
@@ -15,7 +17,7 @@ mutations:
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_model_resolver.py::test_every_door_takes_the_companys_own_route
   - name: MR1 the gateway resolves for another company
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/routing.py
     old: "            run_context, request.model_profile, self._purpose(request)"
     new: '            run_context.model_copy(update={"tenant_id": run_context.workspace_id}), request.model_profile, self._purpose(request)'
     tests:

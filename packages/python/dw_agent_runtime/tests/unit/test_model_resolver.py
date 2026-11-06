@@ -33,7 +33,7 @@ from dw_agent_runtime.adapters.context_compaction import PlatformSummarizationMi
 from dw_agent_runtime.adapters.langchain_usage import LangchainUsageMeter
 from dw_agent_runtime.adapters.limits_middleware import LimitsMiddleware
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, ModelUsage, RoutingModelGateway
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, ModelUsage
 from dw_agent_runtime.model.profiles import (
     ModelProfile,
     ModelProfileRegistry,
@@ -47,6 +47,7 @@ from dw_agent_runtime.model.resolver import (
     pin_entry,
     profile_hash,
 )
+from dw_agent_runtime.model.routing import RoutingModelGateway
 from dw_agent_runtime.ports import ModelRequest
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.testing.limits import OpenLimits

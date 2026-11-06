@@ -44,9 +44,10 @@ CONFIGS = REPO_ROOT / "configs"
 def live_gateway() -> ModelGateway:
     """The gateway the deployment configured (`DW_MODEL_PROVIDER`, `DW_API_MODEL_PROFILE`)."""
     from dw_agent_runtime.adapters.model_stack import build_model_adapters, build_model_resolver
-    from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, RoutingModelGateway
+    from dw_agent_runtime.model.gateway import InMemoryUsageRecorder
     from dw_agent_runtime.model.prompts import PromptRegistry
     from dw_agent_runtime.model.resolver import StaticPlanModelProfiles
+    from dw_agent_runtime.model.routing import RoutingModelGateway
     from dw_api.bootstrap.models import model_provider_config
     from dw_api.bootstrap.paths import MOCK_MODEL_FIXTURES
     from dw_api.settings import ApiSettings

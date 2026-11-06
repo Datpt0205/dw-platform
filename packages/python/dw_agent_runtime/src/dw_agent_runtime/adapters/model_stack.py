@@ -43,15 +43,12 @@ from dw_agent_runtime.adapters.openai_responses import OpenAIResponsesAdapter
 from dw_agent_runtime.adapters.run_cost_recorder import RunCostRecorder
 from dw_agent_runtime.adapters.telemetry_usage import TelemetryUsageRecorder
 from dw_agent_runtime.adapters.usage_recorders import CompositeUsageRecorder
-from dw_agent_runtime.model.gateway import (
-    ModelProviderAdapter,
-    RoutingModelGateway,
-    UsageRecorderPort,
-)
+from dw_agent_runtime.model.gateway import ModelProviderAdapter, UsageRecorderPort
 from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.profiles import ModelProfileRegistry, Provider
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.resolver import ModelResolver
+from dw_agent_runtime.model.routing import RoutingModelGateway
 from dw_agent_runtime.model.single_call import SingleCallModelGateway
 from dw_agent_runtime.ports import (
     LimitsPort,

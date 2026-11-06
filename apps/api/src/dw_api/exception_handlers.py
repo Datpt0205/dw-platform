@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from collections.abc import Mapping, Sequence
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import FastAPI, Request, Response
@@ -19,6 +21,7 @@ from dw_api.dependencies.idempotency import (
 from dw_api.errors import ProblemError, code_for, problem_response, status_for
 from dw_kernel.errors import DWError, ErrorCode
 from dw_kernel.filters import QueryError
+from dw_kernel.limits import LimitExceededError
 from dw_platform.domain.audience import AudienceInvalidError
 
 # Where a filter tree sits in either form of a list query: the `filter`
@@ -77,6 +80,21 @@ def _located(error: Mapping[str, Any]) -> ProblemError:
     if where == "header":
         return ProblemError(header=name, code=code, detail=detail)
     return ProblemError(parameter=name, code=code, detail=detail)
+
+
+def _retry_after(resets_at: object) -> dict[str, str] | None:
+    """`Retry-After` in whole seconds until `resets_at`, at least one; none for
+    a limit that does not reset by itself (a run's own ceiling)."""
+    if not isinstance(resets_at, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(resets_at)
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        return None
+    wait = math.ceil((moment - datetime.now(UTC)).total_seconds())
+    return {"Retry-After": str(max(1, wait))}
 
 
 def register_exception_handlers(app: FastAPI) -> None:
@@ -149,6 +167,20 @@ def register_exception_handlers(app: FastAPI) -> None:
                 ProblemError(pointer=problem.pointer, code=problem.code, detail=problem.detail)
                 for problem in exc.problems
             ],
+        )
+
+    @app.exception_handler(LimitExceededError)
+    async def handle_limit_exceeded(request: Request, exc: LimitExceededError) -> Response:
+        """A route that is no Studio run (a builder's assistance, a retrieval)
+        and met a spent limit: 429 `limit_exceeded`, and `Retry-After` the
+        moment the limit's period resets, when it has one (usage-and-limits
+        R6.2; ADR-0121 decision 6 keeps 429 off a Studio run only)."""
+        return problem_response(
+            request,
+            exc.code,
+            exc.message,
+            details=exc.details,
+            headers=_retry_after(exc.details.get("resets_at")),
         )
 
     @app.exception_handler(DWError)

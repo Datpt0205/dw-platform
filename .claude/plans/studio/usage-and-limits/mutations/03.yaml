@@ -43,7 +43,7 @@ mutations:
       - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_test_run_or_a_call_outside_a_run_spends_money_but_counts_no_run
   - name: R5.1 a root taken again opens a second lease and counts again
     file: packages/python/dw_usage/src/dw_usage/adapters/limits_sql.py
-    old: "                if (await session.execute(_OPEN_LEASE, {\"t\": tenant_id, \"r\": root})).first():\n"
+    old: "                if joined:\n"
     new: "                if False:\n"
     tests:
       - packages/python/dw_usage/tests/integration/test_limits_db.py::test_a_root_taken_again_joins_its_open_lease_and_is_not_counted_twice
@@ -81,7 +81,7 @@ mutations:
     tests:
       - packages/python/dw_usage/tests/integration/test_limits_db.py::test_an_unpriced_call_stops_the_runs_next_call
   - name: UL3 the gateway sends what the caller asked, not the permit
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/routing.py
     old: "                    max_output_tokens=permit.max_output_tokens,\n"
     new: "                    max_output_tokens=request.max_output_tokens,\n"
     tests:
@@ -158,7 +158,7 @@ mutations:
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_runner_limits.py::test_a_child_or_a_gate_attempt_is_never_admitted_again
   - name: R6.5 the gateway asks the lease before the residency gate
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/routing.py
     old: "        attempts = await self.residency.admitted(run_context, every_attempt)\n"
     new: "        await self.limits.lease(run_context).before_call(run_context, estimate_call(self.pricing, resolved.route, tenant_id=run_context.tenant_id, input_tokens=1, max_output_tokens=1, at=self.clock.now()))\n        attempts = await self.residency.admitted(run_context, every_attempt)\n"
     tests:

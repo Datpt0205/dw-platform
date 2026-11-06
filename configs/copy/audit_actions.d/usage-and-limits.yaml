@@ -1,10 +1,12 @@
 # The audit actions usage-and-limits writes in W1, with their Vietnamese labels:
 # this spec's fragment of the action catalogue telemetry-and-audit merges
-# (telemetry-and-audit R1.6; H-21). Ticket 03 writes the three below.
+# (telemetry-and-audit R1.6; H-21). Ticket 03 writes the first three, ticket 04
+# the fourth.
 schema_version: "1.0"
 copy_id: platform.audit_actions.usage_and_limits
-version: "1.0.0"
+version: "1.1.0"
 actions:
   limits.refused: "Từ chối nhận một lượt chạy vì đã hết hạn mức"
   limits.policy.set: "Đặt mới hay hạ một Hạn mức"
   limits.lease.expired: "Thu hồi phần giữ trước của một lượt chạy không còn tín hiệu"
+  run.limit_stopped: "Dừng một lượt chạy vì đã chạm hạn mức hay giới hạn của lượt"

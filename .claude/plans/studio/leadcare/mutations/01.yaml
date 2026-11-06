@@ -86,7 +86,7 @@ mutations:
     tests:
       - apps/worker/tests/integration/test_leadcare_db.py::test_a_reply_wait_under_30_seconds_does_not_start
   - name: R1.5 the gateway asks in the output type's schema, never the request's
-    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/gateway.py
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/model/routing.py
     old: "            if request.output_schema is not None"
     new: "            if False"
     tests:

@@ -47,6 +47,7 @@ from dw_agent_runtime.adapters.run_store import (
 from dw_agent_runtime.autonomy import AutonomyApprovalPolicy, lower_autonomy
 from dw_agent_runtime.context import access_context_from_run
 from dw_agent_runtime.contracts import RunContext, WorkerDefinition
+from dw_agent_runtime.leases import LEASE_BEAT_SECONDS, beating, run_holder
 from dw_agent_runtime.ports import (
     LimitsPort,
     RunControlPort,
@@ -87,7 +88,7 @@ from dw_kernel.errors import (
     NotFoundError,
 )
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
-from dw_kernel.limits import LIMIT_EXCEEDED, LimitExceededError
+from dw_kernel.limits import LIMIT_EXCEEDED, LimitExceededError, spending_under
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_kernel.residency import RESIDENCY_REFUSED, ResidencyRefusedError
 from dw_observability.metrics import DW_RUN_DURATION_SECONDS, DW_RUN_TOTAL
@@ -114,9 +115,6 @@ _STREAM_BACKLOG_LIMIT = 256
 # used goes first.
 GRAPH_CACHE_SIZE: Final = 256
 _DURABILITIES: Final = frozenset({"sync", "async", "exit"})
-# The lease heartbeat (usage-and-limits R5.9; ADR-0121 decision 5): every
-# 60 seconds a process running a run of the tree moves `expires_at` 300 s on.
-LEASE_BEAT_SECONDS: Final = 60.0
 
 
 class ResumeInterrupted(Exception):  # noqa: N818 - names what the row records
@@ -412,27 +410,14 @@ class LangGraphWorkflowRunner:
             logger.exception("could not release a run's lease", extra={"run_id": str(run_id)})
 
     @contextlib.asynccontextmanager
-    async def _beating(self, lease: RunLease) -> AsyncIterator[None]:
+    async def _beating(self, lease: RunLease, run_context: RunContext) -> AsyncIterator[None]:
         """The lease's heartbeat for as long as this process runs a run of its
-        tree (R5.9): stopped on every way out, so a finished run beats nothing."""
-        task = asyncio.create_task(self._beat(lease))
-        try:
-            yield
-        finally:
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError):
-                await task
-
-    async def _beat(self, lease: RunLease) -> None:
-        while True:
-            await asyncio.sleep(self.lease_beat_seconds)
-            try:
-                if not await lease.beat():
-                    return
-            except Exception:
-                # A missed beat is retried on the next; five missed in a row
-                # and the reaper settles the lease as if the process had died.
-                logger.warning("a lease heartbeat failed", exc_info=True)
+        tree (R5.9), stopped on every way out so a finished run beats nothing;
+        and the lease in force for the doors that take no run context (an
+        embedding, a rerank), which spend against it (usage-and-limits R6.2)."""
+        with spending_under(run_holder(run_context)):
+            async with beating(lease, self.lease_beat_seconds):
+                yield
 
     async def start(
         self,
@@ -481,7 +466,7 @@ class LangGraphWorkflowRunner:
             try:
                 await self.run_control.require_open(run_context, door=RunControlDoor.START)
                 async with (
-                    self._beating(lease),
+                    self._beating(lease, run_context),
                     self._metered(run_context, worker.definition) as callbacks,
                 ):
                     state = await graph.ainvoke(
@@ -619,7 +604,7 @@ class LangGraphWorkflowRunner:
             snapshot = await graph.aget_state(config)
             work = {k: v for k, v in taken.input.items() if k != "approval_decisions"}
             payload = None if snapshot.next else {"work": work}
-            async with self._beating(lease):
+            async with self._beating(lease, run):
                 state = await graph.ainvoke(payload, config, context=context, durability=durability)
         except (StudioLeaseLostError, asyncio.CancelledError):
             # Another worker holds the run now, or this one is shutting down
@@ -646,9 +631,12 @@ class LangGraphWorkflowRunner:
             # no error lane takes it (compliance-pdpl R2.2).
             return await end("failed", error={"code": RESIDENCY_REFUSED})
         except LimitExceededError as stopped:
-            # A limit spent mid-run stops it at the next call (R5.5): no error
-            # lane, no retry, no cheaper model.
-            return await end("failed", error=dict(stopped.details))
+            # A limit spent mid-run stops it at the next call or step boundary
+            # (R5.5, R6.3): no error lane, no retry, no cheaper model. The lane
+            # that ran it says so, as itself (usage-and-limits/04 step 2).
+            await self._lane_audit(run, LIMIT_STOPPED, details=_limit_stopped(stopped))
+            # `error.code`, as a refusal at the queue writes it (studio_dispatch).
+            return await end("failed", error={**stopped.details, "code": LIMIT_EXCEEDED})
         except Exception as exc:
             logger.exception("a Studio run failed", extra={"run_id": str(run_id)})
             return await end("failed", error={"code": "step_failed", "type": type(exc).__name__})
@@ -826,7 +814,10 @@ class LangGraphWorkflowRunner:
     ) -> None:
         try:
             with self._invocation(run_context, attributes):
-                async with self._beating(lease), self._metered(run_context, worker) as callbacks:
+                async with (
+                    self._beating(lease, run_context),
+                    self._metered(run_context, worker) as callbacks,
+                ):
                     run_config = {**config, "callbacks": callbacks} if callbacks else config
                     async for chunk in graph.astream(
                         input_payload,
@@ -977,7 +968,7 @@ class LangGraphWorkflowRunner:
             )
             with self._invocation(run_context, attributes):
                 async with (
-                    self._beating(lease),
+                    self._beating(lease, run_context),
                     self._metered(run_context, worker.definition) as callbacks,
                 ):
                     state = await graph.ainvoke(
@@ -1067,6 +1058,10 @@ class LangGraphWorkflowRunner:
         await self._release(run_context, run_id, status.value)
         await self.run_store.set_status(run_context, run_id, status, error=error)
         await self._audit(run_context, event, str(run_id), details=details)
+        if isinstance(exc, LimitExceededError):
+            # In the run's actor's name on this path, as the end audit above
+            # is (usage-and-limits/04 step 2; gate 4/11/2026 (d)).
+            await self._audit(run_context, LIMIT_STOPPED, str(run_id), details=_limit_stopped(exc))
         self.telemetry.add_metric(
             DW_RUN_TOTAL, 1, {"worker": run_context.worker_id, "status": status.value}
         )
@@ -1275,6 +1270,21 @@ class LangGraphWorkflowRunner:
             raise InfrastructureError(
                 "failed to write audit event", details={"action": action}
             ) from exc
+
+
+# What a run stopped by a limit is audited as (usage-and-limits/04 step 2).
+LIMIT_STOPPED: Final = "run.limit_stopped"
+
+
+def _limit_stopped(stopped: LimitExceededError) -> dict[str, Any]:
+    """`run.limit_stopped`'s details: the reason, the metric that was spent
+    and the scope that spent it, which is what tells a child's own behavioural
+    limit from its tree's spent month."""
+    return {
+        "reason_code": LIMIT_EXCEEDED,
+        "metric": stopped.details["metric"],
+        "scope_type": stopped.details["scope_type"],
+    }
 
 
 def _loop_prompt(worker: WorkerDefinition) -> tuple[str, str]:

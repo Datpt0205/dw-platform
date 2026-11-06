@@ -22,7 +22,7 @@ from dataclasses import dataclass, field
 from qdrant_client import AsyncQdrantClient
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from dw_agent_runtime.adapters.chat_model import ChatModelFactory
+from dw_agent_runtime.adapters.chat_model import LimitedChatModelFactory
 from dw_agent_runtime.adapters.langchain_usage import LangchainUsageMeter
 from dw_agent_runtime.adapters.langgraph_runner import LangGraphWorkflowRunner
 from dw_agent_runtime.adapters.run_control import SqlRunControl
@@ -34,11 +34,11 @@ from dw_agent_runtime.approval_flow import ApproveAndResumeService
 from dw_agent_runtime.contracts import RunContext
 from dw_agent_runtime.executor import ToolExecutor
 from dw_agent_runtime.model.copy import RuntimeCopy
-from dw_agent_runtime.model.gateway import RoutingModelGateway, UsageRecorderPort
+from dw_agent_runtime.model.gateway import UsageRecorderPort
 from dw_agent_runtime.model.pricing import PricingPort
 from dw_agent_runtime.model.prompts import PromptRegistry
 from dw_agent_runtime.model.resolver import ModelResolver
-from dw_agent_runtime.ports import LimitsPort
+from dw_agent_runtime.ports import LimitsPort, MeteredModelGateway
 from dw_agent_runtime.registry import GraphRegistry, WorkerRegistry
 from dw_agent_runtime.tool_specs import ToolSpecRegistry
 from dw_agent_runtime.tools import ToolRegistry
@@ -134,10 +134,14 @@ class RuntimeSeam:
     models: ModelResolver
     prompts: PromptRegistry
     copy: RuntimeCopy
-    gateway: RoutingModelGateway
+    # The model doors, metered only (usage-and-limits R6.1; ADR-0121 decision
+    # 7): the structured gateway asks the run's lease before every attempt, and
+    # every chat model refuses a call no lease permitted. Neither is ever the
+    # bare one; `test_runtime_seam_doors.py` reads these annotations.
+    gateway: MeteredModelGateway
     # ``None`` when no tool-calling provider is configured: a context that needs
     # one registers nothing rather than registering a graph that cannot run.
-    chat_models: ChatModelFactory | None
+    chat_models: LimitedChatModelFactory | None
     usage_meter: LangchainUsageMeter
     # The process's one limits port (usage-and-limits R5): an `AgentSpec` takes
     # it as `limits`, and `usage_recorder` as its `usage_recorder`, whose write
@@ -156,6 +160,9 @@ class RuntimeSeam:
     toolsets: ToolsetRegistry
     graphs: GraphRegistry
     workers: WorkerRegistry
+    # Both reach a model through an embedder (and knowledge a reranker), each
+    # built metered by the composition root (`MeteredEmbeddings`,
+    # `MeteredRerank`).
     knowledge: KnowledgeGateway
     memory: MemoryService
 

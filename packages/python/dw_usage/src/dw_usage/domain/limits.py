@@ -29,6 +29,7 @@ from dw_usage.domain.windows import WindowKind
 __all__ = [
     "LEASE_PURPOSES",
     "LIMIT_PAIRS",
+    "OPERATION_PURPOSES",
     "PLAN_COLUMNS",
     "SCOPE_TYPES",
     "CounterKey",
@@ -48,11 +49,19 @@ __all__ = [
 
 ScopeType = Literal["tenant", "workspace", "agent", "workflow"]
 SCOPE_TYPES: Final[tuple[ScopeType, ...]] = get_args(ScopeType)
+# The period part of the one metric table, `dw_kernel.limits.LimitMetric`
+# (`PERIOD_METRICS`): what a counter and a lease count. The behavioural metrics
+# beside them are counted by the run, never by a counter.
 Metric = Literal["cost_usd", "tokens", "runs"]
 LimitKind = Literal["hard"]
 LimitSource = Literal["plan", "policy"]
 LeasePurpose = Literal["run", "eval_offline", "ingestion", "retrieval", "builder_assist"]
 LEASE_PURPOSES: Final[tuple[LeasePurpose, ...]] = get_args(LeasePurpose)
+# The leases of a model call that belongs to no run (usage-and-limits R6.2):
+# bounded by the period limits only, never by a run's ceilings.
+OPERATION_PURPOSES: Final[frozenset[LeasePurpose]] = frozenset(
+    {"ingestion", "retrieval", "builder_assist"}
+)
 
 # The W1 pairs, each with the plan column that caps it (R4.14).
 PLAN_COLUMNS: Final[dict[tuple[Metric, WindowKind], str]] = {
@@ -74,12 +83,16 @@ def scope_rank(scope_type: str) -> int:
 @dataclass(frozen=True, slots=True)
 class PlanCaps:
     """The plan's numbers a run is held to: its period caps by pair (`None`
-    is no limit) and its per-run ceilings, NOT NULL (ADR-0121 decision 9)."""
+    is no limit) and its per-run ceilings, NOT NULL (ADR-0121 decision 9),
+    the behavioural ones the clamp of a run's declared limits (R6.4)."""
 
     plan_id: str
     periods: dict[tuple[Metric, WindowKind], Decimal | None]
     max_cost_usd_per_run: Decimal
     max_tokens_per_run: int
+    max_steps_per_run: int
+    max_model_calls_per_run: int
+    max_tool_calls_per_run: int
 
 
 @dataclass(frozen=True, slots=True)

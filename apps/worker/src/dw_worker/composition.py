@@ -66,11 +66,17 @@ from dw_knowledge.adapters.api_parsers import (
     PlaintextAttachmentParser,
 )
 from dw_knowledge.adapters.composite_parser import CompositeParser
-from dw_knowledge.adapters.embedding_factory import build_embeddings as shared_build_embeddings
+from dw_knowledge.adapters.embedding_factory import build_metered_embeddings
 from dw_knowledge.attachment_policy import load_attachment_policy
 from dw_knowledge.gateway import KnowledgeGateway
 from dw_knowledge.ingest_jobs import IngestJobQueue, IngestJobStore
-from dw_knowledge.ports import DocumentParserPort, EmbeddingPort, ObjectStoragePort, VectorIndexPort
+from dw_knowledge.metering import MeteredEmbeddings
+from dw_knowledge.ports import (
+    DocumentParserPort,
+    ObjectStoragePort,
+    UsageMeterPort,
+    VectorIndexPort,
+)
 from dw_observability.telemetry import TelemetryPort
 from dw_platform.adapters.persistence.connections_repo import SqlConnectionStore
 from dw_platform.adapters.persistence.egress_allowlist_repo import SqlAllowedHosts
@@ -97,6 +103,7 @@ from dw_studio.records.adapters.actor_boundaries import SqlActorBoundaries
 from dw_studio.records.adapters.definition_store import object_store_of
 from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
 from dw_usage.adapters.limits_sql import SqlLimits
+from dw_usage.adapters.metering import SqlUsageMeter
 from dw_usage.adapters.price_book_file import enforce_price_coverage, load_price_book
 from dw_usage.adapters.sql import SqlUsageLedger
 from dw_usage.application.recorder import LedgerUsageRecorder
@@ -126,6 +133,9 @@ class IngestComponents:
     job_queue: IngestJobQueue
     parser: DocumentParserPort
     object_storage: ObjectStoragePort
+    # The limits an ingestion's operation lease is taken from, before the file
+    # is read (usage-and-limits R6.2): the gateway's embedder spends it.
+    limits: LimitsPort
 
 
 def _build_minio_client(settings: WorkerSettings) -> Minio:
@@ -182,26 +192,44 @@ def build_residency_gate(
     return ResidencyGate(classes=SqlRouteClasses(sessions), telemetry=telemetry)
 
 
-def build_embeddings(settings: WorkerSettings, residency: ResidencyGate) -> EmbeddingPort:
+def build_usage_meter(
+    sessions: async_sessionmaker[AsyncSession], *, clock: UtcClock
+) -> SqlUsageMeter:
+    """The meter an embedding spends through (usage-and-limits R6.1, R6.2): the
+    lease in force, on the limits, the ledger and the book every chat call of
+    this process uses."""
+    return SqlUsageMeter(
+        limits=SqlLimits(sessions, clock=clock, ids=Uuid7Generator(clock)),
+        ledger=SqlUsageLedger(sessions),
+        pricing=load_price_book(),
+        clock=clock,
+    )
+
+
+def build_embeddings(
+    settings: WorkerSettings, residency: ResidencyGate, meter: UsageMeterPort
+) -> MeteredEmbeddings:
     """Public because two lanes need it: knowledge ingestion, and the memory
     index. Built by `dw_knowledge`'s one builder, the one the API embeds
     questions with, so "which model embeds this deployment's text" has a
     single answer: the `embedding` route of the configured model profile, on
     the platform layer (an index has one width for every tenant). No run asks
-    this resolver anything, so it lists no plan.
+    this resolver anything, so it lists no plan. Metered: every call held to
+    the lease in force (usage-and-limits R6.1, R6.2).
     """
     models = build_model_resolver(
         model_provider_config(settings),
         profiles_dir=REPO_ROOT / "configs" / "models",
         plans=StaticPlanModelProfiles({}),
     )
-    return shared_build_embeddings(
+    return build_metered_embeddings(
         settings.embedding_provider,
         models.platform_profile(settings.model_profile).embedding,
         base_url=settings.openai_base_url,
         api_key=settings.openai_api_key,
         profile_id=settings.model_profile,
         residency=residency,
+        meter=meter,
     )
 
 
@@ -278,11 +306,12 @@ def build_ingest_components(settings: WorkerSettings) -> IngestComponents | None
     id_generator = Uuid7Generator()
     storage = build_object_storage(settings)
     residency = build_residency_gate(session_factory)
+    meter = build_usage_meter(session_factory, clock=clock)
 
     gateway = KnowledgeGateway(
         session_factory=session_factory,
         vector_index=build_vector_index(settings),
-        embeddings=build_embeddings(settings, residency),
+        embeddings=build_embeddings(settings, residency, meter),
         object_storage=storage,
         clock=clock,
         id_generator=id_generator,
@@ -300,6 +329,7 @@ def build_ingest_components(settings: WorkerSettings) -> IngestComponents | None
         job_queue=IngestJobQueue(session_factory=session_factory, clock=clock),
         parser=build_parser(settings, residency),
         object_storage=storage,
+        limits=meter.limits,
     )
 
 

@@ -9,10 +9,11 @@ from pydantic import BaseModel
 
 from dw_agent_runtime.adapters.mock_model import MockModelAdapter
 from dw_agent_runtime.contracts import RunContext
-from dw_agent_runtime.model.gateway import InMemoryUsageRecorder, RoutingModelGateway
+from dw_agent_runtime.model.gateway import InMemoryUsageRecorder
 from dw_agent_runtime.model.pricing import route_cost
 from dw_agent_runtime.model.profiles import ModelProfileRegistry
 from dw_agent_runtime.model.prompts import PromptArtifact, PromptRegistry
+from dw_agent_runtime.model.routing import RoutingModelGateway
 from dw_agent_runtime.ports import ModelOutputInvalidError, ModelRequest
 from dw_agent_runtime.registry import ConfigError
 from dw_agent_runtime.testing.limits import OpenLimits
