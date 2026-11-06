@@ -1,0 +1,166 @@
+# Mutation check of tenant-rbac ticket 12: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per row of the ticket's
+# "Đột biến" column but two: K1 (c) (no support_staff side in the branch) and
+# K1 (f) (no FOR KEY SHARE in the R3.11 guard's assignment branch) are
+# equivalent mutants. A support staff member holds no membership at all
+# (`ck_memberships_not_support_staff` refuses the move first), and the
+# service-account guard, earlier by name in the same statement, takes the same
+# FOR KEY SHARE first; the ticket's Comments say so.
+mutations:
+  - name: K1 (a) no R3.11 trigger on a membership's change of person
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "    (\n        \"trg_memberships_operator_not_owner\",\n        \"CREATE TRIGGER trg_memberships_operator_not_owner\"\
+      \n        f\" BEFORE UPDATE OF user_id ON platform.memberships FOR EACH ROW {_MOVED}\"\n        \"\
+      \ EXECUTE FUNCTION platform.guard_operator_tenant_grants()\",\n    ),\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k1_a_move_handing_owner_authority_to_a_listed_person_is_refused
+  - name: K1 (b) the branch reads the new person's assignments, not M's
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "                    WHERE a.tenant_id = NEW.tenant_id AND a.membership_id = NEW.id\n         \
+      \             AND (r.key = 'tenant_owner' OR EXISTS (\n"
+    new:
+      "                    JOIN platform.memberships mm ON mm.id = a.membership_id\n                \
+      \    WHERE mm.user_id = NEW.user_id\n                      AND (r.key = 'tenant_owner' OR EXISTS (\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k1_a_move_handing_owner_authority_to_a_listed_person_is_refused
+  - name: K1 (d) the branch reads every membership of the old person
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "                    WHERE a.tenant_id = NEW.tenant_id AND a.membership_id = NEW.id\n         \
+      \             AND (r.key = 'tenant_owner' OR EXISTS (\n"
+    new:
+      "                    JOIN platform.memberships mm ON mm.id = a.membership_id\n                \
+      \    WHERE mm.user_id = OLD.user_id\n                      AND (r.key = 'tenant_owner' OR EXISTS (\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k1_only_the_moved_membership_is_read_not_the_old_persons_others
+  - name: K1 (e) the branch takes no advisory lock
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "            v_user := NEW.user_id;\n            PERFORM pg_advisory_xact_lock(hashtext('operator_grants:'\
+      \ || v_user::text));\n            IF EXISTS (SELECT 1 FROM platform.platform_operators WHERE user_id\
+      \ = v_user)\n"
+    new:
+      "            v_user := NEW.user_id;\n            IF EXISTS (SELECT 1 FROM platform.platform_operators\
+      \ WHERE user_id = v_user)\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k1i_a_move_beside_listing_its_new_person
+  - name: K1 (g) an owner key into a role takes no role lock
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "                -- listing that locks it waits, or is waited for.\n                PERFORM 1 FROM\
+      \ platform.tenant_roles\n                WHERE tenant_id = NEW.tenant_id AND id = NEW.role_id\n  \
+      \              FOR NO KEY UPDATE;\n"
+    new: "                -- listing that locks it waits, or is waited for.
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k1iii_a_move_to_an_operator_beside_an_owner_key_into_its_role
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k1iv_an_assignment_to_an_operator_beside_an_owner_key_into_the_role
+  - name: K1 (h) a listing takes no role locks
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "            -- an owner key added to one of them meanwhile waits, or is waited for.\n        \
+      \    PERFORM 1 FROM platform.tenant_roles r\n            WHERE (r.tenant_id, r.id) IN (\n        \
+      \        SELECT a.tenant_id, a.role_id FROM platform.role_assignments a\n                JOIN platform.memberships\
+      \ m ON m.id = a.membership_id\n                WHERE m.user_id = v_user\n            )\n         \
+      \   ORDER BY r.id\n            FOR NO KEY UPDATE;\n"
+    new:
+      "            -- an owner key added to one of them meanwhile waits, or is waited for.
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k1v_listing_a_person_beside_an_owner_key_into_a_role_they_hold
+  - name: K2 (a) no service-account trigger on a membership's change of person
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "    (\n        \"guard_service_principal_grants\",\n        \"CREATE TRIGGER guard_service_principal_grants\"\
+      \n        f\" BEFORE UPDATE OF user_id ON platform.memberships FOR EACH ROW {_MOVED}\"\n        \"\
+      \ EXECUTE FUNCTION platform.guard_service_principal_grants()\",\n    ),\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k2_a_move_handing_a_critical_role_to_a_service_account_is_refused
+  - name: K2 (b) the branch looks at the old person
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "                SELECT 1 FROM platform.users u WHERE u.id = NEW.user_id AND u.kind = 'service'
+
+      "
+    new:
+      "                SELECT 1 FROM platform.users u WHERE u.id = OLD.user_id AND u.kind = 'service'
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k2_a_move_handing_a_critical_role_to_a_service_account_is_refused
+  - name: K2 (c) tenant_owner stands in for every critical role
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "                      AND platform.role_is_critical(NEW.tenant_id, a.role_id)
+
+      "
+    new:
+      "                      AND EXISTS (SELECT 1 FROM platform.tenant_roles r WHERE r.tenant_id = a.tenant_id\n\
+      \                                  AND r.id = a.role_id AND r.key = 'tenant_owner')\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k2_a_move_handing_a_critical_role_to_a_service_account_is_refused
+  - name: K2 (d) the branch takes no role locks
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "                @LOCK_MEMBERSHIP_ROLES@\n                v_refused := EXISTS (\n             \
+      \       SELECT 1 FROM platform.role_assignments a\n                    WHERE a.tenant_id = NEW.tenant_id\
+      \ AND a.membership_id = NEW.id\n                      AND platform.role_is_critical"
+    new:
+      "                v_refused := EXISTS (\n                    SELECT 1 FROM platform.role_assignments\
+      \ a\n                    WHERE a.tenant_id = NEW.tenant_id AND a.membership_id = NEW.id\n        \
+      \              AND platform.role_is_critical"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k2i_a_move_to_a_service_account_beside_a_critical_key_into_its_role
+  - name: K2 (e) no grants_changed trigger on a membership's change of person
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "    (\n        \"service_principal_grants_changed\",\n        \"CREATE TRIGGER service_principal_grants_changed\"\
+      \n        f\" AFTER UPDATE OF user_id ON platform.memberships FOR EACH ROW {_MOVED}\"\n        \"\
+      \ EXECUTE FUNCTION platform.service_principal_grants_changed()\",\n    ),\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k2_a_move_of_a_plain_role_to_a_service_account_passes_and_is_announced_once
+  - name: K2 (f) the assignment branch reads the membership without FOR KEY SHARE
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "            PERFORM 1 FROM platform.memberships WHERE id = NEW.membership_id FOR KEY SHARE;
+
+      "
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k2ii_a_move_to_a_service_account_beside_an_owner_assignment_on_it
+  - name: K3 (a) no last-owner trigger on a membership's change of person
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "    (\n        \"ck_role_assignments_last_owner\",\n        \"CREATE TRIGGER ck_role_assignments_last_owner\"\
+      \n        f\" AFTER UPDATE OF user_id ON platform.memberships FOR EACH ROW {_MOVED}\"\n        \"\
+      \ EXECUTE FUNCTION platform.refuse_losing_the_last_owner()\",\n    ),\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k3_moving_the_last_active_owner_to_an_invited_member_is_refused
+  - name: K3 (b) the branch judges the new person
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old: "            v_user := OLD.user_id;
+
+      "
+    new: "            v_user := NEW.user_id;
+
+      "
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k3_moving_the_last_active_owner_to_an_invited_member_is_refused
+  - name: K4 (a) no coverage trigger on a membership's change of person
+    file: db/migrations/versions/ade120c2a1b5_membership_change_of_person_passes_the_grant_guards.py
+    old:
+      "    (\n        \"trg_memberships_owner_coverage\",\n        \"CREATE CONSTRAINT TRIGGER trg_memberships_owner_coverage\"\
+      \n        \" AFTER UPDATE OF user_id ON platform.memberships\"\n        f\" DEFERRABLE INITIALLY DEFERRED\
+      \ FOR EACH ROW {_MOVED}\"\n        \" EXECUTE FUNCTION platform.owner_coverage_after_write()\",\n\
+      \    ),\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_membership_change_of_person.py::test_k4_a_move_below_two_holders_of_an_owner_key_is_told_once

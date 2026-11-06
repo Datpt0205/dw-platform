@@ -523,6 +523,9 @@ async def test_the_guard_is_on_all_three_tables(migrator: AsyncEngine) -> None:
         # tenant-rbac/04: `fld.*` on a sensitive field makes a role critical.
         ("field_permissions", "guard_service_principal_grants"),
         ("field_defs", "guard_service_principal_grants"),
+        # tenant-rbac/12: a membership's change of person is an assignment.
+        ("memberships", "guard_service_principal_grants"),
+        ("memberships", "service_principal_grants_changed"),
     }
 
 

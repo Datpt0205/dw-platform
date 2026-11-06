@@ -1,6 +1,6 @@
 # 12 — Lần đổi người của membership qua các guard mà lần gán và lần gỡ phải qua
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 11
 Area: studio
 Yêu cầu: R3.11, R3.12, R6.7, RB20, RB39, RB40, RB50
@@ -168,12 +168,12 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
 
 ## Tiêu chí chấp nhận
 
-- [ ] R3.11 (RB39): K1, lần đổi người dưới `dw_migrator` đưa `tenant_owner`, `platform.roles.write` hay
+- [x] R3.11 (RB39): K1, lần đổi người dưới `dw_migrator` đưa `tenant_owner`, `platform.roles.write` hay
       `studio.publish.approve` tới người có dòng trong `platform_operators` hay `support_staff` bị từ chối với 23514
       `ck_role_assignments_operator_not_owner`, M giữ `user_id` cũ và các lần gán của nó; ca vai trò thường và ca hai tenant
       được nhận; năm ca đồng thời từ chối đúng bên thứ hai ở cả hai thứ tự, không `40P01`; sai nếu lần đổi hay lần ghi
       nào đó được nhận, một ca đối chứng bị từ chối, hay một trong tám đột biến của K1 vẫn xanh. Ở commit gốc (sau ticket 11) các lần đổi đó được nhận, và ca đồng thời (ii)-(v) nhận cả hai bên.
-- [ ] RB50: K2, lối `dw_migrator` mà RB50 để mở không đưa vai trò trọng yếu tới tài khoản dịch vụ
+- [x] RB50: K2, lối `dw_migrator` mà RB50 để mở không đưa vai trò trọng yếu tới tài khoản dịch vụ
       (org-and-principals:R6.4): lần đổi M mang `tenant_owner` hay vai trò có khóa `critical` sang S bị từ chối với 23514
       `ck_role_assignments_service_not_critical`, M không đổi; lần đổi M chỉ mang vai trò không trọng yếu được nhận với
       đúng một dòng outbox `platform.service_principal.grants_changed` cho S (org-and-principals:R6.6), M không có lần gán
@@ -181,15 +181,15 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
       `dw_provisioner` vẫn `ck_memberships_identity_fixed` (`test_a_membership_never_changes_hands` xanh); sai nếu một lần đổi đưa vai trò
       trọng yếu tới S được nhận, số dòng outbox khác, hay một trong sáu đột biến của K2 vẫn xanh. Ở commit gốc lần đổi đó
       được nhận và không dòng outbox nào.
-- [ ] R6.7 (RB20): K3, lần đổi người dưới `dw_migrator` làm tenant `active` hay `locked` không còn chủ sở hữu `active`
+- [x] R6.7 (RB20): K3, lần đổi người dưới `dw_migrator` làm tenant `active` hay `locked` không còn chủ sở hữu `active`
       bị từ chối với 23514 `ck_role_assignments_last_owner`, M giữ `user_id` cũ; ca P `active` và ca M không mang
       `tenant_owner` được nhận; sai nếu lần đổi đó được nhận, một ca đối chứng bị từ chối, hay một trong hai đột biến của K3
       vẫn xanh. Ở commit gốc lần đổi được nhận.
-- [ ] R3.12 (RB40): K4, lần đổi người dưới `dw_migrator` hạ số người `active` giữ `platform.roles.write` của tenant
+- [x] R3.12 (RB40): K4, lần đổi người dưới `dw_migrator` hạ số người `active` giữ `platform.roles.write` của tenant
       `active` xuống dưới hai cho đúng một sự kiện `platform.tenant.owner_coverage_low` sau commit; ca P `active` không cho
       sự kiện nào; sai nếu không có hay có hai sự kiện, ca đối chứng cho sự kiện, hay đột biến của K4 vẫn xanh. Ở commit
       gốc (sau ticket 11) không sự kiện nào.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_membership_change_of_person.py packages/python/dw_platform/tests/integration/test_role_write_races.py packages/python/dw_platform/tests/integration/test_tenant_roles.py packages/python/dw_platform/tests/integration/test_service_principals_db.py packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_membership_never_changes_hands packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_membership_change_of_person.py packages/python/dw_platform/tests/integration/test_role_write_races.py packages/python/dw_platform/tests/integration/test_tenant_roles.py packages/python/dw_platform/tests/integration/test_service_principals_db.py packages/python/dw_platform/tests/integration/test_role_trigger_cost_db.py packages/python/dw_platform/tests/integration/test_role_administration_db.py::test_a_membership_never_changes_hands packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py` xanh.
 
 ## Nguồn
 
@@ -269,3 +269,27 @@ user_id`. (f) Hai lệnh đổi giống hệt đồng thời: lệnh sau thấy 
   không ca riêng. Sửa sau lượt này không được người đọc mới đọc lại; người dựng đọc bước 1 (nhánh `ELSE`, thứ tự khóa)
   và K1 trước.
 - 2026-11-06 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): dựng xong, `resolved`. Revision `ade120c2a1b5` (trên `5a68710cf15a`):
+  bốn thân hàm dựng từ thân mới nhất bằng `_patched()` (`guard_operator_tenant_grants` từ phần tử của `_SETUP` của
+  `b5677d345bc1`, `guard_service_principal_grants` từ `_GUARD_GRANTS` của `ef68083f2905`,
+  `service_principal_grants_changed` từ `557e6907195e`, `refuse_losing_the_last_owner` từ `d2b57239ef50`), năm trigger
+  trên `platform.memberships` (bốn theo dòng và `trg_memberships_owner_coverage` hoãn), mỗi cái
+  `WHEN (NEW.user_id IS DISTINCT FROM OLD.user_id)`; downgrade dựng lại bốn thân, DROP năm trigger. Khác ticket: (1) nhân
+  viên `support_staff` không có membership nào ở tenant của khách: `ck_memberships_not_support_staff` (tên xếp trước) từ chối
+  lần đổi trước guard R3.11, nên ca `support_staff` của K1 khẳng định ràng buộc đó, và đột biến K1 (c) (bỏ vế
+  `support_staff` của nhánh) là đột biến tương đương, sống khi phá thử; vế đó giữ cho cùng dạng với các nhánh bên cạnh.
+  (2) Đột biến K1 (f) (bỏ `FOR KEY SHARE` ở nhánh `role_assignments` của guard R3.11) cũng tương đương: guard tài khoản dịch
+  vụ (tên `guard_service_...` xếp trước `trg_role_assignments_operator_not_owner`) lấy cùng khóa trước trong cùng lệnh;
+  phá thử sống. Hai đột biến đó không vào `mutations/12.yaml` (15 đột biến), đầu tệp ghi lý do. Nếu sai thì: một đường cho
+  `support_staff` có membership, hay đổi thứ tự hai guard, thì hai đột biến đó giết được, thêm lại vào tệp. (3) Ca đồng
+  thời (iii)-(v) thêm `studio.publish.approve` (risk `standard`) thay cho `platform.roles.write` (risk `critical`): với
+  khóa `critical`, guard tài khoản dịch vụ khóa dòng vai trò trước và che mất khóa của guard R3.11 mà đột biến (g), (h)
+  cần thấy; cả hai là khóa chủ của `platform.owner_permission_keys()`. Test:
+  `packages/python/dw_platform/tests/integration/test_membership_change_of_person.py`, 25 ca (K1 mười ba gồm năm ca
+  đồng thời hai thứ tự, K2 sáu gồm hai ca đồng thời, K3 bốn, K4 hai), không `40P01`. Gate nhanh: ruff, format, mypy,
+  integration của dòng Xong 284 xanh (một lần đỏ đầu: `test_the_guard_is_on_all_three_tables` của `test_service_principals_db.py` liệt kê trigger theo catalog, nay thêm hai dòng `memberships`; ticket nói không sửa tệp đó, nhưng một danh mục trigger phải nêu trigger mới, nên sửa đúng hai dòng đó, 20 xanh). Phá thử bằng tay 15 đột biến của `mutations/12.yaml`: cả 15 đỏ; hai đột biến tương
+  đương sống như đã nói. `reviewing-feature-security`: ranh giới 1 (mỗi nhánh chỉ đọc lần gán của chính M trong
+  `NEW.tenant_id`, ca hai tenant nhận), 2 (mọi người ghi; `dw_app`, `dw_provisioner` vẫn bị
+  `ck_memberships_identity_fixed`, `test_a_membership_never_changes_hands` xanh), 5 (lần đổi người qua đúng bốn luật của
+  lần gán và lần gỡ), 6 (lối `dw_migrator` cuối của RB50 có test ở tầng database); 3, 4 không áp. Độ trễ: hai câu khóa thêm
+  vào nhánh `role_assignments` và nhánh khóa chủ chạy trên lần gán, `q2` đo lúc đóng hàng đợi như bước 3 ghi.
