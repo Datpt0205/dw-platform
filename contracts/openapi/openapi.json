@@ -6367,6 +6367,124 @@
         "title": "RecordInput",
         "type": "object"
       },
+      "RecordItem": {
+        "description": "One record of a list: `GET` one record's shape, without `permissions`.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted At"
+          },
+          "deleted_by": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Deleted By"
+          },
+          "etag": {
+            "title": "Etag",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "description": "The values the caller reads, by `api_name`; with `fields`, those named.",
+            "title": "Fields",
+            "type": "object"
+          },
+          "hidden_fields": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hidden Fields",
+            "type": "array"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Null when `name` is hidden from the caller.",
+            "title": "Name"
+          },
+          "object": {
+            "title": "Object",
+            "type": "string"
+          },
+          "owner": {
+            "$ref": "#/components/schemas/OwnerView"
+          },
+          "updated_at": {
+            "format": "date-time",
+            "title": "Updated At",
+            "type": "string"
+          },
+          "updated_by": {
+            "format": "uuid",
+            "title": "Updated By",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "workspace_id": {
+            "format": "uuid",
+            "title": "Workspace Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "object",
+          "version",
+          "etag",
+          "owner",
+          "workspace_id",
+          "created_at",
+          "created_by",
+          "updated_at",
+          "updated_by",
+          "deleted_at",
+          "deleted_by",
+          "name",
+          "fields",
+          "hidden_fields"
+        ],
+        "title": "RecordItem",
+        "type": "object"
+      },
       "RecordOut": {
         "properties": {
           "created_at": {
@@ -6488,6 +6606,60 @@
           "permissions"
         ],
         "title": "RecordOut",
+        "type": "object"
+      },
+      "RecordPageOut": {
+        "description": "A page of records (R8.1, R8.8). `count` and `count_capped` are present\nonly on a first page asked with `count=exact`.",
+        "properties": {
+          "count": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Matches, to 10 000.",
+            "title": "Count"
+          },
+          "count_capped": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "True past 10 000 matches.",
+            "title": "Count Capped"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RecordItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Absent from the last page: null.",
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "title": "RecordPageOut",
         "type": "object"
       },
       "ReferenceList": {
@@ -19021,6 +19193,139 @@
       }
     },
     "/api/v1/studio/objects/{api_name}/records": {
+      "get": {
+        "description": "R8.1: the live records the caller reads, newest first unless\n`order_by` says `created_at` or `updated_at` otherwise. No `filter` and no\n`order_by=name` here: a filter value or a cursor carrying a name is\npersonal data, and a URL is kept by access logs, spans and `Referer`; send\nthem in the body of `POST .../records/query` (ADR-0106 decision 4).",
+        "operationId": "list_records_api_v1_studio_objects__api_name__records_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "title": "Api Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "maximum": 200,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Opaque cursor from a previous page.",
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Opaque cursor from a previous page.",
+              "title": "Cursor"
+            }
+          },
+          {
+            "description": "One of created_at, updated_at, then asc or desc; any other field in the body of POST <list>/query.",
+            "in": "query",
+            "name": "order_by",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "One of created_at, updated_at, then asc or desc; any other field in the body of POST <list>/query.",
+              "title": "Order By"
+            }
+          },
+          {
+            "description": "Comma-separated field names.",
+            "in": "query",
+            "name": "fields",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Comma-separated field names.",
+              "title": "Fields"
+            }
+          },
+          {
+            "description": "`exact` counts the matches on a first page, to 10 000.",
+            "in": "query",
+            "name": "count",
+            "required": false,
+            "schema": {
+              "default": "none",
+              "description": "`exact` counts the matches on a first page, to 10 000.",
+              "enum": [
+                "none",
+                "exact"
+              ],
+              "title": "Count",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "List Records",
+        "tags": [
+          "studio"
+        ]
+      },
       "post": {
         "operationId": "create_record_api_v1_studio_objects__api_name__records_post",
         "parameters": [
@@ -19095,6 +19400,135 @@
           }
         },
         "summary": "Create Record",
+        "tags": [
+          "studio"
+        ]
+      }
+    },
+    "/api/v1/studio/objects/{api_name}/records/query": {
+      "post": {
+        "description": "R8.1: the same list as `GET .../records`, its whole query in the body\n(`RecordQueryBody`), its cursor `GET`'s: a filter tree on any filterable\nfield, `order_by` on `name`, `created_at` or `updated_at`, `count`.",
+        "operationId": "query_records_api_v1_studio_objects__api_name__records_query_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "api_name",
+            "required": true,
+            "schema": {
+              "title": "Api Name",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "description": "`POST .../records/query`: every member of the list query in the body, so\na filter value and a cursor never sit in a URL (ADR-0106 decision 4). Read\nby the platform's list parser, which refuses a member not named here.",
+                "properties": {
+                  "count": {
+                    "default": "none",
+                    "description": "`none` or `exact`.",
+                    "title": "Count",
+                    "type": "string"
+                  },
+                  "cursor": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Opaque cursor from a previous page.",
+                    "title": "Cursor"
+                  },
+                  "fields": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "Comma-separated field names.",
+                    "title": "Fields"
+                  },
+                  "filter": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": true,
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The filter tree; its grammar is the describe query schema.",
+                    "title": "Filter"
+                  },
+                  "limit": {
+                    "default": 50,
+                    "maximum": 200,
+                    "minimum": 1,
+                    "title": "Limit",
+                    "type": "integer"
+                  },
+                  "order_by": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "`name`, `created_at` or `updated_at`, then asc or desc.",
+                    "title": "Order By"
+                  }
+                },
+                "title": "RecordQueryBody",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RecordPageOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "4XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The request was refused"
+          },
+          "5XX": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            },
+            "description": "The server failed"
+          }
+        },
+        "summary": "Query Records",
         "tags": [
           "studio"
         ]

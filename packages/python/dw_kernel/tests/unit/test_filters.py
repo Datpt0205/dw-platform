@@ -415,3 +415,122 @@ def test_a_cursor_is_bound_to_the_callers_tenant_with_no_workspace() -> None:
             SCHEMA, route="/things", tenant=uuid.uuid4(), workspace=None, cursor=cursor, limit=5
         )
     assert raised.value.problems[0].code is ReasonCode.CURSOR_INVALID
+
+
+# --------------------------------- closing a field further (custom-objects 04) --
+
+
+def _scaled(raw: object) -> object:
+    # A decimal string at scale 2, as a records owner would read one.
+    if not isinstance(raw, str) or not raw.replace(".", "", 1).lstrip("-").isdigit():
+        raise ValueError("not a decimal string")
+    whole, _, fraction = raw.partition(".")
+    if len(fraction) > 2:
+        raise ValueError("more decimals than the scale")
+    return int(whole) * 100 + int(fraction.ljust(2, "0") or "0")
+
+
+CLOSED = QuerySchema(
+    fields=(
+        QueryField(
+            "amount",
+            SortType.INT,
+            "i01",
+            filterable=True,
+            operators=COMPARE,
+            null_allowed=False,
+            coerce=_scaled,
+        ),
+        QueryField(
+            "name",
+            SortType.TEXT,
+            "name",
+            filterable=True,
+            sortable=True,
+            operators=COMPARE,
+            null_allowed=False,
+        ),
+    ),
+    default_order=("name", False),
+    logical=frozenset({"$and", "$or"}),
+)
+
+
+def test_a_field_closed_to_null_refuses_a_null_operand() -> None:
+    assert refused({"name": {"$eq": None}}, CLOSED) == (
+        ReasonCode.OPERATOR_NOT_ALLOWED,
+        "/name/$eq",
+    )
+    assert refused({"name": {"$in": ["a", None]}}, CLOSED) == (
+        ReasonCode.OPERATOR_NOT_ALLOWED,
+        "/name/$in/1",
+    )
+    # A field that does not close itself keeps its old answers.
+    assert compile_filter(parse_filter(SCHEMA, {"name": {"$eq": None}})).sql == "((name IS NULL))"
+    assert refused({"age": {"$in": [1, None]}}) == (ReasonCode.FILTER_MALFORMED, "/age/$in/1")
+
+
+def test_a_coerced_value_is_typed_after_its_owner_reads_it() -> None:
+    compiled = compile_filter(parse_filter(CLOSED, {"amount": {"$gte": "1000.50"}}))
+    assert compiled.params == {"qf_0": 100050}
+    assert refused({"amount": {"$gte": 1000.5}}, CLOSED) == (
+        ReasonCode.INVALID_TYPE,
+        "/amount/$gte",
+    )
+    assert refused({"amount": {"$in": ["1", "1.234"]}}, CLOSED) == (
+        ReasonCode.INVALID_TYPE,
+        "/amount/$in/1",
+    )
+
+
+def test_an_invalid_type_says_nothing_of_the_value() -> None:
+    with pytest.raises(QueryError) as raised:
+        parse_filter(CLOSED, {"amount": {"$eq": SECRET}})
+    (problem,) = raised.value.problems
+    assert SECRET not in f"{problem.detail} {problem.pointer} {raised.value}"
+
+
+def test_the_bounds_are_checked_before_any_leaf_meets_the_schema() -> None:
+    # 1a: a tree six deep whose leaf is of the wrong type is too deep.
+    deep: dict[str, Any] = {"amount": {"$eq": 7}}
+    for _ in range(5):
+        deep = {"$and": [deep]}
+    assert refused(deep, CLOSED) == (ReasonCode.FILTER_TOO_DEEP, "/$and/0" * 5)
+    wide = {"$or": [{"ghost": {"$eq": 1}}] + [{"name": {"$eq": "a"}}] * 50}
+    assert refused(wide, CLOSED) == (ReasonCode.FILTER_TOO_MANY_LEAVES, "/$or/50")
+    many = {"$and": [{"ghost": {"$eq": 1}}, {"name": {"$in": ["a"] * 501}}]}
+    assert refused(many, CLOSED) == (ReasonCode.FILTER_IN_TOO_MANY_VALUES, "/$and/1/name/$in")
+    long_ = {"$and": [{"amount": {"$eq": 1}}, {"name": {"$in": ["a", "x" * 1025]}}]}
+    assert refused(long_, CLOSED) == (ReasonCode.FILTER_STRING_TOO_LONG, "/$and/1/name/$in/1")
+
+
+# ------------------------------------------------------------- the grammar --
+
+
+def test_the_json_schema_names_every_filterable_field_and_its_operators() -> None:
+    from dw_kernel.filters import query_json_schema
+
+    exported = query_json_schema(SCHEMA)
+    defs = exported["$defs"]
+    assert exported["$ref"] == "#/$defs/node_1"
+    top = defs["node_1"]["properties"]
+    # `note` declares nothing: not in the grammar.
+    assert set(top) == {"name", "age", "flag", "born", "seen", "score", "$and", "$or", "$not"}
+    assert set(defs["leaf_flag"]["properties"]) == {"$eq"}
+    assert defs["leaf_age"]["properties"]["$in"]["maxItems"] == MAX_IN_VALUES
+    assert defs["leaf_born"]["properties"]["$lt"] == {"type": "string", "format": "date"}
+    # Five levels: the fifth takes no logical operator.
+    assert set(defs["node_5"]["properties"]) == {"name", "age", "flag", "born", "seen", "score"}
+    assert "node_6" not in defs
+
+
+def test_the_json_schema_carries_the_wire_value_and_the_null_rule() -> None:
+    from dw_kernel.filters import query_json_schema
+
+    wire = {"type": "string", "pattern": r"^-?[0-9]+(\.[0-9]+)?$"}
+    defs = query_json_schema(CLOSED, values={"amount": wire})["$defs"]
+    assert defs["leaf_amount"]["properties"]["$eq"] == wire
+    assert defs["leaf_name"]["properties"]["$eq"] == {"type": "string"}
+    assert set(defs["node_1"]["properties"]) == {"amount", "name", "$and", "$or"}
+    nullable = query_json_schema(SCHEMA)["$defs"]["leaf_name"]["properties"]["$eq"]
+    assert nullable == {"anyOf": [{"type": "string"}, {"type": "null"}]}

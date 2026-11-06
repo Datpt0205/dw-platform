@@ -22,7 +22,19 @@ every caller — a route, `RecordsPort`, an agent's tool, a workflow node
 * **Errors say where, never what.** A :class:`QueryError` carries reason codes,
   a JSON pointer from the tree's root or a parameter name, and a fixed sentence
   per code: never a value or a key the caller sent (R5.14). A key absent from
-  the schema is located at the node holding it.
+  the schema is located at the node holding it. The bounds are checked over
+  the whole tree before any leaf is read against the schema, so a tree too
+  deep is `filter_too_deep` whatever its leaves say (custom-objects ticket 04).
+* **One grammar.** :func:`query_json_schema` is the JSON Schema of the trees a
+  :class:`QuerySchema` takes, for a tool or a workflow step to be handed the
+  same language a route parses (custom-objects ticket 04, gate (h)).
+
+A field's owner may close it further: ``null_allowed=False`` refuses a `null`
+operand (an index that holds only non-NULL values cannot answer it), and
+``coerce`` turns a leaf's value into the form the column keeps before it is
+typed, refusing what it cannot read as `invalid_type` (a phone number to
+E.164, a decimal string to its scaled integer). Neither changes a field that
+does not set it.
 
 Standard library only: the kernel has no SQL dependency, and the compiled form
 is text with named parameters (`:qf_0`) that any SQL layer binds.
@@ -32,10 +44,10 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Final
+from typing import Any, Final, NoReturn
 
 from dw_kernel.errors import DomainError
 from dw_kernel.pagination import (
@@ -90,6 +102,7 @@ class ReasonCode(StrEnum):
     FILTER_STRING_TOO_LONG = "filter_string_too_long"
     OPERATOR_NOT_ALLOWED = "operator_not_allowed"
     FILTER_MALFORMED = "filter_malformed"
+    INVALID_TYPE = "invalid_type"
     FIELD_NOT_READABLE = "field_not_readable"
     FIELD_NOT_FILTERABLE = "field_not_filterable"
     ORDER_BY_TOO_MANY_FIELDS = "order_by_too_many_fields"
@@ -110,6 +123,7 @@ _DETAIL: Final[Mapping[ReasonCode, str]] = {
     ReasonCode.FILTER_STRING_TOO_LONG: f"a value is longer than {MAX_STRING_BYTES} bytes",
     ReasonCode.OPERATOR_NOT_ALLOWED: "this operator is not available here",
     ReasonCode.FILTER_MALFORMED: "this part of the filter is not well formed",
+    ReasonCode.INVALID_TYPE: "the value is not of the field's type",
     ReasonCode.FIELD_NOT_READABLE: "this field is not available",
     ReasonCode.FIELD_NOT_FILTERABLE: "this field cannot be used to filter or sort",
     ReasonCode.ORDER_BY_TOO_MANY_FIELDS: "order_by takes one field",
@@ -157,7 +171,12 @@ class QueryField:
     """One field a listing exposes, as its owner built it for this caller.
 
     Closed by default: a field that does not say it filters or sorts does
-    neither, and one that lists no operators takes none (R5.15)."""
+    neither, and one that lists no operators takes none (R5.15).
+
+    ``null_allowed`` False refuses `$eq: null` and a `null` in `$in` as
+    `operator_not_allowed`. ``coerce``, when set, reads each value of a leaf
+    before its type is checked and returns the value as :func:`typed_value`
+    reads it; a `ValueError` from it is `invalid_type` at the value."""
 
     name: str
     type: FieldType
@@ -165,6 +184,8 @@ class QueryField:
     filterable: bool = False
     sortable: bool = False
     operators: frozenset[str] = frozenset()
+    null_allowed: bool = True
+    coerce: Callable[[object], object] | None = field(default=None, compare=False)
 
     def __post_init__(self) -> None:
         if not _NAME_ONLY.fullmatch(self.name) or not _NAME_ONLY.fullmatch(self.column):
@@ -275,13 +296,30 @@ def _single(raw: object) -> tuple[str, object] | None:
     return None
 
 
+def _too_long(raw: object) -> bool:
+    return isinstance(raw, str) and len(raw.encode("utf-8")) > MAX_STRING_BYTES
+
+
 def _value(field_: QueryField, raw: object, pointer: str) -> SortValue:
-    if isinstance(raw, str) and len(raw.encode("utf-8")) > MAX_STRING_BYTES:
+    if _too_long(raw):
         raise _problem(ReasonCode.FILTER_STRING_TOO_LONG, pointer=pointer)
+    if field_.coerce is not None:
+        try:
+            return typed_value(field_.type, field_.coerce(raw))
+        except ValueError:
+            raise _problem(ReasonCode.INVALID_TYPE, pointer=pointer) from None
     try:
         return typed_value(field_.type, raw)
     except ValueError:
         raise _problem(ReasonCode.FILTER_MALFORMED, pointer=pointer) from None
+
+
+def _null(field_: QueryField, pointer: str) -> NoReturn:
+    """A `null` operand, where the grammar has one: refused for a field that
+    does not take it, malformed for a field that does (not `$eq`, not `$in`)."""
+    if not field_.null_allowed:
+        raise _problem(ReasonCode.OPERATOR_NOT_ALLOWED, pointer=pointer)
+    raise _problem(ReasonCode.FILTER_MALFORMED, pointer=pointer)
 
 
 def _leaf(walk: _Walk, name: str, condition: object, pointer: str) -> Leaf:
@@ -316,12 +354,12 @@ def _leaf(walk: _Walk, name: str, condition: object, pointer: str) -> Leaf:
         values = []
         for index, item in enumerate(operand):
             if item is None:
-                raise _problem(ReasonCode.FILTER_MALFORMED, pointer=_step(at, str(index)))
+                _null(field_, _step(at, str(index)))
             values.append(_value(field_, item, _step(at, str(index))))
         return Leaf(field_, operator, tuple(values))
     if operand is None:
-        if operator != "$eq":
-            raise _problem(ReasonCode.FILTER_MALFORMED, pointer=at)
+        if operator != "$eq" or not field_.null_allowed:
+            _null(field_, at)
         return Leaf(field_, operator, None)
     return Leaf(field_, operator, _value(field_, operand, at))
 
@@ -349,10 +387,51 @@ def _node(walk: _Walk, raw: object, pointer: str, depth: int) -> Leaf | Logical:
     )
 
 
+def _bounds(raw: object, pointer: str, depth: int, leaves: list[int]) -> None:
+    """The bounds over the whole tree, before any leaf meets the schema
+    (custom-objects ticket 04, 1a): depth, leaves, the values of an `$in` and
+    the bytes of a string, each at the pointer the full walk would give. A
+    node that is not well formed is left to that walk."""
+    if depth > MAX_DEPTH:
+        raise _problem(ReasonCode.FILTER_TOO_DEEP, pointer=pointer)
+    single = _single(raw)
+    if single is None:
+        return
+    key, value = single
+    at = _step(pointer, key)
+    if key == "$not":
+        _bounds(value, at, depth + 1, leaves)
+        return
+    if key in ("$and", "$or"):
+        if isinstance(value, list):
+            for index, item in enumerate(value):
+                _bounds(item, _step(at, str(index)), depth + 1, leaves)
+        return
+    if key.startswith("$"):
+        return
+    leaves[0] += 1
+    if leaves[0] > MAX_LEAVES:
+        raise _problem(ReasonCode.FILTER_TOO_MANY_LEAVES, pointer=pointer)
+    condition = _single(value)
+    if condition is None:
+        return
+    operator, operand = condition
+    at = _step(at, operator)
+    if operator == "$in" and isinstance(operand, list):
+        if len(operand) > MAX_IN_VALUES:
+            raise _problem(ReasonCode.FILTER_IN_TOO_MANY_VALUES, pointer=at)
+        for index, item in enumerate(operand):
+            if _too_long(item):
+                raise _problem(ReasonCode.FILTER_STRING_TOO_LONG, pointer=_step(at, str(index)))
+    elif _too_long(operand):
+        raise _problem(ReasonCode.FILTER_STRING_TOO_LONG, pointer=at)
+
+
 def parse_filter(schema: QuerySchema, tree: object) -> ParsedFilter:
     """Check a filter tree against ``schema``; :class:`QueryError` otherwise.
 
     Pointers are from the tree's root (`""` is the root node itself)."""
+    _bounds(tree, "", 1, [0])
     root = _node(_Walk(schema), tree, "", 1)
     return ParsedFilter(root=root, canonical=json.loads(canonical_json(tree)))
 
@@ -502,3 +581,82 @@ def compile_filter(parsed: ParsedFilter, *, prefix: str = "qf") -> CompiledFilte
         raise ValueError("a bind prefix is a plain identifier")
     binds = _Binds(prefix)
     return CompiledFilter(sql="(" + _compile(parsed.root, binds) + ")", params=binds.values)
+
+
+# ----------------------------------------------------------- the grammar --
+
+JSON_SCHEMA_DIALECT: Final = "https://json-schema.org/draft/2020-12/schema"
+
+_WIRE_VALUES: Final[Mapping[FieldType, Mapping[str, object]]] = {
+    FieldType.TEXT: {"type": "string"},
+    FieldType.INT: {"type": "integer"},
+    FieldType.FLOAT: {"type": "number"},
+    FieldType.DATE: {"type": "string", "format": "date"},
+    FieldType.DATETIME: {"type": "string", "format": "date-time"},
+    FieldType.BOOL: {"type": "boolean"},
+}
+
+
+def _condition(field_: QueryField, value: Mapping[str, object]) -> dict[str, object]:
+    """One field's `{operator: operand}`: exactly one of its operators."""
+    one: dict[str, object] = dict(value)
+    if field_.null_allowed:
+        one = {"anyOf": [one, {"type": "null"}]}
+    properties: dict[str, object] = {}
+    for operator in sorted(field_.operators):
+        if operator == "$in":
+            properties[operator] = {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": MAX_IN_VALUES,
+                "items": dict(value),
+            }
+        elif operator == "$eq":
+            properties[operator] = one
+        else:
+            properties[operator] = dict(value)
+    return {
+        "type": "object",
+        "minProperties": 1,
+        "maxProperties": 1,
+        "additionalProperties": False,
+        "properties": properties,
+    }
+
+
+def query_json_schema(
+    schema: QuerySchema, *, values: Mapping[str, Mapping[str, object]] | None = None
+) -> dict[str, Any]:
+    """The JSON Schema (2020-12) of the filter trees ``schema`` takes: the one
+    owner of that grammar for every door (custom-objects ticket 04, gate (h)).
+
+    A node is an object of one member: a filterable field and its condition,
+    or one of the schema's `$and`/`$or` over a non-empty list of nodes one
+    level deeper (`$not` over one node), five levels at most. ``values``
+    gives a field's value as the wire carries it where its type alone does
+    not say (a decimal string for a scaled integer); otherwise the type's.
+    What JSON Schema cannot say (50 leaves, 1 024 bytes) the parser still
+    refuses."""
+    fields = [f for f in schema.fields if f.filterable and f.operators]
+    defs: dict[str, object] = {
+        f"leaf_{f.name}": _condition(f, (values or {}).get(f.name, _WIRE_VALUES[f.type]))
+        for f in fields
+    }
+    for depth in range(1, MAX_DEPTH + 1):
+        properties: dict[str, object] = {f.name: {"$ref": f"#/$defs/leaf_{f.name}"} for f in fields}
+        if depth < MAX_DEPTH:
+            deeper = {"$ref": f"#/$defs/node_{depth + 1}"}
+            for operator in sorted(schema.logical):
+                properties[operator] = (
+                    deeper
+                    if operator == "$not"
+                    else {"type": "array", "minItems": 1, "items": deeper}
+                )
+        defs[f"node_{depth}"] = {
+            "type": "object",
+            "minProperties": 1,
+            "maxProperties": 1,
+            "additionalProperties": False,
+            "properties": properties,
+        }
+    return {"$schema": JSON_SCHEMA_DIALECT, "$ref": "#/$defs/node_1", "$defs": defs}

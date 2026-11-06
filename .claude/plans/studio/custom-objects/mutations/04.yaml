@@ -1,0 +1,125 @@
+# Mutation check of custom-objects ticket 04: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control of the ticket
+# (CO1, CO7, CO8, CO19) and per gate it names: the hidden field and the read key
+# before any record SQL, the bound company and the object in every statement,
+# the write's coercion of a filter value (f), no null operand (b), the bounds
+# before the leaves (1a), the count's cap and first page (R8.8), what GET
+# refuses (g), `count` in the cursor (R8.7), one grammar (h) and the real
+# path's call counter (R9.1). CO1's rows are also the record policies', whose
+# mutations are record-access/mutations/03.yaml's; here the compiler's half,
+# which only the statement text can show (lượt xác nhận (m)).
+mutations:
+  - name: R8.4 CO7 a hidden field is in the caller's query schema
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_query.py
+    old: "        if api_name == NAME or api_name not in readable:"
+    new: "        if api_name == NAME:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_query.py::test_r8_4_co7_an_unknown_or_hidden_field_is_not_readable_before_sql
+      - apps/api/tests/integration/test_studio_record_lists.py::test_r8_4_co7_an_unknown_or_hidden_field_points_where_it_stands
+  - name: R8.4 a hidden name sorts
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_query.py
+    old: "    if NAME in readable:"
+    new: "    if True:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_query.py::test_r8_4_a_hidden_name_does_not_sort
+  - name: R3.4 CO8 the list asks another key than read
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_service.py
+    old: "            call = await self._enter(raw, door, api_name, \"read\", \"live\")\n            obj = await self._definition(call)\n            access = await self.fields.for_object(raw, obj.object_id, \"read\", caller=call.caller)\n            listing"
+    new: "            call = await self._enter(raw, door, api_name, \"create\", \"live\")\n            obj = await self._definition(call)\n            access = await self.fields.for_object(raw, obj.object_id, \"read\", caller=call.caller)\n            listing"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_query.py::test_r3_4_co8_no_read_key_is_refused_before_record_sql
+      - apps/api/tests/integration/test_studio_record_lists.py::test_r3_4_co8_no_read_key_is_403_on_both_lists
+  - name: R8.9 CO1 the compiler leaves out the bound company
+    file: packages/python/dw_studio/src/dw_studio/records/adapters/record_query.py
+    old: "            records.c.tenant_id == sa.bindparam(TENANT_PARAM, self.tenant_id, type_=UUID),"
+    new: "            sa.true(),"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_record_query_compiler.py::test_r8_9_every_statement_names_the_bound_company
+  - name: R8.9 CO19 the compiler leaves out the object
+    file: packages/python/dw_studio/src/dw_studio/records/adapters/record_query.py
+    old: "            records.c.object_id == sa.bindparam(OBJECT_PARAM, obj.object_id, type_=UUID),"
+    new: "            sa.true(),"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_record_query_compiler.py::test_r8_9_every_statement_names_the_bound_company
+      - packages/python/dw_studio/tests/integration/test_record_query_plan_shape.py::test_r8_9_co19_every_list_statement_has_an_index_under_rls
+  - name: R8.1 a soft-deleted record is listed
+    file: packages/python/dw_studio/src/dw_studio/records/adapters/record_query.py
+    old: "            records.c.deleted_at.is_(None),\n        )\n        if query.filter is not None:"
+    new: "        )\n        if query.filter is not None:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_query.py::test_r8_1_the_list_is_the_live_records_newest_first
+  - name: R8.1 gate (f) a filter value skips the write's coercion
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_query.py
+    old: "        null_allowed=False,\n        coerce=_coerced(definition),\n    )\n\n\ndef query_schema"
+    new: "        null_allowed=False,\n    )\n\n\ndef query_schema"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_query.py::test_r8_1_a_filter_value_is_coerced_as_a_write_is
+  - name: R8.6 gate (b) a null operand is taken
+    file: packages/python/dw_kernel/src/dw_kernel/filters.py
+    old: '        if operator != "$eq" or not field_.null_allowed:'
+    new: '        if operator != "$eq":'
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_filters.py::test_a_field_closed_to_null_refuses_a_null_operand
+      - packages/python/dw_studio/tests/integration/test_record_query.py::test_r8_6_null_and_ne_are_not_allowed
+  - name: R8.6 1a the bounds wait for the leaves
+    file: packages/python/dw_kernel/src/dw_kernel/filters.py
+    old: '    _bounds(tree, "", 1, [0])'
+    new: "    pass"
+    tests:
+      - packages/python/dw_kernel/tests/unit/test_filters.py::test_the_bounds_are_checked_before_any_leaf_meets_the_schema
+  - name: R8.8 the count is not capped
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_service.py
+    old: "            count=None if counted is None else min(counted, COUNT_CAP),"
+    new: "            count=counted,"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_query.py::test_r8_8_count_is_exact_to_ten_thousand_then_capped
+  - name: R8.8 a later page counts
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_service.py
+    old: "            if count and listing.page.after is None:"
+    new: "            if count:"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_record_query.py::test_r8_8_count_is_exact_to_ten_thousand_then_capped
+      - apps/api/tests/integration/test_studio_record_lists.py::test_r8_7_a_cursor_is_bound_to_its_filter_and_its_count
+  - name: R8.4 gate (g) GET takes a filter
+    file: apps/api/src/dw_api/dependencies/listing.py
+    old: '        if "filter" in params:'
+    new: "        if False:"
+    tests:
+      - apps/api/tests/integration/test_studio_record_lists.py::test_r8_4_get_takes_no_filter_and_no_name_order
+  - name: R8.4 gate (g) GET orders by name
+    file: apps/api/src/dw_api/dependencies/listing.py
+    old: '        if order_by is not None and order_by.strip().split(" ")[0] not in url_sortable:'
+    new: "        if False:"
+    tests:
+      - apps/api/tests/integration/test_studio_record_lists.py::test_r8_4_get_takes_no_filter_and_no_name_order
+  - name: R8.7 count is outside the cursor's identity
+    file: apps/api/src/dw_api/dependencies/listing.py
+    old: '            params=None if self.count is None else {"count": self.count},'
+    new: "            params=None,"
+    tests:
+      - apps/api/tests/integration/test_studio_record_lists.py::test_r8_7_a_cursor_is_bound_to_its_filter_and_its_count
+  - name: R3.6 gate (h) the caller's grammar names a hidden field
+    file: packages/python/dw_studio/src/dw_studio/records/application/schema_projector.py
+    old: "        query={} if schemas.source is None else query_grammar(schemas.source, readable),"
+    new: "        query={} if schemas.source is None else query_grammar(schemas.source, frozenset(schemas.source.definition.fields)),"
+    tests:
+      - packages/python/dw_studio/tests/unit/test_schema_projector.py::test_r3_6_r3_7_m5_the_caller_narrows_after_the_cache_never_inside_it
+      - apps/api/tests/integration/test_studio_record_lists.py::test_r3_6_a_tree_the_projected_schema_admits_is_accepted
+  - name: R8.2 gate (b) describe marks a slot sortable
+    file: packages/python/dw_studio/src/dw_studio/records/application/record_service.py
+    old: "                sortable=api_name in SORTABLE,"
+    new: "                sortable=True,"
+    tests:
+      - apps/api/tests/integration/test_studio_record_lists.py::test_r8_2_describe_marks_only_name_sortable_among_the_fields
+  - name: app-standards R3.12 a query of a versioned list reads as a write
+    file: tests/support/conventions.py
+    old: '            and child != f"{resource}/query"'
+    new: ""
+    tests:
+      - apps/api/tests/unit/test_list_and_write_conventions.py::test_a_query_of_a_list_that_answers_a_version_is_still_a_read
+  - name: R9.1 the real path counts no call
+    file: scripts/bench_records_storage/records_bench/real_path.py
+    old: "        self.calls[series] += 1"
+    new: "        pass"
+    tests:
+      - scripts/bench_records_storage/records_bench/tests/test_real_path.py::test_the_counted_service_counts_what_it_forwards

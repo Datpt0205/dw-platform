@@ -33,7 +33,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dw_kernel.filters import ListQuery
 from dw_platform.adapters.persistence.effect_key_store import claim_effect_key
+from dw_platform.adapters.persistence.keyset import keyset_rows
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository, SqlOutboxRepository
 from dw_platform.application.effect_keys import EffectClaim
 from dw_platform.domain.audit import AuditEvent
@@ -41,6 +43,7 @@ from dw_platform.domain.outbox import OutboxEvent
 from dw_studio.core.application.field_access import ActorUnboundError
 from dw_studio.records.adapters.definition_store import applied_object
 from dw_studio.records.adapters.record_policy import may_sql
+from dw_studio.records.adapters.record_query import ROW_COLUMNS, RecordQueryCompiler, slot_columns
 from dw_studio.records.adapters.tables import object_defs, record_write_keys, records
 from dw_studio.records.application.ports import (
     AppliedObject,
@@ -80,22 +83,8 @@ _CREATE_KEY: Final = re.compile(r"^(?:uq_records|records_p[0-9]+)_tenant_id_obje
 
 _MAY_UPDATE = sa.literal_column(may_sql("update"), sa.Boolean).label("may_update")
 _MAY_DELETE = sa.literal_column(may_sql("soft_delete"), sa.Boolean).label("may_delete")
-_ROW = (
-    records.c.id,
-    records.c.object_id,
-    records.c.workspace_id,
-    records.c.owner_kind,
-    records.c.owner_id,
-    records.c.name,
-    records.c.version,
-    records.c.created_at,
-    records.c.created_by,
-    records.c.updated_at,
-    records.c.updated_by,
-    records.c.deleted_at,
-    records.c.deleted_by,
-    records.c.data,
-)
+# A list row reads no policy arm: an item carries no `permissions` (ticket 04).
+_NOT_READ = (sa.false().label("may_update"), sa.false().label("may_delete"))
 
 
 def _cause(error: DBAPIError) -> Any:
@@ -199,16 +188,9 @@ class SqlRecordTx:
         return await applied_object(self.session, object_id)
 
     def _select(self, obj: AppliedObject) -> sa.Select[Any]:
-        slots = sorted(
-            {
-                s.slot
-                for s in obj.storage.values()
-                if s.storage_kind == "slot" and s.slot is not None
-            }
+        return sa.select(*ROW_COLUMNS, *slot_columns(obj), _MAY_UPDATE, _MAY_DELETE).where(
+            records.c.tenant_id == self._tenant, records.c.object_id == obj.object_id
         )
-        return sa.select(
-            *_ROW, *(records.c[slot] for slot in slots), _MAY_UPDATE, _MAY_DELETE
-        ).where(records.c.tenant_id == self._tenant, records.c.object_id == obj.object_id)
 
     @staticmethod
     def _stored(obj: AppliedObject, row: Any) -> StoredRecord:
@@ -247,6 +229,21 @@ class SqlRecordTx:
             await self.session.execute(self._select(obj).where(records.c.id == record_id))
         ).one_or_none()
         return None if row is None else self._stored(obj, row)
+
+    async def page(self, obj: AppliedObject, query: ListQuery) -> Sequence[StoredRecord]:
+        compiled = RecordQueryCompiler(self._tenant).page(obj, query)
+        rows = await keyset_rows(
+            self.session,
+            compiled.statement.add_columns(*_NOT_READ),
+            compiled.phases,
+            fetch_limit=query.page.fetch_limit,
+        )
+        return [self._stored(obj, row) for row in rows]
+
+    async def count(self, obj: AppliedObject, query: ListQuery, cap: int) -> int:
+        statement = RecordQueryCompiler(self._tenant).count(obj, query, cap)
+        counted = await self.session.scalar(statement)
+        return int(counted or 0)
 
     async def match(self, obj: AppliedObject, api_name: str, value: Any) -> StoredRecord | None:
         slot = obj.storage[api_name].slot

@@ -2327,10 +2327,40 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * List Records
+         * @description R8.1: the live records the caller reads, newest first unless
+         *     `order_by` says `created_at` or `updated_at` otherwise. No `filter` and no
+         *     `order_by=name` here: a filter value or a cursor carrying a name is
+         *     personal data, and a URL is kept by access logs, spans and `Referer`; send
+         *     them in the body of `POST .../records/query` (ADR-0106 decision 4).
+         */
+        get: operations["list_records_api_v1_studio_objects__api_name__records_get"];
         put?: never;
         /** Create Record */
         post: operations["create_record_api_v1_studio_objects__api_name__records_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/studio/objects/{api_name}/records/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Query Records
+         * @description R8.1: the same list as `GET .../records`, its whole query in the body
+         *     (`RecordQueryBody`), its cursor `GET`'s: a filter tree on any filterable
+         *     field, `order_by` on `name`, `created_at` or `updated_at`, `count`.
+         */
+        post: operations["query_records_api_v1_studio_objects__api_name__records_query_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -5517,6 +5547,67 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /**
+         * RecordItem
+         * @description One record of a list: `GET` one record's shape, without `permissions`.
+         */
+        RecordItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /** Deleted At */
+            deleted_at: string | null;
+            /** Deleted By */
+            deleted_by: string | null;
+            /** Etag */
+            etag: string;
+            /**
+             * Fields
+             * @description The values the caller reads, by `api_name`; with `fields`, those named.
+             */
+            fields: {
+                [key: string]: unknown;
+            };
+            /** Hidden Fields */
+            hidden_fields: string[];
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Name
+             * @description Null when `name` is hidden from the caller.
+             */
+            name: string | null;
+            /** Object */
+            object: string;
+            owner: components["schemas"]["OwnerView"];
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Updated By
+             * Format: uuid
+             */
+            updated_by: string;
+            /** Version */
+            version: number;
+            /**
+             * Workspace Id
+             * Format: uuid
+             */
+            workspace_id: string;
+        };
         /** RecordOut */
         RecordOut: {
             /**
@@ -5581,6 +5672,30 @@ export interface components {
              * Format: uuid
              */
             workspace_id: string;
+        };
+        /**
+         * RecordPageOut
+         * @description A page of records (R8.1, R8.8). `count` and `count_capped` are present
+         *     only on a first page asked with `count=exact`.
+         */
+        RecordPageOut: {
+            /**
+             * Count
+             * @description Matches, to 10 000.
+             */
+            count?: number | null;
+            /**
+             * Count Capped
+             * @description True past 10 000 matches.
+             */
+            count_capped?: boolean | null;
+            /** Items */
+            items: components["schemas"]["RecordItem"][];
+            /**
+             * Next Cursor
+             * @description Absent from the last page: null.
+             */
+            next_cursor: string | null;
         };
         /** ReferenceList */
         ReferenceList: {
@@ -13180,6 +13295,56 @@ export interface operations {
             };
         };
     };
+    list_records_api_v1_studio_objects__api_name__records_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Opaque cursor from a previous page. */
+                cursor?: string | null;
+                /** @description One of created_at, updated_at, then asc or desc; any other field in the body of POST <list>/query. */
+                order_by?: string | null;
+                /** @description Comma-separated field names. */
+                fields?: string | null;
+                /** @description `exact` counts the matches on a first page, to 10 000. */
+                count?: "none" | "exact";
+            };
+            header?: never;
+            path: {
+                api_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordPageOut"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
     create_record_api_v1_studio_objects__api_name__records_post: {
         parameters: {
             query?: never;
@@ -13205,6 +13370,84 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RecordOut"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    query_records_api_v1_studio_objects__api_name__records_query_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                api_name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /**
+                     * Count
+                     * @description `none` or `exact`.
+                     * @default none
+                     */
+                    count?: string;
+                    /**
+                     * Cursor
+                     * @description Opaque cursor from a previous page.
+                     */
+                    cursor?: string | null;
+                    /**
+                     * Fields
+                     * @description Comma-separated field names.
+                     */
+                    fields?: string | null;
+                    /**
+                     * Filter
+                     * @description The filter tree; its grammar is the describe query schema.
+                     */
+                    filter?: {
+                        [key: string]: unknown;
+                    } | null;
+                    /**
+                     * Limit
+                     * @default 50
+                     */
+                    limit?: number;
+                    /**
+                     * Order By
+                     * @description `name`, `created_at` or `updated_at`, then asc or desc.
+                     */
+                    order_by?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RecordPageOut"];
                 };
             };
             /** @description The request was refused */

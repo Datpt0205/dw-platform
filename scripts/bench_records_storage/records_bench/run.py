@@ -59,6 +59,12 @@ def parse(argv: list[str]) -> argparse.Namespace:
         " at the one modulus of --moduli; custom-objects/01's cells do not run.",
     )
     p.add_argument(
+        "--real-path",
+        action="store_true",
+        help="custom-objects/04: measure RecordService itself on db/migrations at head, four"
+        " reach profiles, one import and one soak; no variant cell runs (real_path.py)",
+    )
+    p.add_argument(
         "--modulus-note",
         default="chưa chọn: luật quyết bước 7 của custom-objects/01 chưa chọn modulus ở scale này",
         help="where the modulus came from, for RESULTS.md",
@@ -266,6 +272,11 @@ async def main_async(args: argparse.Namespace) -> int:
             await container.wait_ready()
             report.config += container.describe()
         report.config += await config_lines(endpoint)
+        if args.real_path:
+            from .real_path import RealPathReport, run_real_path
+
+            real = RealPathReport(scale.name, config=list(report.config))
+            return await run_real_path(endpoint, scale, args.revision, out, real)
         for line in scale.t1_partition_reloptions:
             report.config.append(
                 f"chỉ ở --scale {scale.name}: {line[0]} = {line[1]} trên partition của T1 (soak"

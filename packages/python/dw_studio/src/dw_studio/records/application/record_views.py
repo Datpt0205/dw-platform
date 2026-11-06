@@ -64,6 +64,19 @@ class WriteResult:
 
 
 @dataclass(frozen=True, slots=True)
+class RecordPage:
+    """One page of a record list (custom-objects ticket 04, R8.1, R8.8): the
+    records as `get` shows each, `permissions` not read (False), the cursor of
+    the next page, and on a first page asked with `count=exact` how many match
+    up to the cap, with ``count_capped`` past it."""
+
+    items: tuple[RecordView, ...]
+    next_cursor: str | None
+    count: int | None = None
+    count_capped: bool | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class OptionView:
     key: str
     label: str
@@ -116,6 +129,13 @@ class ObjectEntry:
 def readable(access: FieldAccess, api_name: str) -> bool:
     level = access.level_of(api_name)
     return level is not None and level != HIDDEN
+
+
+def readable_names(access: FieldAccess) -> frozenset[str]:
+    """Every field the caller reads, by `api_name`."""
+    return frozenset(
+        name for field, name in access.api_names.items() if access.levels[field] != HIDDEN
+    )
 
 
 def hidden_fields(access: FieldAccess) -> tuple[str, ...]:

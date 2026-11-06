@@ -19,6 +19,7 @@ from dw_kernel.http_conditions import etag_of
 from dw_studio.records.application.record_views import (
     Description,
     ObjectEntry,
+    RecordPage,
     RecordView,
 )
 
@@ -26,12 +27,16 @@ __all__ = [
     "DescriptionView",
     "ObjectList",
     "RecordInput",
+    "RecordItem",
     "RecordOut",
+    "RecordPageOut",
+    "RecordQueryBody",
     "UpsertInput",
     "UpsertOut",
     "description_view",
     "object_list",
     "record_out",
+    "record_page_out",
 ]
 
 
@@ -89,6 +94,55 @@ class RecordOut(BaseModel):
 
 class UpsertOut(RecordOut):
     created: bool
+
+
+class RecordItem(BaseModel):
+    """One record of a list: `GET` one record's shape, without `permissions`."""
+
+    id: uuid.UUID
+    object: str
+    version: int
+    etag: str
+    owner: OwnerView
+    workspace_id: uuid.UUID
+    created_at: datetime
+    created_by: uuid.UUID
+    updated_at: datetime
+    updated_by: uuid.UUID
+    deleted_at: datetime | None
+    deleted_by: uuid.UUID | None
+    name: str | None = Field(description="Null when `name` is hidden from the caller.")
+    fields: dict[str, Any] = Field(
+        description="The values the caller reads, by `api_name`; with `fields`, those named."
+    )
+    hidden_fields: list[str]
+
+
+class RecordPageOut(BaseModel):
+    """A page of records (R8.1, R8.8). `count` and `count_capped` are present
+    only on a first page asked with `count=exact`."""
+
+    items: list[RecordItem]
+    next_cursor: str | None = Field(description="Absent from the last page: null.")
+    count: int | None = Field(default=None, description="Matches, to 10 000.")
+    count_capped: bool | None = Field(default=None, description="True past 10 000 matches.")
+
+
+class RecordQueryBody(BaseModel):
+    """`POST .../records/query`: every member of the list query in the body, so
+    a filter value and a cursor never sit in a URL (ADR-0106 decision 4). Read
+    by the platform's list parser, which refuses a member not named here."""
+
+    filter: dict[str, Any] | None = Field(
+        default=None, description="The filter tree; its grammar is the describe query schema."
+    )
+    order_by: str | None = Field(
+        default=None, description="`name`, `created_at` or `updated_at`, then asc or desc."
+    )
+    fields: str | None = Field(default=None, description="Comma-separated field names.")
+    cursor: str | None = Field(default=None, description="Opaque cursor from a previous page.")
+    limit: int = Field(default=50, ge=1, le=200)
+    count: str = Field(default="none", description="`none` or `exact`.")
 
 
 class ObjectEntryView(BaseModel):
@@ -162,6 +216,23 @@ def record_out(view: RecordView) -> RecordOut:
         fields=dict(view.fields),
         hidden_fields=list(view.hidden_fields),
         permissions=PermissionsView(update=view.permissions.update, delete=view.permissions.delete),
+    )
+
+
+def record_page_out(page: RecordPage) -> RecordPageOut:
+    """The page; `count` and `count_capped` set only when counted, so a
+    response that excludes what was not set leaves both out."""
+    items = []
+    for view in page.items:
+        out = record_out(view).model_dump(exclude={"permissions"})
+        items.append(RecordItem(**out))
+    if page.count is None:
+        return RecordPageOut(items=items, next_cursor=page.next_cursor)
+    return RecordPageOut(
+        items=items,
+        next_cursor=page.next_cursor,
+        count=page.count,
+        count_capped=page.count_capped,
     )
 
 

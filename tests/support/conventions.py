@@ -73,10 +73,14 @@ def write_routes(spec: Mapping[str, Any]) -> set[Operation]:
     writes: set[Operation] = set()
     for resource in versioned_resources(spec):
         writes |= {(m.upper(), resource) for m in WRITE_METHODS if m in paths.get(resource, {})}
+        # `POST <list>/query` reads, here as below: a list that is itself a
+        # versioned resource (its upsert answers a version) is still queried.
         writes |= {
             ("POST", child)
             for child in paths
-            if _is_child(child, resource) and "post" in paths[child]
+            if _is_child(child, resource)
+            and "post" in paths[child]
+            and child != f"{resource}/query"
         }
         last = resource.rsplit("/", 1)[-1]
         if not last.startswith("{"):

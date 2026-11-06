@@ -21,6 +21,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Protocol
 
+from dw_kernel.filters import ListQuery
 from dw_platform.application.access_context import AccessContext
 from dw_platform.application.effect_keys import EffectClaim
 from dw_platform.domain.audit import AuditEvent
@@ -230,6 +231,17 @@ class RecordTx(Protocol):
     async def definition(self, object_id: uuid.UUID) -> AppliedObject | None: ...
 
     async def read(self, obj: AppliedObject, record_id: uuid.UUID) -> StoredRecord | None: ...
+
+    async def page(self, obj: AppliedObject, query: ListQuery) -> Sequence[StoredRecord]:
+        """Up to ``query.page.fetch_limit`` live records of ``obj`` the caller
+        reads, matching its filter, in its order past its cursor (custom-objects
+        ticket 04). ``may_update`` and ``may_delete`` are not read: False."""
+        ...
+
+    async def count(self, obj: AppliedObject, query: ListQuery, cap: int) -> int:
+        """How many live records the caller reads match ``query``'s filter,
+        counted up to ``cap + 1`` and no further (R8.8)."""
+        ...
 
     async def match(self, obj: AppliedObject, api_name: str, value: Any) -> StoredRecord | None:
         """The live record whose unique field ``api_name`` holds ``value``,

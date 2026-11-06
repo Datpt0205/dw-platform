@@ -1157,14 +1157,15 @@ async def test_a_service_account_never_reads_a_sensitive_unique_field(world: Wor
 async def test_r3_6_r3_7_the_schemas_hold_what_the_caller_may_see_and_write(world: World) -> None:
     reader = await world.person({"read": "workspace"}, {"name": "read"})
     seen = await world.service.schemas(world.door(reader), LEAD)
-    assert "phone" not in seen.query["properties"] and "cccd" not in seen.query["properties"]
+    filters = seen.query["$defs"]["node_1"]["properties"]
+    assert "phone" not in filters and "cccd" not in filters
     assert "phone" not in seen.ai_descriptions.fields
     assert seen.create["properties"] == {} and seen.update["properties"] == {}
     creator = await world.person({"read": "workspace", "create": "workspace"}, {"name": "edit"})
     made = await world.service.schemas(world.door(creator), LEAD)
     # A unique field is readable to a creator, never writable without its key.
     assert set(made.create["properties"]) == {"name", "note", "amount"}
-    assert "phone" in made.query["properties"]
+    assert "phone" in made.query["$defs"]["node_1"]["properties"]
     assert made.create["properties"]["amount"]["anyOf"][0]["type"] == "string"
 
 

@@ -23,15 +23,17 @@ from __future__ import annotations
 import uuid
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Request, Response
 
 from dw_api.dependencies.auth import RequireStudioAccess
 from dw_api.dependencies.conditions import MergePatch, RequireIfMatch
 from dw_api.dependencies.idempotency import CheckInput, IdempotentOperation, idempotent
+from dw_api.dependencies.listing import RawListQuery, counted_listing, read_query_body
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import InfrastructureError
 from dw_kernel.http_conditions import ExpectedVersion, etag_of
 from dw_platform.application.access_context import AccessContext
+from dw_studio.records.application.record_query import URL_SORTABLE
 from dw_studio.records.application.record_service import RecordDoor, RecordService
 from dw_studio.records.application.record_views import RecordView
 from dw_studio.records.presentation.views import (
@@ -39,11 +41,14 @@ from dw_studio.records.presentation.views import (
     ObjectList,
     RecordInput,
     RecordOut,
+    RecordPageOut,
+    RecordQueryBody,
     UpsertInput,
     UpsertOut,
     description_view,
     object_list,
     record_out,
+    record_page_out,
 )
 
 router = APIRouter(prefix="/objects")
@@ -181,6 +186,67 @@ async def upsert_record(
     out = UpsertOut(**record_out(view).model_dump(), created=created)
     result: UpsertOut = await idempotency.record(out, status_code=status, headers=headers)
     return result
+
+
+CountedListing = Annotated[RawListQuery, counted_listing(url_sortable=URL_SORTABLE)]
+
+
+async def _page(
+    container: Any, context: AccessContext, api_name: str, raw: RawListQuery
+) -> RecordPageOut:
+    """The one list both forms answer through: the service builds the caller's
+    query schema in its transaction and hands it to ``raw.parse``, so a
+    refusal (422) comes before any record SQL (R8.4-R8.7)."""
+    page = await _records(container).query(
+        _door(container, context),
+        api_name,
+        lambda schema: raw.parse(schema, context),
+        count=raw.count == "exact",
+    )
+    return record_page_out(page)
+
+
+@router.get("/{api_name}/records", response_model=RecordPageOut, response_model_exclude_unset=True)
+async def list_records(
+    api_name: str,
+    context: RequireStudioAccess,
+    container: RequireContainer,
+    response: Response,
+    listing: CountedListing,
+) -> RecordPageOut:
+    """R8.1: the live records the caller reads, newest first unless
+    `order_by` says `created_at` or `updated_at` otherwise. No `filter` and no
+    `order_by=name` here: a filter value or a cursor carrying a name is
+    personal data, and a URL is kept by access logs, spans and `Referer`; send
+    them in the body of `POST .../records/query` (ADR-0106 decision 4)."""
+    response.headers["Cache-Control"] = _NO_STORE
+    return await _page(container, context, api_name, listing)
+
+
+@router.post(
+    "/{api_name}/records/query",
+    response_model=RecordPageOut,
+    response_model_exclude_unset=True,
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/json": {"schema": RecordQueryBody.model_json_schema()}},
+        }
+    },
+)
+async def query_records(
+    api_name: str,
+    request: Request,
+    context: RequireStudioAccess,
+    container: RequireContainer,
+    response: Response,
+) -> RecordPageOut:
+    """R8.1: the same list as `GET .../records`, its whole query in the body
+    (`RecordQueryBody`), its cursor `GET`'s: a filter tree on any filterable
+    field, `order_by` on `name`, `created_at` or `updated_at`, `count`."""
+    response.headers["Cache-Control"] = _NO_STORE
+    raw = await read_query_body(request, route=request.url.path.removesuffix("/query"), counts=True)
+    return await _page(container, context, api_name, raw)
 
 
 @router.get("/{api_name}/records/{record_id}", response_model=RecordOut)

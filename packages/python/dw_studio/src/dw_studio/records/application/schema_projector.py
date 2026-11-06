@@ -12,8 +12,10 @@ Every word a company wrote stays out of the schemas: no `title`, no
 `description`, no label (gate MEDIUM (a)). `ai_description` comes back in its
 own table beside them, for the consumer to wrap as untrusted data (YC48,
 YC101). Which fields the caller may see or change is ticket 03's, with
-field-security/01; the query schema names what filters and sorts and the
-type of each value, and its grammar is ticket 04's.
+field-security/01. The query schema is the JSON Schema of the filter tree
+`dw_kernel.filters` exports for the caller's `QuerySchema` (`record_query`),
+so a tool, a workflow step and the route parse one grammar (custom-objects
+ticket 04, gate (h)).
 """
 
 from __future__ import annotations
@@ -21,16 +23,16 @@ from __future__ import annotations
 import uuid
 from collections import OrderedDict
 from collections.abc import Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Final
 
+from dw_kernel.filters import query_json_schema
 from dw_studio.records.application.ports import AppliedObject, ObjectDefinitionReader
-from dw_studio.records.domain.document import NAME, FieldDefinition
+from dw_studio.records.application.record_query import SORTABLE, query_schema
+from dw_studio.records.domain.document import NAME, OWNER, WORKSPACE, FieldDefinition
 
 JSON_SCHEMA: Final = "https://json-schema.org/draft/2020-12/schema"
 DEFAULT_CACHE_ENTRIES: Final = 1024
-# Sortable beside the slot fields: the indexes of `studio.records` carry them.
-SYSTEM_SORTS: Final = ("name", "created_at", "updated_at")
 # An exact number and a currency travel as a decimal string at every door.
 DECIMAL_PATTERN: Final = r"^-?[0-9]+(\.[0-9]+)?$"
 
@@ -59,6 +61,9 @@ class ObjectSchemas:
     query: Mapping[str, Any]
     sortable: tuple[str, ...]
     ai_descriptions: AiDescriptions
+    # What `narrowed` rebuilds the caller's query grammar from; `project`
+    # always sets it. Without one the caller's grammar admits no filter.
+    source: AppliedObject | None = field(default=None, repr=False, compare=False)
 
 
 def value_schema(field: FieldDefinition) -> dict[str, Any]:
@@ -81,6 +86,29 @@ def value_schema(field: FieldDefinition) -> dict[str, Any]:
     if field.max_length is not None:
         schema["maxLength"] = field.max_length
     return schema
+
+
+def query_value(field: FieldDefinition) -> dict[str, Any]:
+    """A filter's value of the field on the wire: as a write sends it, except
+    that a picklist takes any of its keys, an inactive one finding the records
+    that keep it (custom-objects ticket 04)."""
+    if field.type == "picklist":
+        keys = sorted(field.options, key=lambda o: (o.position, o.key))
+        return {"type": "string", "enum": [o.key for o in keys]}
+    return value_schema(field)
+
+
+def query_grammar(applied: AppliedObject, readable: frozenset[str]) -> dict[str, Any]:
+    """The filter tree a caller reading ``readable`` may send, as JSON Schema."""
+    values: dict[str, Mapping[str, object]] = {
+        NAME: {"type": "string", "minLength": 1, "maxLength": 255},
+        OWNER: {"type": "string", "format": "uuid"},
+        WORKSPACE: {"type": "string", "format": "uuid"},
+    }
+    for api_name, definition in applied.definition.fields.items():
+        if api_name != NAME and applied.storage[api_name].storage_kind == "slot":
+            values[api_name] = query_value(definition)
+    return query_json_schema(query_schema(applied, readable), values=values)
 
 
 def _object(properties: Mapping[str, Any], required: list[str]) -> dict[str, Any]:
@@ -108,18 +136,19 @@ def project(applied: AppliedObject) -> ObjectSchemas:
     ]
     name = {"type": "string", "minLength": 1, "maxLength": 255}
     writable = {NAME: name, **{f.api_name: _nullable(f) for f in fields}}
-    filterable = [f for f in fields if applied.storage[f.api_name].storage_kind == "slot"]
+    every = frozenset(applied.definition.fields)
     return ObjectSchemas(
         object_id=applied.object_id,
         schema_version=applied.schema_version,
         create=_object(writable, [NAME, *(f.api_name for f in fields if f.required)]),
         update=_object(writable, []),
-        query=_object({f.api_name: value_schema(f) for f in filterable}, []),
-        sortable=(*SYSTEM_SORTS, *(f.api_name for f in filterable)),
+        query=query_grammar(applied, every),
+        sortable=SORTABLE,
         ai_descriptions=AiDescriptions(
             object=applied.definition.ai_description,
             fields={f.api_name: f.ai_description for f in fields if f.ai_description},
         ),
+        source=applied,
     )
 
 
@@ -175,8 +204,9 @@ def narrowed(
 ) -> ObjectSchemas:
     """``schemas`` as one caller may use them (R3.6, R3.7; custom-objects
     ticket 03 step 9): the create schema with the fields `create` lets it
-    write, the update schema with those it edits, the query schema, the sorts
-    and the company's words without any field hidden from it. Applied to
+    write, the update schema with those it edits, the query grammar of its
+    own `QuerySchema` (custom-objects ticket 04), the sorts and the company's
+    words without any field hidden from it. Applied to
     each call after the cache, never stored in it (gate M5), so a field
     secured without a new `schema_version` is out at the next call."""
 
@@ -190,16 +220,16 @@ def narrowed(
             out.pop("required", None)
         return out
 
-    system = frozenset(SYSTEM_SORTS) - {NAME}
     return ObjectSchemas(
         object_id=schemas.object_id,
         schema_version=schemas.schema_version,
         create=keep(schemas.create, creatable),
         update=keep(schemas.update, editable),
-        query=keep(schemas.query, readable),
-        sortable=tuple(s for s in schemas.sortable if s in readable or s in system),
+        query={} if schemas.source is None else query_grammar(schemas.source, readable),
+        sortable=tuple(s for s in schemas.sortable if s != NAME or NAME in readable),
         ai_descriptions=AiDescriptions(
             object=schemas.ai_descriptions.object,
             fields={k: v for k, v in schemas.ai_descriptions.fields.items() if k in readable},
         ),
+        source=schemas.source,
     )

@@ -71,6 +71,14 @@ def text(api_name: str, **over: Any) -> dict[str, Any]:
     }
 
 
+SYSTEM = frozenset({"$and", "$or", "name", "created_at", "updated_at", "owner", "workspace"})
+
+
+def filtered(query: Any) -> set[str]:
+    """The fields a query grammar filters on, past the ones every object has."""
+    return set(query["$defs"]["node_1"]["properties"]) - SYSTEM
+
+
 def strings(value: Any) -> Iterator[str]:
     if isinstance(value, str):
         yield value
@@ -132,8 +140,12 @@ async def test_the_schemas_say_what_is_written_filtered_and_sorted() -> None:
     assert schemas.create["properties"]["stage"] == {"type": "string", "enum": ["new", "won"]}
     assert schemas.create["properties"]["note"]["anyOf"][1] == {"type": "null"}
     assert "required" not in schemas.update
-    assert set(schemas.query["properties"]) == {"stage"}
-    assert schemas.sortable == ("name", "created_at", "updated_at", "stage")
+    assert filtered(schemas.query) == {"stage"}
+    # W1 sorts on the three system columns only (custom-objects ticket 04).
+    assert schemas.sortable == ("name", "created_at", "updated_at")
+    # A filter finds a record keeping an inactive option.
+    stage_eq = schemas.query["$defs"]["leaf_stage"]["properties"]["$eq"]
+    assert stage_eq == {"type": "string", "enum": ["new", "won", "lost"]}
 
 
 async def test_co1_two_companies_with_one_object_id_each_get_their_own() -> None:
@@ -232,10 +244,33 @@ async def test_r3_6_r3_7_m5_the_caller_narrows_after_the_cache_never_inside_it()
     assert set(mine.create["properties"]) == {"name", "note"}
     assert mine.create["required"] == ["name", "note"]
     assert set(mine.update["properties"]) == {"note"}
-    assert set(mine.query["properties"]) == {"score"}
-    assert mine.sortable == ("name", "created_at", "updated_at", "score")
+    assert filtered(mine.query) == {"score"}
+    assert "phone" not in json.dumps(mine.query)
+    assert mine.sortable == ("name", "created_at", "updated_at")
     assert mine.ai_descriptions.fields == {"note": "Ghi chú"}
     again = await projector.schemas(tenant, object_id, 1)
     assert again is full
-    assert set(full.query["properties"]) == {"phone", "score"}
+    assert filtered(full.query) == {"phone", "score"}
+    hidden_name = narrowed(
+        full, readable=frozenset({"score"}), editable=frozenset(), creatable=frozenset()
+    )
+    assert "name" not in hidden_name.query["$defs"]["node_1"]["properties"]
+    assert hidden_name.sortable == ("created_at", "updated_at")
     assert full.ai_descriptions.fields == {"phone": "Số gọi", "note": "Ghi chú"}
+
+
+async def test_r3_6_the_query_grammar_carries_a_decimal_string_and_no_null() -> None:
+    """custom-objects/04 (gate (f), (h)): the query of a currency is the
+    decimal string a write sends; no leaf takes `null`; five levels deep."""
+    reader, tenant, object_id = FakeReader(), uuid.uuid4(), uuid.uuid4()
+    money = {**text("amount"), "type": "currency", "currency_code": "VND", "indexed": True}
+    reader.objects[(tenant, object_id)] = applied(object_id, lead(money), slots={"amount": "i01"})
+
+    schemas = await ObjectSchemaProjector(reader).schemas(tenant, object_id, 1)
+
+    assert schemas is not None
+    leaf = schemas.query["$defs"]["leaf_amount"]["properties"]
+    assert leaf["$gte"] == {"type": "string", "pattern": r"^-?[0-9]+(\.[0-9]+)?$"}
+    assert leaf["$eq"] == leaf["$gte"]
+    assert set(schemas.query["$defs"]["leaf_owner"]["properties"]) == {"$eq", "$in"}
+    assert "node_5" in schemas.query["$defs"] and "node_6" not in schemas.query["$defs"]

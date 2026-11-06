@@ -60,7 +60,15 @@ REGISTERED: Final[Mapping[tuple[str, str], str]] = {
 # Operations that take a cursor and are not planned here, each with why.
 # Frozen like the registry; a name without a reason, or one that no longer
 # names an operation, fails the app-build test.
-EXEMPT: Final[Mapping[tuple[str, str], str]] = {}
+_RECORDS_MATRIX: Final = (
+    "planned per object by dw_studio's test_record_query_plan_shape.py (custom-objects 04"
+    " step 6): every operator, slot family and ordering of a published object, under the four"
+    " reach profiles of the record policies, which a fixed statement here cannot stand for"
+)
+EXEMPT: Final[Mapping[tuple[str, str], str]] = {
+    ("GET", "/api/v1/studio/objects/{api_name}/records"): _RECORDS_MATRIX,
+    ("POST", "/api/v1/studio/objects/{api_name}/records/query"): _RECORDS_MATRIX,
+}
 
 _SCANS: Final = frozenset({"Index Scan", "Index Only Scan", "Bitmap Heap Scan", "Seq Scan"})
 _SORTS: Final = frozenset({"Sort", "Incremental Sort"})
@@ -110,9 +118,10 @@ class Scope:
     user_id: str
 
 
-async def bind(conn: AsyncConnection, scope: Scope) -> None:
+async def bind(conn: AsyncConnection, scope: Scope, *, sort: bool = False) -> None:
     """Inside an open transaction: the tenant's settings, and no sequential scan
-    or sort unless nothing else can answer."""
+    or sort unless nothing else can answer; ``sort`` leaves sorting priced as
+    usual, for an :class:`Expectation` that accepts a top-N sort."""
     await conn.execute(
         sa.text(
             "SELECT set_config('app.tenant_id', :t, true),"
@@ -121,6 +130,8 @@ async def bind(conn: AsyncConnection, scope: Scope) -> None:
         {"t": scope.tenant_id, "w": scope.workspace_id, "u": scope.user_id},
     )
     await conn.execute(sa.text("SET LOCAL enable_seqscan = off"))
+    if sort:
+        return
     # Priced out, not forbidden, like the sequential scan: on a test table of a
     # few rows the planner rightly sorts three rows rather than walk an index,
     # and the question here is whether an index CAN hand the page over in
@@ -151,12 +162,31 @@ class Expectation:
     predicates: tuple[str, ...]
     sort_keys: tuple[str, ...]
     exempt_indexes: Mapping[str, str] = field(default_factory=dict)
+    # custom-objects ticket 04 (lượt xác nhận (k)). An index of RLS's reach
+    # (a pattern of its name): a scan through one may carry the statement's
+    # predicates as a Filter over the reach set, its Index Cond still led by
+    # `tenant_id`. And whether a Sort is accepted under a Limit (a top-N sort
+    # of what an index scan selected, planned with sorting priced as usual),
+    # for a filter on one column ordered by another.
+    reach_indexes: tuple[str, ...] = ()
+    top_n: bool = False
 
 
 def _nodes(plan: Mapping[str, Any]) -> Iterator[Mapping[str, Any]]:
     yield plan
     for child in plan.get("Plans", []):
         yield from _nodes(child)
+
+
+def _top_n_sorts(plan: Mapping[str, Any]) -> set[int]:
+    """The Sort nodes directly under a Limit, by identity."""
+    found: set[int] = set()
+    for node in _nodes(plan):
+        if node.get("Node Type") == "Limit":
+            found.update(
+                id(child) for child in node.get("Plans", []) if child.get("Node Type") == "Sort"
+            )
+    return found
 
 
 _BITMAP: Final = frozenset({"Bitmap Index Scan", "BitmapAnd", "BitmapOr"})
@@ -185,13 +215,14 @@ async def _partitions(conn: AsyncConnection, table: str) -> set[str]:
 
 
 async def _leading_column(conn: AsyncConnection, index: str) -> str | None:
-    return await conn.scalar(
+    found = await conn.scalar(
         sa.text(
             "SELECT pg_get_indexdef(c.oid, 1, true) FROM pg_class c"
             " WHERE c.relname = :i AND c.relkind IN ('i', 'I') LIMIT 1"
         ),
         {"i": index},
     )
+    return None if found is None else str(found)
 
 
 def _mentions(text: str, column: str) -> bool:
@@ -235,13 +266,18 @@ async def plan_problems(
             if leading != "tenant_id":
                 problems.append(f"index {index} leads with {leading}, not tenant_id")
         conditions = _scan_conditions(scan)
-        for column in ("tenant_id", *expected.predicates):
+        through_reach = any(
+            re.search(pattern, index) for pattern in expected.reach_indexes for index in indexes
+        )
+        declared = () if through_reach else expected.predicates
+        for column in ("tenant_id", *declared):
             if not _mentions(conditions, column):
                 problems.append(
                     f"column {column} of {relation} is in no Index Cond or Recheck Cond"
                 )
+    accepted = _top_n_sorts(plan) if expected.top_n else set()
     for node in _nodes(plan):
-        if node.get("Node Type") in _SORTS:
+        if node.get("Node Type") in _SORTS and id(node) not in accepted:
             keys = " ".join(node.get("Sort Key", []))
             for column in expected.sort_keys:
                 if _mentions(keys, column):
@@ -272,7 +308,7 @@ async def problems_of(
             for statement in ddl:
                 await conn.execute(sa.text(statement))
             await conn.execute(sa.text("SET LOCAL ROLE dw_app"))
-            await bind(conn, scope)
+            await bind(conn, scope, sort=expected.top_n)
             for captured in statements:
                 plan = await explain(conn, captured)
                 found.extend(

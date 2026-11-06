@@ -248,6 +248,35 @@ def missing_required(
     ]
 
 
+def filter_value(definition: FieldDefinition, raw: Any) -> object:
+    """A filter's value for the field, coerced and normalized as a write's is
+    (custom-objects ticket 04, gate (f)), in the form `dw_kernel.filters`
+    types: the kept value, a date or a time as ISO 8601 text. A phone is
+    compared in E.164, an email in lower case, text in NFC, an exact number
+    or a currency as its scaled integer from a decimal string.
+
+    Raises ValueError, which the kernel answers as `invalid_type`, for what a
+    write would refuse, a length or a scale past the field's included, and
+    for a value that is empty once normalized. A picklist key is checked to
+    exist, not to be active: a record keeping an inactive option is found."""
+    try:
+        if definition.type == "picklist":
+            if not isinstance(raw, str) or not any(o.key == raw for o in definition.options):
+                raise _Refused(INVALID_TYPE)
+            value: Stored | None = raw
+        elif definition.api_name == NAME:
+            value = _within(_text(raw), NAME_MAX_LENGTH)
+        else:
+            value = _coerce(definition, raw)
+    except _Refused:
+        raise ValueError("not a value of the field") from None
+    if value is None:
+        raise ValueError("not a value of the field")
+    if isinstance(value, date):  # a datetime too
+        return value.isoformat()
+    return value
+
+
 def present(definition: FieldDefinition, stored: Stored | None) -> Any:
     """What a caller reads of a kept value: an exact number or a currency as
     a string with exactly `scale` decimals (R6.4), a date or a time in ISO

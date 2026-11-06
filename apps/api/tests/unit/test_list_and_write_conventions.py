@@ -159,6 +159,29 @@ def test_the_reading_names_every_unconditional_write_of_a_versioned_resource() -
     }
 
 
+def test_a_query_of_a_list_that_answers_a_version_is_still_a_read() -> None:
+    # custom-objects/04: the records list is versioned through its upsert (a
+    # POST child answering `version`); its `POST <list>/query` reads.
+    app = FastAPI()
+
+    @app.get("/records", response_model=Page)
+    async def records() -> Page: ...
+
+    @app.post("/records/upsert", response_model=Thing)
+    async def upsert() -> Thing: ...
+
+    @app.post("/records/query", response_model=Done)
+    async def query() -> Done: ...
+
+    @app.post("/records/merge", response_model=Done)
+    async def merge() -> Done: ...
+
+    assert unconditional_writes(app.openapi()) == {
+        ("POST", "/records/upsert"),
+        ("POST", "/records/merge"),
+    }
+
+
 def test_a_frozen_list_names_its_own_faults() -> None:
     faults = list(
         frozen_list_problems(

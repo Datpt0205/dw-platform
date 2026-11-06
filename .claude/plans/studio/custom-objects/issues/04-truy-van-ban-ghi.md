@@ -1,6 +1,6 @@
 # 04 — Truy vấn bản ghi: cây lọc, sắp keyset có kiểu, đếm có trần
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 03
 Area: studio
 Yêu cầu: R3.3, R3.4, R3.6, R4.3, R8.1, R8.2, R8.3, R8.4, R8.5, R8.6, R8.7, R8.8, R8.9, R9.1, CO1, CO7, CO8, CO19
@@ -160,3 +160,58 @@ dịch này qua `RecordService`.
   lọc được; lọc lựa chọn đã tắt; chỉ trang đầu đếm. Sửa của lượt này không có người đọc mới: nhận rủi ro (agent, theo ủy quyền 31/10/2026). Nếu sai
   thì: ghi ở đây khi dựng. Thứ tự dựng: sau 03; trước 05, 07, 09.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, lane 2): dựng. `dw_kernel.filters` thêm `null_allowed`, `coerce` (lỗi → `invalid_type` mới của
+  `ReasonCode`), kiểm giới hạn cả cây trước mọi lá (`_bounds`) và `query_json_schema`; mọi danh sách khác giữ hành vi
+  (test kernel cũ xanh nguyên). `RecordService.query(door, api_name, parse, count=)`: một giao dịch, `_enter` (404, 403)
+  rồi quyết định trường rồi `parse(QuerySchema của người gọi)` rồi SQL; `parse` là `RawListQuery.parse` của
+  `listing.py` cho route, `parse_query` cho cửa khác. `RecordQueryCompiler` (adapter) chỉ bọc phạm vi
+  `tenant_id = :tenant AND object_id = :object AND deleted_at IS NULL` quanh `compile_filter` và pha `values` của
+  `keyset_phases`. `listing.py`: `RawListQuery`, `read_query_body(counts=)` (mà `query_body` cũ dùng lại),
+  `counted_listing(url_sortable=)` cho `GET`. Hai route vào `plan_shape.EXEMPT` với lý do (ma trận riêng của Studio);
+  `conventions.write_routes` coi `POST <list>/query` là đọc cả khi chính danh sách là tài nguyên có phiên bản (qua
+  upsert), có test riêng.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): làm khác ticket. (1) `QuerySchema` dựng ở tầng application
+  (`records/application/record_query.py`), không trong adapter, vì bộ chiếu (application) cũng xuất lược đồ JSON từ nó
+  (bước 5); adapter chỉ biên dịch. Nếu sai thì: chuyển hàm dựng vào adapter và bộ chiếu nhận lược đồ qua port. (2) Con
+  trỏ của lỗi giá trị (`invalid_type`, `operator_not_allowed` của `null`) trỏ tới toán hạng (`/filter/amount/$gte`),
+  như mọi lỗi giá trị khác của kernel, không tới nút lá. Nếu sai thì: một dòng ở `_value` và `_null`. (3) Lá
+  `workspace` không có chỉ mục mang cả `object_id`: `(tenant_id, workspace_id)` thiếu `object_id`, chỉ mục sắp thiếu
+  `workspace_id`, nên ma trận giữ lá này ở "quét dẫn bằng `tenant_id`, không Seq Scan, luật sắp", không đòi vị từ ở
+  Index Cond; mọi lá khác ở mọi họ slot, mọi chiều sắp và bốn hồ sơ đều đạt đầy đủ. Nếu sai thì: ticket 07 thêm chỉ mục
+  `(tenant_id, object_id, workspace_id, id)` hay lá biên dịch sang `access_key`. (4) Giá trị lọc 1.024 byte qua giới
+  hạn nhưng không trường nào giữ được (`max_length` tối đa 255 ký tự), nên route trả `invalid_type` của chính trường,
+  còn 1.025 byte trả `filter_string_too_long`; kernel thử đúng biên ở test đơn vị. (5) Ma trận chọn giá trị biên chọn
+  lọc (vài dòng mỗi chủ), vì biên khớp gần hết bảng thì planner đi chỉ mục sắp, đúng ở mọi quy mô, mà không vị từ nào ở
+  Index Cond. (6) Lần soak của đường thật ghi qua cửa người (không khóa `wf:`), nên WAL chưa tính
+  `studio.record_write_keys` của R5.9; ticket 09 đo lần chạy có cửa lượt.
+- 2026-11-06 (agent): kiểm. Unit kernel, Studio, API, harness xanh; tích hợp mới `test_record_query.py` 14,
+  `test_record_query_plan_shape.py` 3 (ma trận 1.464 ca × trang và đếm, cùng hai bản thử đỏ được: vị từ qua `data`,
+  chỉ mục slot bị bỏ), `test_studio_record_lists.py` 12; sửa `test_record_service.py` (hai dòng, hình lược đồ mới);
+  chạy lại `test_plan_shape.py`, `test_conditional_writes_and_queries.py`, `test_studio_records.py`,
+  `test_studio_publish.py`, `test_studio_lifecycle.py` xanh. `reviewing-feature-security`: (1) tenant: B gọi
+  `api_name` chỉ A có → 404 trước SQL bản ghi, cùng `api_name` → chỉ của B và `count` chỉ của B, mọi câu nêu
+  `tenant_id = :tenant` (test văn bản); (2) quyền: thiếu khóa đọc → 403 trước SQL, trường Đã ẩn → 422 trước SQL, ngoài
+  tầm không có trong trang lẫn `count`; (3) không công cụ hay quyền tự hành mới (lược đồ cho công cụ là của
+  tools-and-skills/03); (4) không bộ nhớ, tri thức, bằng chứng; (5) không migration, hai route đọc sau cổng Studio,
+  giá trị lọc và con trỏ `name` chỉ trong thân `POST`; (6) không cache mới (cache bộ chiếu giữ khóa có tenant), container
+  chỉ của harness. `mutations/04.yaml` 18 đột biến, mỗi `old` khớp đúng một lần, chưa chạy. Hoãn tới đóng hàng: mutate
+  (18), `make test-integration` đầy đủ, P50/P95/P99 của `GET .../records` và `POST .../records/query` (và describe vì
+  cờ `sortable` đổi) so với commit bắt đầu hàng đợi.
+- 2026-11-06 (agent): R9.1, chế độ đường thật, **smoke, máy dev, không phải số D12** (không so với ngưỡng R9 nào; số
+  D12 là của ticket 09). `uv run python scripts/bench_records_storage.py --scale smoke --real-path`, thoát 0; container
+  riêng `dwbench-postgres` (PostgreSQL 16.15 alpine, giới hạn của overlay prod, `shared_buffers` 160MB) trên Windows 11,
+  Ryzen 7 7735U 16 luồng, đo cùng lúc với một lượt test tích hợp ở cluster khác (máy bận). `db/migrations` ở head (DDL
+  tạm A0 modulus 4), định nghĩa qua móc phát hành với phê duyệt fixture, người và vai bằng SQL của `dw_migrator`; 20.000
+  bản ghi nhập qua `RecordService.create` (8 phiên): 61,6 hàng/s. Mỗi ô 1.000 mẫu, đo trong tiến trình quanh lời gọi
+  `RecordService` (gồm mở, gắn và commit giao dịch của cửa), bộ đếm lời gọi khác 0 ở mọi ô (trang đầu 1.001 vì một lần
+  lấy id):
+
+    | Hồ sơ         | Trang đầu 50 p50/p95/p99 ms | GET p50/p95/p99    | Tạo p50/p95/p99     | Sửa một trường p50/p95/p99 |
+    | ------------- | --------------------------- | ------------------ | ------------------- | -------------------------- |
+    | Của tôi       | 34,6 / 47,3 / 55,6          | 41,3 / 56,7 / 67,4 | 59,7 / 81,2 / 93,3  | 87,3 / 116,3 / 133,4       |
+    | Workspace     | 32,1 / 43,5 / 52,2          | 33,6 / 45,9 / 55,7 | 55,9 / 76,7 / 93,3  | 77,3 / 106,7 / 119,5       |
+    | Toàn công ty  | 31,7 / 46,3 / 65,7          | 33,3 / 49,7 / 73,7 | 55,9 / 80,7 / 161,2 | 75,1 / 116,5 / 196,5       |
+    | `public_read` | 34,7 / 50,0 / 61,5          | 39,6 / 57,7 / 69,1 | 61,2 / 86,4 / 105,5 | 82,5 / 120,0 / 142,1       |
+
+    Soak 300 s, 50 phiên nhắm 200 lần sửa/s qua `RecordService.update`: đạt 53,0 lần/s (19 lần 412 do hai phiên sửa cùng
+    bản ghi), WAL 0,28 MB/s. Bản ghi chạy và báo cáo: `real_path.md`, `real_path.json` dưới `--out`.

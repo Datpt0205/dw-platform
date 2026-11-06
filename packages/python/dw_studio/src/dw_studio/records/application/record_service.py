@@ -54,7 +54,9 @@ from dw_kernel.errors import (
     PermissionDeniedError,
     PreconditionFailedError,
 )
+from dw_kernel.filters import ListQuery, QuerySchema
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
+from dw_kernel.pagination import CursorPosition, build_page
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_kernel.run_mode import RunMode, child_mode
 from dw_platform.application.effect_keys import PendingEffect
@@ -74,14 +76,17 @@ from dw_studio.records.application.ports import (
     StoredRecord,
     WriteRefusedError,
 )
+from dw_studio.records.application.record_query import COUNT_CAP, SORTABLE, query_schema
 from dw_studio.records.application.record_views import (
     Description,
     FieldView,
     ObjectEntry,
     OptionView,
+    RecordPage,
     RecordView,
     WriteResult,
     readable,
+    readable_names,
     record_view,
 )
 from dw_studio.records.application.schema_projector import (
@@ -353,6 +358,51 @@ class RecordService:
                 raise record_not_found()
             access = await self.fields.for_object(raw, obj.object_id, "read", caller=call.caller)
             return record_view(obj, stored, access, call.caller.holds)
+
+    async def query(
+        self,
+        door: RecordDoor,
+        api_name: str,
+        parse: Callable[[QuerySchema], ListQuery],
+        *,
+        count: bool = False,
+    ) -> RecordPage:
+        """R8: a page of the live records the caller reads, filtered, ordered
+        and paged as ``parse`` reads the caller's query against the caller's
+        own `QuerySchema` (`record_query`). In order: the object (404) and
+        `obj.<api_name>.read` (403, R3.3, R3.4), then the field decision, then
+        ``parse``, whose refusal (`QueryError`, 422) comes before any record
+        SQL (R8.4-R8.7), then the page under the record policies. ``count``
+        asks how many match (R8.8), counted on a first page only."""
+        async with door.transaction() as raw:
+            call = await self._enter(raw, door, api_name, "read", "live")
+            obj = await self._definition(call)
+            access = await self.fields.for_object(raw, obj.object_id, "read", caller=call.caller)
+            listing = parse(query_schema(obj, readable_names(access)))
+            rows = await call.tx.page(obj, listing)
+            counted = None
+            if count and listing.page.after is None:
+                counted = await call.tx.count(obj, listing, COUNT_CAP)
+        column = listing.order.field.column
+        page = build_page(
+            rows,
+            request=listing.page,
+            position_of=lambda row: CursorPosition(getattr(row, column), row.id),
+        )
+        chosen = None if listing.fields is None else frozenset(listing.fields)
+
+        def shown(stored: StoredRecord) -> RecordView:
+            view = record_view(obj, stored, access, call.caller.holds)
+            if chosen is None:
+                return view
+            return replace(view, fields={k: v for k, v in view.fields.items() if k in chosen})
+
+        return RecordPage(
+            items=tuple(shown(row) for row in page.items),
+            next_cursor=page.next_cursor,
+            count=None if counted is None else min(counted, COUNT_CAP),
+            count_capped=None if counted is None else counted > COUNT_CAP,
+        )
 
     # ---- writes ----------------------------------------------------------------
 
@@ -1087,8 +1137,9 @@ def _description(obj: AppliedObject, access: FieldAccess) -> Description:
                 required=definition.required,
                 unique=definition.is_unique,
                 editable=level == EDIT,
-                filterable=filters,
-                sortable=filters or api_name == NAME,
+                filterable=filters or api_name == NAME,
+                # W1 sorts on `name`, `created_at` and `updated_at` only (R8.2).
+                sortable=api_name in SORTABLE,
                 options=tuple(
                     OptionView(o.key, o.labels.get("vi", o.key), o.position, o.active)
                     for o in sorted(definition.options, key=lambda o: (o.position, o.key))
