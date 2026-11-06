@@ -3,7 +3,7 @@
 Status: needs-triage
 Area: studio · Nhánh: `docs/studio-planning` · Viết: 23/10/2026
 Duyệt: agent, tạm theo ủy quyền 2/11/2026
-Sẵn sàng: ĐẠT (6/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08, 09, 10, 11, 12)
+Sẵn sàng: ĐẠT (6/11/2026; 0 CRITICAL, 0 HIGH; ticket 01, 02, 03, 04, 06, 07, 08, 09, 10, 11, 12, 13)
 
 Quản trị viên công ty cần tự dựng vai trò cho các workspace của mình (vai Marketing và vai Sales của lát Marketing, D4) với
 quyền trên đối tượng do công ty định nghĩa (`obj.lead.read`, D3), điều mà danh mục vai toàn cục chỉ migration ghi không
@@ -492,6 +492,16 @@ Không còn câu hỏi mở.
   `Mục tiêu` không đổi: R3.11 nay đúng cho cả lần đổi người và lần ghi đồng thời, R3.12 và R6.7 cho lần đổi người
   (R6.7 dưới lần đổi người cạnh lần đình chỉ người mới còn nợ một ticket của R6.7). Nếu sai thì: K1-K4
   thành một bước của ticket 11, hay K2 thành ticket của org-and-principals chờ ticket 12.
+- 6/11/2026 (agent, tạm theo ủy quyền): Duyệt cách chia ticket 13. Ticket 13 là chủ của MEDIUM (a) hai lượt gate
+  ticket 12 (R6.7, RB20): lần đình chỉ người P cạnh một giao dịch làm P thành chủ rồi gỡ chủ `active` cuối (lần
+  `dw_migrator` đổi người của membership, hay lần trao chủ hai câu có từ ticket 03) để tenant 0 chủ, vì nhánh
+  `tenant_members` của `platform.refuse_losing_the_last_owner` trả sớm không khóa. Nhánh đó, khi người chưa là chủ, khóa
+  dòng tenant `FOR KEY SHARE` (tenant `active`, `locked`) rồi đọc lại: chờ đúng `FOR UPDATE` của lần xét chủ cuối đang mở, không chờ khóa ngoại, lần
+  đình chỉ khác hay lần ghi `owner_coverage_low_since` của ticket 08. Một revision, một tệp test, không bảng, route hay
+  hàm mới. Chờ ticket 12 vì cùng thay thân hàm đó. `Yêu cầu: R6.7, RB20`; `Mục tiêu` không đổi: R6.7 nay đúng cả cho
+  lần đình chỉ cạnh lần ghi làm người đó thành chủ; lần xóa dòng công ty hay người dùng và lần kích hoạt lại dưới lần
+  ghi đồng thời còn nợ một ticket của R6.7 (MEDIUM (a) gate ticket 13). Nếu sai thì: nhánh sửa trong revision của
+  ticket 12 và gate lại 12.
 
 ## Danh sách ticket
 
@@ -509,3 +519,4 @@ Không còn câu hỏi mở.
 | 10  | [`scopes_in` của `_STANDING` và `_HOLDERS` ở cỡ D12](issues/10-scopes-in-cua-standing-va-holders.md)                                      |
 | 11  | [Tách nhiệm dưới hai lần ghi đồng thời, và lần đổi người của membership](issues/11-tach-nhiem-duoi-ghi-dong-thoi.md)                      |
 | 12  | [Lần đổi người của membership qua các guard mà lần gán và lần gỡ phải qua](issues/12-doi-nguoi-cua-membership-qua-guard-gan.md)           |
+| 13  | [Chủ sở hữu cuối dưới lần đình chỉ người vừa thành chủ](issues/13-chu-cuoi-duoi-dinh-chi-dong-thoi.md)                                    |
