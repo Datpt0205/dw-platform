@@ -10,8 +10,9 @@ Roles a request adds are proposals another holder of `platform.roles.bind`
 confirms (tenant-rbac R7.1), never the person placed: such a request answers
 202 with `proposals`, and the roles it removed are in `applied`. A request that
 only removes answers as before. A membership with no role (`role_keys: []`) is
-written at once with `platform.members.write` alone (tenant-rbac/16). These routes are in `ROLE_ROUTES_WITHOUT_BYPASS`: the `platform_admin`
-bypass does not open them (R3.16).
+written at once with `platform.members.write` alone (tenant-rbac/16). These
+routes are in `ROLE_ROUTES_WITHOUT_BYPASS`: the `platform_admin` bypass does
+not open them (R3.16).
 
 Refusals the web branches on: 409 with `details.reason_code`
 `member_email_exists_in_tenant`, `support_staff_not_member`,

@@ -236,3 +236,5 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
   đặt mình → 403; người nhận không là người xác nhận, ở lần đề xuất và ở lần xác nhận), 6 (không cache, không truy vấn mới
   ngoài vế lọc); 3, 4, 5 không áp. `mutations/16.yaml` 7 mutation, chưa chạy (K4 (a), K6 (a) bẻ tay, đỏ). Chờ lúc đóng hàng:
   `mutate.py`, P50/P95/P99 của `PUT .../memberships` (một membership không vai; một vai trò thêm). Không migration.
+- 2026-11-06 (agent, lane CI-fix `_ci3`): docstring module `admin_members.py` có một dòng 140 ký tự (E501), `ruff check .`
+  của CI đỏ từ `0a9a1044`; ngắt dòng, không đổi nội dung.
