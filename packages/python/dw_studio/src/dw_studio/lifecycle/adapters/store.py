@@ -42,6 +42,10 @@ from dw_studio.core.application.ports import Dependent
 from dw_studio.core.domain.artifacts import Stage
 from dw_studio.lifecycle.application.ports import PublishDecision
 
+# The plan of a context rebuilt from a recorded decision: no entitlement is
+# read from it (`carry_out`).
+RECORDED_DECISION = "recorded_decision"
+
 _requests = platform.approval_requests
 _decisions = platform.approval_decisions
 
@@ -53,6 +57,18 @@ class SqlLifecycleTx:
     @property
     def session(self) -> AsyncSession:
         return self.envelope.session
+
+    def carry_out(self, decision: PublishDecision, lane: str) -> None:
+        # The recorded decision's person, not a verified request: no roles and
+        # no plan, only who they are and where they decided.
+        self.envelope.context = AccessContext(
+            tenant_id=self.envelope.tenant_id,
+            workspace_id=decision.workspace_id,
+            principal_id=decision.decided_by,
+            roles=frozenset(),
+            plan_id=RECORDED_DECISION,
+        )
+        self.envelope.lane = lane
 
     async def has_quality_gate(self, kind: str) -> bool:
         gated = await self.session.scalar(

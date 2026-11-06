@@ -1,0 +1,78 @@
+# Mutation check of custom-objects ticket 06: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per control (CO3, CO6, CO23)
+# and per gate the ticket names: the comparator on the `object` entry (a), the
+# submit check and its `errors[]` (b), the keys of the entry (c, the only red
+# mutation of R1.3, since the read check answers 404 before the submit key),
+# the decider's name and `details.lane` at the handler (d, e), the company's
+# freeze letting only tightening through, the hook writing no
+# `studio.version.published`, and one candidate at a time (V4.17). The strict
+# prefix that refuses a submitter deciding is ADR-0104's own mutation.
+mutations:
+  - name: R1.7 R1.8 the object entry has no comparator
+    file: packages/python/dw_studio/src/dw_studio/kinds.py
+    old: "        compare=object_tightens_only,"
+    new: "        compare=None,"
+    tests:
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r1_7_closing_phone_goes_live_in_the_submitters_transaction
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r1_7_narrowing_default_access_goes_live_on_its_submit
+  - name: R1.7 CO23 a mixed change counts as tightening
+    file: packages/python/dw_studio/src/dw_studio/records/domain/rules.py
+    old: "            and all(difference.tightens for difference in self.differences)"
+    new: "            and any(difference.tightens for difference in self.differences)"
+    tests:
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r1_2_r1_8_a_version_that_does_not_only_tighten_waits
+  - name: R1.7 CO23 the tightening branch passes a platform freeze
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/service.py
+    old: '        if refused is None or (tighten_only and str(refused) == "tenant_frozen"):'
+    new: "        if refused is None or tighten_only:"
+    tests:
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r1_7_a_platform_freeze_stops_even_tightening
+  - name: R1.7 CO23 the publish hook writes a second published row
+    file: packages/python/dw_studio/src/dw_studio/records/application/metadata.py
+    old: "                action=action,"
+    new: '                action="studio.version.published",'
+    tests:
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r1_7_closing_phone_goes_live_in_the_submitters_transaction
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r1_2_a_new_field_waits_for_a_second_person_and_goes_live_on_the_worker
+  - name: R2.4 CO6 the object kind's submit check is not registered
+    file: apps/api/src/dw_api/bootstrap/studio.py
+    old: "    {OBJECT_KIND: (object_live_check,)}"
+    new: "    {}"
+    tests:
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r2_4_dropping_and_changing_published_fields_is_refused_before_approval
+  - name: R2.4 gate (b) a refusal's errors are dropped
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/service.py
+    old: "    if refusal.errors:\n        return SubmitRefusedError(refusal)"
+    new: "    if False:\n        return SubmitRefusedError(refusal)"
+    tests:
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r2_4_dropping_and_changing_published_fields_is_refused_before_approval
+  - name: R1.3 CO3 gate (c) the entry's keys are one the reviewer holds
+    file: packages/python/dw_studio/src/dw_studio/kinds.py
+    old: "        read_key=OBJECTS_MANAGE_SCOPE,\n        write_key=OBJECTS_MANAGE_SCOPE,\n        submit_key=OBJECTS_MANAGE_SCOPE,"
+    new: '        read_key="studio.publish.approve",\n        write_key=OBJECTS_MANAGE_SCOPE,\n        submit_key="studio.publish.approve",'
+    tests:
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r1_3_without_the_object_key_the_submit_is_not_found
+  - name: R1.2 gate (d) the handler's transaction carries no decider
+    file: packages/python/dw_studio/src/dw_studio/lifecycle/application/review.py
+    old: "            tx.carry_out(decision, SETTLING_LANE)\n"
+    new: ""
+    tests:
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r1_2_a_new_field_waits_for_a_second_person_and_goes_live_on_the_worker
+  - name: R1.2 gate (e) the hook's audit names no lane
+    file: packages/python/dw_studio/src/dw_studio/records/application/metadata.py
+    old: "        if self.store.lane is not None:\n            details[\"lane\"] = self.store.lane\n"
+    new: ""
+    tests:
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r1_2_a_new_field_waits_for_a_second_person_and_goes_live_on_the_worker
+  - name: R1.2 V4.17 a draft is made while a candidate waits
+    file: packages/python/dw_studio/src/dw_studio/core/application/service.py
+    old: "            if unreleased is not None and unreleased.stage in CANDIDATE_STAGES:"
+    new: "            if False:"
+    tests:
+      - apps/api/tests/integration/test_studio_object_publish.py::test_r1_2_v4_17_a_waiting_candidate_is_withdrawn_then_tightened
+  - name: R1.2 gate (g) the hook applies over another base
+    file: packages/python/dw_studio/src/dw_studio/records/application/metadata.py
+    old: "    if base is None or base.definition_hash != mine.compared_live_hash:"
+    new: "    if False:"
+    tests:
+      - apps/api/tests/integration/test_studio_object_publish.py::test_gate_g_the_hook_refuses_a_definition_that_is_not_the_compared_live_one

@@ -24,7 +24,7 @@ from dw_platform.domain.approval import ApprovalRequest
 from dw_platform.domain.outbox import OutboxEvent
 from dw_studio.core.application.bindings import BindingVerdict
 from dw_studio.core.application.ports import ArtifactTx, BindingTx, Dependent, VersionRow
-from dw_studio.core.domain.artifacts import ClosureItem
+from dw_studio.core.domain.artifacts import ClosureItem, DocumentProblem
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,6 +86,14 @@ class LifecycleTx(Protocol):
         reads the version again under it."""
         ...
 
+    def carry_out(self, decision: PublishDecision, lane: str) -> None:
+        """From here on the transaction acts for the person who recorded
+        ``decision``, carried out by ``lane``: what a kind's publish hook then
+        writes is audited in their name with `details.lane` (ADR-0011;
+        custom-objects ticket 06). The handler asks it after it has read the
+        decision, before the version goes live."""
+        ...
+
     async def visible_approval(
         self, approval_id: uuid.UUID, *, workspace_id: uuid.UUID, audience: ApprovalAudience
     ) -> ApprovalRequest | None:
@@ -140,10 +148,15 @@ class ControlStatePort(Protocol):
 
 @dataclass(frozen=True, slots=True)
 class SubmitRefusal:
-    """A per-kind check's no: 422 with its `reason_code` (R2.7)."""
+    """A per-kind check's no: 422 with its `reason_code` (R2.7). A check that
+    found problems at pointers in the document (the `object` kind's
+    comparison with the live version, custom-objects/06) names them in
+    ``errors``, each one `errors[]` entry; every other check leaves it empty
+    and its 422 keeps its shape."""
 
     reason_code: str
     detail: str
+    errors: tuple[DocumentProblem, ...] = ()
 
 
 class SubmitCheck(Protocol):

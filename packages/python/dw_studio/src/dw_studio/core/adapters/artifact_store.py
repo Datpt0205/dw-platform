@@ -170,12 +170,19 @@ def _in_use_counts(detail: str) -> dict[str, int]:
 class SqlArtifactTx:
     """One transaction of `SqlArtifactStore`; see `ArtifactTx`. A person's
     carries their verified context; a lane's (`for_lane`, workflow-engine/02)
-    carries only the tenant its registry issued it for, and asks no reach."""
+    carries only the tenant its registry issued it for, and asks no reach.
+
+    ``lane`` names the lane carrying out a person's recorded decision in this
+    transaction (`outbox` for a publish request's `.decided` handler), which
+    then also carries that person's context, so what a kind's publish hook
+    audits stands in their name with `details.lane` (ADR-0011; custom-objects
+    ticket 06). None for a person's own request."""
 
     session: AsyncSession
     tenant_id: uuid.UUID
     ids: IdGenerator
     context: AccessContext | None
+    lane: str | None = None
 
     async def reach(self, permission_key: str) -> frozenset[uuid.UUID]:
         if self.context is None:

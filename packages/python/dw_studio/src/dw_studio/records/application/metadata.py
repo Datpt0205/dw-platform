@@ -26,7 +26,7 @@ import uuid
 from collections.abc import Callable
 from typing import Any, Final
 
-from dw_kernel.errors import NotFoundError
+from dw_kernel.errors import ConflictError, NotFoundError
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_platform.domain.audit import AuditEvent
@@ -98,6 +98,30 @@ def _changes(before: FieldDefinition, after: FieldDefinition) -> dict[str, Any]:
     }
 
 
+async def _same_base(
+    tx: ArtifactTx, object_id: uuid.UUID, version_id: uuid.UUID, applied: AppliedObject | None
+) -> None:
+    """The definition applied now is the live version this one was compared
+    with at its submit (custom-objects ticket 06, lượt xác nhận (g)): the
+    comparator, the submit check and this hook judge against one document. A
+    version compared with nothing (the first, or one taken live with no
+    submit) is not asked."""
+    versions = await tx.versions(object_id)
+    mine = next((v for v in versions if v.id == version_id), None)
+    if mine is None or mine.compared_live_hash is None:
+        return
+    base = (
+        None
+        if applied is None
+        else next((v for v in versions if v.id == applied.applied_version_id), None)
+    )
+    if base is None or base.definition_hash != mine.compared_live_hash:
+        raise ConflictError(
+            "the applied definition is not the version this one was compared with",
+            details={"reason_code": "base_changed"},
+        )
+
+
 class MetadataService:
     def __init__(
         self,
@@ -122,6 +146,7 @@ class MetadataService:
         applied = await store.applied(object_id)
         if applied is not None and applied.applied_version_id == version_id:
             return
+        await _same_base(tx, object_id, version_id, applied)
         live_document = None
         if applied is not None:
             live = await store.version(applied.applied_version_id)
@@ -272,6 +297,8 @@ class _Audit:
             "version_no": self.version_no,
         }
         details.update((name, str(value)) for name, value in keys.items())
+        if self.store.lane is not None:
+            details["lane"] = self.store.lane
         await self.tx.audit(
             AuditEvent(
                 id=self.service.ids.new_uuid(),

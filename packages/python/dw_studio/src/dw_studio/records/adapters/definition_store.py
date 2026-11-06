@@ -112,6 +112,7 @@ class SqlObjectDefinitionStore:
 
     session: AsyncSession
     context: AccessContext
+    lane: str | None = None
 
     def _stamped(self, **values: Any) -> dict[str, Any]:
         return {**values, "updated_by": self.context.principal_id}
@@ -277,10 +278,11 @@ class SqlObjectDefinitionStore:
 
 def object_store_of(tx: ArtifactTx) -> SqlObjectDefinitionStore:
     """The factory a composition root hands `platform_kinds`: the store over
-    the session of the publish transaction it is given."""
+    the session of the publish transaction it is given, acting as its person,
+    and naming the lane that carries out their decision, if one does."""
     if not isinstance(tx, SqlArtifactTx) or tx.context is None:
         raise TypeError(f"an object definition store needs a person's SqlArtifactTx, not {tx!r}")
-    return SqlObjectDefinitionStore(tx.session, tx.context)
+    return SqlObjectDefinitionStore(tx.session, tx.context, tx.lane)
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 # 06 — Phát hành đối tượng qua vòng đời phiên bản: chỉ siết một người, nới qua người thứ hai
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 02, .claude/plans/studio/field-security/issues/01-mo-hinh-bao-mat-truong.md, .claude/plans/studio/agent-lifecycle/issues/03-hop-dong-vong-doi-va-niem-phong.md, .claude/plans/studio/agent-lifecycle/issues/04-cong-kiem-dinh-va-duyet-hai-nguoi.md
 Area: studio
 Yêu cầu: R1.2, R1.3, R1.7, R1.8, R2.4, CO3, CO6, CO23
@@ -165,3 +165,33 @@ studio.py`), không bản dựng thứ hai; khi agent-lifecycle/04 chưa làm, t
   giữ nguyên; con trỏ `/fields` của `field_removed`. Sửa của lượt này không có người đọc mới: nhận rủi ro (agent, theo ủy quyền 31/10/2026). Nếu sai
   thì: ghi ở đây khi dựng. Thứ tự dựng: sau 02, field-security/01, agent-lifecycle/03, /04; trước marketing-pilot/02.
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, lane 2): dựng. Gate nói không migration, không route: đúng (route Gửi kiểm định, máy giai đoạn,
+  phê duyệt và handler là của agent-lifecycle/03, /04; bước 1a đã có: worker dựng `platform_kinds(...)` qua
+  `build_studio_kinds`). Mục `object` nhận `compare=object_tightens_only` (`compare_object(...).tighten_only` của ticket
+  02, không trường hay chữ ký mới); `object_live_check` (trong `dw_studio.kinds`, vì các capability không import nhau)
+  so phiên bản vừa niêm phong với tài liệu của bản `live` và vào `_SUBMIT_CHECKS` của API; `SubmitRefusal` thêm
+  `errors` mặc định rỗng, và chỉ từ chối có `errors` thành `SubmitRefusedError` (422 `validation_failed`,
+  `details.reason_code`, mỗi vấn đề một `errors[]`), mọi kiểm khác giữ hình cũ. Handler: `PublishSettler` gọi
+  `LifecycleTx.carry_out(decision, "outbox")` sau khi đọc quyết định, đặt `AccessContext` của người quyết định và
+  `lane` lên `SqlArtifactTx`; `object_store_of` truyền `lane` cho `SqlObjectDefinitionStore`, và audit của móc ghi
+  `details.lane` khi có. Móc khẳng định định nghĩa đang áp là bản `live` mà lần gửi đã so (`compared_live_hash`), lệch
+  thì 409 `base_changed` và cả giao dịch lùi (lượt xác nhận (g)).
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): làm khác ticket. (1) Không cần đường lui (7) của ticket 02: handler
+  mở `SqlArtifactTx` (qua `for_tenant`) nhưng không có `AccessContext`, nên `object_store_of` trước đây ném `TypeError` ở
+  mọi lần duyệt một đối tượng; ticket này cho giao dịch đó mang người quyết định bằng `carry_out`, một dòng ở handler.
+  Ngữ cảnh dựng lại từ quyết định đã ghi: không vai trò, `plan_id` `recorded_decision`, chỉ ai và ở workspace nào. Nếu
+  sai thì: `object_store_of` nhận một Protocol tác nhân hẹp (`principal_id`, `workspace_id`, `lane`) thay
+  `AccessContext`. (2) `_SUBMIT_CHECKS` chỉ áp cho các loại của nền tảng: một app dựng với `studio_kinds=` của test
+  không chạy kiểm của `object` trên tài liệu fixture. Nếu sai thì: kiểm gắn vào mục `ArtifactKindEntry`. (3) Test đi
+  qua handler mà chính worker đăng ký (`dw_worker.main.register_studio_publish`) trên sự kiện outbox thật; Đóng băng là
+  câu trả lời của `ControlStatePort` thay trên `LifecycleService` của app (cơ chế công tắc là của agent-lifecycle/01).
+- 2026-11-06 (agent): kiểm. `apps/api/tests/integration/test_studio_object_publish.py` 16 (R1.2 đầu-cuối qua worker,
+  từ chối về Nháp, tự duyệt 409 `second_person_required`, R1.8 năm ca, R1.7 đóng `phone`, hạ `default_access`, Đóng băng
+  công ty và nền tảng, V4.17, R1.3 404, R2.4 hai `errors[]`, gate (g)); chạy lại `test_studio_publish.py`,
+  `test_studio_lifecycle.py`, `test_studio_records.py`, `test_studio_objects.py` xanh. `reviewing-feature-security`:
+  (1) tenant: mọi đọc dưới RLS của công ty trong giao dịch, khóa đọc của loại cho 404; (2) quyền: tự duyệt bị từ chối
+  bởi tiền tố nghiêm, khóa gửi là khóa đọc; (3) nhánh chỉ siết chỉ bớt quyền, nhánh nới qua người thứ hai, Đóng băng
+  nền tảng chặn cả chỉ siết; (4)-(6) không áp dụng (không bộ nhớ, migration, route, cache hay container mới).
+  `mutations/06.yaml` 11 đột biến, mỗi `old` khớp đúng một lần, chưa chạy. Hoãn tới đóng hàng: mutate (11),
+  `make test-integration` đầy đủ, P50/P95/P99 của lệnh Gửi kiểm định với loại `object` (nhánh chỉ siết, nhánh chờ
+  duyệt) và của handler `.decided` so với commit bắt đầu hàng đợi.

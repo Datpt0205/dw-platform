@@ -72,6 +72,13 @@ class ObjectDefinitionStore(Protocol):
         """Who the transaction acts as: the hook's audit actor."""
         ...
 
+    @property
+    def lane(self) -> str | None:
+        """The lane carrying out the actor's recorded decision (`outbox` at a
+        publish request's `.decided` handler), for `details.lane`; None on the
+        actor's own request (custom-objects ticket 06)."""
+        ...
+
     async def lock_object(self, object_id: uuid.UUID) -> None:
         """`pg_advisory_xact_lock` on `object_lock_key(tenant, object)`."""
         ...

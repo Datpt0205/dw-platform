@@ -45,6 +45,7 @@ from dw_studio.core.application.service import (
 )
 from dw_studio.core.domain.artifacts import (
     CANDIDATE_STAGES,
+    DocumentInvalidError,
     RetireReason,
     Stage,
     may_move,
@@ -55,6 +56,7 @@ from dw_studio.lifecycle.application.ports import (
     LifecycleTx,
     PublishBindingsCheck,
     SubmitCheck,
+    SubmitRefusal,
 )
 from dw_studio.lifecycle.application.publish import (
     PUBLISH_APPROVE_SCOPE,
@@ -86,6 +88,23 @@ RETIRE_SEGMENTS: Final = frozenset({"agents", "workflows"})
 # row_version is at least 1 (`ck_artifact_versions_row_version`), so this is
 # a 412, never a match.
 _NO_VERSION: Final = 0
+
+
+class SubmitRefusedError(DocumentInvalidError):
+    """A kind's check that named problems in the document (custom-objects/06,
+    `live_incompatible`): 422 `validation_failed` with `details.reason_code`
+    and one `errors[]` entry per problem, the shape the publish hook's own
+    refusal has."""
+
+    def __init__(self, refusal: SubmitRefusal) -> None:
+        super().__init__(refusal.detail, refusal.errors)
+        self.details["reason_code"] = refusal.reason_code
+
+
+def _refused(refusal: SubmitRefusal) -> DWError:
+    if refusal.errors:
+        return SubmitRefusedError(refusal)
+    return _reason(DomainError, refusal.detail, refusal.reason_code)
 
 
 def _reason(error: type[DWError], message: str, reason: str, **details: Any) -> DWError:
@@ -371,7 +390,7 @@ class LifecycleService:
             for check in self.checks.get(kind, ()):
                 refusal = await check(envelope, version, sealed.closure)
                 if refusal is not None:
-                    raise _reason(DomainError, refusal.detail, refusal.reason_code)
+                    raise _refused(refusal)
             submitted: dict[str, Any] = {
                 "submitted_by": context.principal_id,
                 "submitted_at": self.clock.now(),

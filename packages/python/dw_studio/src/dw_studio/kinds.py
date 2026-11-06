@@ -15,7 +15,7 @@ reaches an app only through `kinds=` (`studio_kinds=` of `create_app`).
 
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, Final
 
 from dw_agent_runtime.wflite.document import SCHEMA_ID as WORKFLOW_DOCUMENT_SCHEMA
@@ -36,13 +36,20 @@ from dw_studio.core.application.boundaries import (
     BoundaryDeriver,
     DerivedBoundary,
 )
-from dw_studio.core.application.ports import ArtifactTx
+from dw_studio.core.application.ports import ArtifactTx, VersionRow
 from dw_studio.core.application.registry import ArtifactKindEntry
+from dw_studio.core.domain.artifacts import ClosureItem, Stage
+from dw_studio.lifecycle.application.ports import SubmitRefusal
 from dw_studio.lifecycle.application.service import VERSIONS_SUBMIT_SCOPE
 from dw_studio.records.application.metadata import MetadataService
 from dw_studio.records.application.ports import ObjectDefinitionStore
 from dw_studio.records.domain.document import OBJECT_DOCUMENT_SCHEMA, OBJECT_KIND
-from dw_studio.records.domain.rules import extract_object, validate_object
+from dw_studio.records.domain.rules import (
+    check_against_live,
+    compare_object,
+    extract_object,
+    validate_object,
+)
 from dw_studio.workflows.application.boundary import derive_workflow_boundary, pinnable_steps
 from dw_studio.workflows.application.dependencies import WorkflowDependencies
 from dw_studio.workflows.application.ports import TriggerActivationPort
@@ -79,9 +86,31 @@ def object_kind(
         publish_hook=MetadataService(object_store, clock, ids).apply,
         validate=validate_object,
         extract=extract_object,
-        # The comparator is custom-objects/06's (`compare_object(live,
-        # doc).tighten_only`); until then every submit waits for approval.
-        compare=None,
+        compare=object_tightens_only,
+    )
+
+
+def object_tightens_only(live_document: Any | None, document: Any) -> bool:
+    """The `object` kind's comparator (custom-objects/06, R1.7, R1.8): every
+    change against the live version secures a field or narrows
+    `default_access`, and there is a change (`compare_object`)."""
+    return compare_object(live_document, document).tighten_only
+
+
+async def object_live_check(
+    tx: ArtifactTx, version: VersionRow, closure: Sequence[ClosureItem]
+) -> SubmitRefusal | None:
+    """The `object` kind's submit check (custom-objects/06, R2.4; CO6): the
+    sealed version against the document of the live version, the same one the
+    comparator and the hook compare with, so a version that drops or changes a
+    published field is refused before any approval opens, with every problem
+    at its pointer (`live_incompatible`)."""
+    live = next((v for v in await tx.versions(version.artifact_id) if v.stage is Stage.LIVE), None)
+    problems = check_against_live(None if live is None else live.document, version.document)
+    if not problems:
+        return None
+    return SubmitRefusal(
+        "live_incompatible", "the version changes what is published", tuple(problems)
     )
 
 

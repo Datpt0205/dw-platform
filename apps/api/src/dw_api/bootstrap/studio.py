@@ -121,6 +121,7 @@ from dw_studio.core.application.service import ArtifactService
 from dw_studio.kinds import (
     WORKFLOW_KIND,
     WORKFLOWS_TEST_SCOPE,
+    object_live_check,
     platform_kinds,
     run_boundary_derivers,
     run_pinnable_steps,
@@ -140,15 +141,19 @@ from dw_studio.records.adapters.record_store import SqlRecordStore
 from dw_studio.records.adapters.user_session import user_session
 from dw_studio.records.application.record_service import RecordDoor, RecordService
 from dw_studio.records.application.schema_projector import ObjectSchemaProjector
+from dw_studio.records.domain.document import OBJECT_KIND
 from dw_studio.workflows.adapters.triggers import NoTriggerSubscriptions
 
 if TYPE_CHECKING:
     from dw_api.bootstrap.container import ApiContainer
 
 # Each kind's submit checks (agent-lifecycle R2.7), one entry per kind: the
-# Capability analysis (compliance-pdpl/05) and the workflow's reviewer check
-# (workflow-nodes R9.5) register here when they ship.
-_SUBMIT_CHECKS: Mapping[str, Sequence[SubmitCheck]] = {}
+# `object` kind's comparison with its live version (custom-objects/06, R2.4);
+# the Capability analysis (compliance-pdpl/05) and the workflow's reviewer
+# check (workflow-nodes R9.5) register here when they ship.
+_SUBMIT_CHECKS: Mapping[str, Sequence[SubmitCheck]] = MappingProxyType(
+    {OBJECT_KIND: (object_live_check,)}
+)
 
 # The key a person holds, at the run's workspace, to ask for a run of each
 # (artifact_kind, trigger_kind) (workflow-engine R3.17); a pair with no entry
@@ -293,7 +298,8 @@ def build_studio(
         SqlLifecycleStore(store),
         artifacts,
         container.run_control,
-        _SUBMIT_CHECKS,
+        # The platform kinds' checks: a test's own kinds (`kinds=`) are not them.
+        _SUBMIT_CHECKS if kinds is None else {},
         clock,
         bindings=binding_status,
     )

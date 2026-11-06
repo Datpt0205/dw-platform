@@ -107,6 +107,8 @@ class PublishSettler:
                     )
                 )
                 return reason
+            # The kind's hook writes in the decider's name (custom-objects/06).
+            tx.carry_out(decision, SETTLING_LANE)
             await lifecycle.publish(
                 tx,
                 artifact.kind,
