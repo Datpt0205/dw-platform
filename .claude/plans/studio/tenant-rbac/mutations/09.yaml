@@ -1,0 +1,63 @@
+# Mutation check of tenant-rbac ticket 09: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per row of the ticket's
+# "Đột biến" column (K1 a-e, K2, K3 a-b). Each is in a migration, mutated in
+# place, taking effect when the integration suite migrates its database.
+mutations:
+  - name: K1 (a) no trigger on a restore
+    file: db/migrations/versions/8ae042d86742_separation_of_duties_on_restore_and_no_generated_keys_in_rules.py
+    old: "    op.execute(_RESTORE_TRIGGER)\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py::test_k1_a_restore_handing_back_the_other_side_is_refused_with_rule_and_holder
+  - name: K1 (b) the trigger fires on a soft delete too
+    file: db/migrations/versions/8ae042d86742_separation_of_duties_on_restore_and_no_generated_keys_in_rules.py
+    old: "    \" WHEN (OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL)\"\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py::test_k1_a_soft_delete_is_not_judged_even_while_its_holder_is_in_breach
+  - name: K1 (c) the WHEN reads the wrong way round
+    file: db/migrations/versions/8ae042d86742_separation_of_duties_on_restore_and_no_generated_keys_in_rules.py
+    old: "    \" WHEN (OLD.deleted_at IS NOT NULL AND NEW.deleted_at IS NULL)\"\n"
+    new: "    \" WHEN (OLD.deleted_at IS NULL AND NEW.deleted_at IS NOT NULL)\"\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py::test_k1_a_restore_handing_back_the_other_side_is_refused_with_rule_and_holder
+      - packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py::test_k1_a_soft_delete_is_not_judged_even_while_its_holder_is_in_breach
+  - name: K1 (d) the restore branch judges nobody
+    file: db/migrations/versions/8ae042d86742_separation_of_duties_on_restore_and_no_generated_keys_in_rules.py
+    old: "                WHERE a.tenant_id = NEW.tenant_id AND a.role_id = NEW.id\n"
+    new: "                WHERE false\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py::test_k1_a_restore_handing_back_the_other_side_is_refused_with_rule_and_holder
+  - name: K1 (e) ticket 08's early return copied into the restore branch
+    file: db/migrations/versions/8ae042d86742_separation_of_duties_on_restore_and_no_generated_keys_in_rules.py
+    old: "                WHERE a.tenant_id = NEW.tenant_id AND a.role_id = NEW.id\n            );\n"
+    new:
+      "                WHERE a.tenant_id = NEW.tenant_id AND a.role_id = NEW.id\n            );\n\
+      \            IF NOT EXISTS (\n                SELECT 1 FROM platform.tenant_role_permissions p\n\
+      \                JOIN platform.sod_rules s ON s.left_scopes ? p.permission_key\n\
+      \                    OR s.right_scopes ? p.permission_key\n\
+      \                WHERE p.tenant_id = NEW.tenant_id AND p.role_id = NEW.id\n\
+      \            ) THEN\n                RETURN NULL;\n            END IF;\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py::test_k1_restoring_a_role_of_keys_in_no_rule_is_refused_while_its_holder_is_in_breach
+  - name: K2 a holder is judged in every tenant they belong to
+    file: db/migrations/versions/b5677d345bc1_tenant_roles.py
+    old: "            CROSS JOIN LATERAL platform.sod_violation(NEW.tenant_id, p.user_id) v\n"
+    new:
+      "            CROSS JOIN LATERAL (SELECT DISTINCT m2.tenant_id FROM platform.memberships m2\n\
+      \                                WHERE m2.user_id = p.user_id) mt\n\
+      \            CROSS JOIN LATERAL platform.sod_violation(mt.tenant_id, p.user_id) v\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py::test_k2_a_breach_in_another_tenant_does_not_refuse_a_restore_here
+  - name: K3 (a) no constraint on the rules
+    file: db/migrations/versions/8ae042d86742_separation_of_duties_on_restore_and_no_generated_keys_in_rules.py
+    old: "    op.execute(_NO_GENERATED_KEYS)\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py::test_k3_a_rule_naming_a_generated_key_is_refused
+  - name: K3 (b) the constraint reads the left side only
+    file: db/migrations/versions/8ae042d86742_separation_of_duties_on_restore_and_no_generated_keys_in_rules.py
+    old: "    f\"NOT (left_scopes @? {_GENERATED}) AND NOT (right_scopes @? {_GENERATED}))\"\n"
+    new: "    f\"NOT (left_scopes @? {_GENERATED}))\"\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py::test_k3_a_rule_naming_a_generated_key_is_refused

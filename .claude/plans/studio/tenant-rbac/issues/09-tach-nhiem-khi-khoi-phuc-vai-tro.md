@@ -1,6 +1,6 @@
 # 09 — Tách nhiệm khi khôi phục vai trò đã xóa mềm, và luật tách nhiệm không nêu khóa sinh
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 08
 Area: studio
 Yêu cầu: R5.1, RB14
@@ -99,19 +99,19 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
 
 ## Tiêu chí chấp nhận
 
-- [ ] RB14: K1, ca khôi phục vi phạm bị từ chối với 23514 `ck_roles_sod_memberships`, `HINT` là khóa luật, `DETAIL` có
+- [x] RB14: K1, ca khôi phục vi phạm bị từ chối với 23514 `ck_roles_sod_memberships`, `HINT` là khóa luật, `DETAIL` có
       id của P, và sau lần từ chối `deleted_at` của R khác NULL; hai ca miễn trừ chưa xác nhận và đã thu hồi bị từ chối;
       ca khôi phục vai trò V chỉ mang khóa ngoài luật khi P đã vi phạm sẵn bị từ chối; ca miễn trừ còn hiệu lực, ca không
       vi phạm, ca lần gán đã hết hạn và ca xóa mềm khi có người vi phạm sẵn được nhận; sai nếu một lần khôi phục vi phạm
       được nhận, một ca được nhận bị từ chối, hay một trong năm đột biến của K1 vẫn xanh. Ở commit gốc ca vi phạm được nhận.
-- [ ] R5.1: K2, ca hai tenant nhận lần khôi phục ở A dù P vi phạm sẵn ở B, và vẫn từ chối ca của Q ở A; sai nếu vi phạm ở B
+- [x] R5.1: K2, ca hai tenant nhận lần khôi phục ở A dù P vi phạm sẵn ở B, và vẫn từ chối ca của Q ở A; sai nếu vi phạm ở B
       làm lần khôi phục ở A bị từ chối, hay đột biến của K2 vẫn xanh.
-- [ ] R5.1: K3, hai lần INSERT luật nêu `obj.`/`fld.` bị từ chối với `ck_sod_rules_no_generated_keys`, luật nêu khóa danh
+- [x] R5.1: K3, hai lần INSERT luật nêu `obj.`/`fld.` bị từ chối với `ck_sod_rules_no_generated_keys`, luật nêu khóa danh
       mục được nhận; sai nếu một trong hai được nhận, hay một trong hai đột biến của K3 vẫn xanh.
-- [ ] R5.1: các tệp test integration ticket 08 thêm (tên theo Comments của ticket 08) xanh sau bước 3, và không test nào
+- [x] R5.1: các tệp test integration ticket 08 thêm (tên theo Comments của ticket 08) xanh sau bước 3, và không test nào
       trong repo còn gieo vi phạm sẵn bằng lần khôi phục; sai nếu một test của ticket 08 đỏ hay bị bỏ qua.
 
-- [ ] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py packages/python/dw_platform/tests/integration/test_tenant_roles.py packages/python/dw_platform/tests/integration/test_separation_of_duties.py packages/python/dw_platform/tests/integration/test_service_principals_db.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py packages/python/dw_platform/tests/integration/test_tenant_roles.py packages/python/dw_platform/tests/integration/test_separation_of_duties.py packages/python/dw_platform/tests/integration/test_service_principals_db.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py` xanh.
 
 ## Nguồn
 
@@ -163,3 +163,22 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
   kiểm trước của ràng buộc không có test. Sửa sau lượt xác nhận không được người đọc mới đọc lại; người dựng đọc bước 1-3
   và K1 trước.
 - 2026-11-05 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): dựng xong, `resolved`. Revision `8ae042d86742` (trên `a7ca12c36ec7`):
+  thân `enforce_role_separation_of_duties` của ticket 08 sửa một neo bằng `_patched()` (nhánh `tenant_roles`, không phép
+  trả sớm), trigger `trg_tenant_roles_separation_of_duties` (AFTER UPDATE OF `deleted_at`, `WHEN` chỉ lần khôi phục),
+  bước kiểm trước rồi `ck_sod_rules_no_generated_keys` (jsonpath `@?` với `starts with`); downgrade dựng lại thân 08.
+  Khác ticket: bước 3 áp, nhưng không "thêm một luật mới": `restored_breach` của
+  `test_role_trigger_cost_db.py` (ca vi phạm sẵn của K3 và tập vi sai) nay là `seeded_breach`, rút vế phải của chính
+  luật (`sod_d08_strict`/`sod_d08_waivable`) trong lúc gán rồi trả lại trong cùng giao dịch `dw_migrator`: các ca cần
+  `HINT` là đúng luật đó, và luật miễn trừ được có miễn trừ trỏ tới (khóa ngoại RESTRICT), nên xóa rồi thêm lại không
+  được; tình trạng như cũ (người giữ vi phạm sẵn, không trigger nào xét lần ghi luật). Không luật test nào của 08 nêu
+  khóa `obj.`/`fld.`. Tệp đã đọc: `test_role_trigger_cost_db.py`, `test_tenant_roles.py`,
+  `test_service_principals_db.py` (lần khôi phục ở đó bị guard tài khoản dịch vụ, BEFORE, từ chối trước; không đổi).
+  Test: `packages/python/dw_platform/tests/integration/test_role_restore_separation_of_duties.py`, 12 ca (K1 tám, K2
+  một, K3 ba). Gate nhanh: ruff, format, mypy (963 tệp), integration của dòng Xong (263) xanh. Phá thử bằng tay cả tám
+  đột biến của `mutations/09.yaml` (sửa tại chỗ, chạy test của nó, trả lại): cả tám đỏ, đúng lý do (K1 (b) từ chối lần
+  xóa mềm, K1 (e) "DID NOT RAISE", K2 từ chối lần khôi phục ở A); `scripts/mutate.py` chạy lúc đóng hàng đợi.
+  `reviewing-feature-security`: ranh giới 1 (nhánh mới chỉ xét `NEW.tenant_id`, test K2 hai tenant), 2 (cùng hàm, mọi
+  người ghi kể cả `dw_migrator`, test dưới `dw_migrator`), 6 (lần khôi phục là lần ghi cuối của lỗ hổng, test ở tầng
+  database); 3, 4, 5 không áp (không agent, không cache, không route mới). Cửa sổ đồng thời (khôi phục R cạnh gán L) vẫn
+  mở như hai lần gán đồng thời: chủ là ticket 11.

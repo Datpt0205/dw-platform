@@ -266,22 +266,34 @@ async def field_row(conn: AsyncConnection, co: Company, role_name: str, access: 
     )
 
 
-async def restored_breach(
+async def seeded_breach(
     conn: AsyncConnection, co: Company, who: str, left: str, right: str, ws: str = "B"
 ) -> None:
     """`who` already holds `left`; a role carrying `right` is assigned to them
-    while soft-deleted and then restored as the migrator: the restore passes no
-    separation-of-duties trigger, so `who` is in breach before any test write."""
-    name = f"restored_{right.rsplit('.', 1)[1]}"
-    restored = await role(conn, co, name, {right: "workspace"})
-    await conn.execute(
-        sa.text("UPDATE platform.tenant_roles SET deleted_at = now() WHERE id = :r"),
-        {"r": restored},
+    while the rule over the two lacks its `right` side, which comes back in the
+    same migrator transaction: a rule written after the assignments is the one
+    write no separation-of-duties trigger judges, so `who` is in breach before
+    any test write. (A restore did this until tenant-rbac/09 judged restores;
+    the rule keeps its key, and its waivers, so it is narrowed rather than
+    dropped and added again.)"""
+    name = f"breach_{right.rsplit('.', 1)[1]}"
+    await role(conn, co, name, {right: "workspace"})
+    rule = await conn.scalar(
+        sa.text(
+            "UPDATE platform.sod_rules SET right_scopes = '[\"test.d08.withheld\"]'"
+            " WHERE left_scopes @> jsonb_build_array(CAST(:l AS text))"
+            " AND right_scopes @> jsonb_build_array(CAST(:r AS text)) RETURNING key"
+        ),
+        {"l": left, "r": right},
     )
+    assert rule is not None, (left, right)
     await hold(conn, co, who, name, ws)
     await conn.execute(
-        sa.text("UPDATE platform.tenant_roles SET deleted_at = NULL WHERE id = :r"),
-        {"r": restored},
+        sa.text(
+            "UPDATE platform.sod_rules SET right_scopes = jsonb_build_array(CAST(:r AS text))"
+            " WHERE key = :k"
+        ),
+        {"r": right, "k": rule},
     )
 
 
@@ -739,7 +751,7 @@ BIND_CASES = {
 class Sod:
     """`person` holds `holds` (role name, key) in A and `target` (carrying
     `target_keys`) in A; `breach` = (left, right) puts them in breach before
-    the write through a restored role; `waived` rules carry a confirmed waiver;
+    the write through a rule seeded after the assignments; `waived` rules carry a confirmed waiver;
     `clean` more holders of `target` breach nothing; the write adds `key` to
     `target` unless `write` says otherwise."""
 
@@ -774,7 +786,7 @@ def sod_case(case: Sod) -> Callable[[Db], Awaitable[Result]]:
         for n in range(1, case.clean + 1):
             await person(conn, co, f"clean_{n}", ("target", "A"))
         if case.breach is not None:
-            await restored_breach(conn, co, "person", *case.breach)
+            await seeded_breach(conn, co, "person", *case.breach)
         for rule in case.waived:
             await waive(conn, co, rule)
         if case.write == "assign":
@@ -1190,7 +1202,7 @@ async def test_k3_a_holder_left_or_already_in_breach_is_refused_at_head_and_befo
     dbs: tuple[Db, Db], case: str
 ) -> None:
     """R5.1 (RB14), ADR-0104 decision 9: a right key for a left holder, and a key
-    in no rule for a role whose holder is already in breach (restored as the
+    in no rule for a role whose holder is already in breach (seeded as the
     migrator), strict or waivable without a waiver, even through an assignment
     that has expired."""
     rule = WAIVABLE_RULE if "waivable" in case else STRICT_RULE
