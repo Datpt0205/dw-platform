@@ -12,19 +12,17 @@ and every refusal is 23514 `ck_role_assignments_last_owner`.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
-from collections.abc import AsyncIterator, Callable, Coroutine
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
-from typing import Any
 
 import pytest
 import sqlalchemy as sa
 from pg_harness import DatabaseUrls
-from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, create_async_engine
 from sqlalchemy.pool import NullPool
 
+from dw_platform.testing.races import Write, cause, interleaved, race, sqlstate, waiting_pair
 from dw_platform.testing.rbac import (
     PlantedTenant,
     assign,
@@ -37,7 +35,6 @@ from dw_platform.testing.rbac import (
 
 pytestmark = pytest.mark.integration
 
-Write = Callable[[AsyncConnection], Coroutine[Any, Any, None]]
 LAST_OWNER = "ck_role_assignments_last_owner"
 
 
@@ -153,69 +150,11 @@ async def active_owners(engine: AsyncEngine, co: Company) -> int:
         )
 
 
-def _cause(error: BaseException | None) -> Any:
-    return getattr(getattr(error, "orig", None), "__cause__", None)
-
-
-def sqlstate(error: BaseException | None) -> str | None:
-    return getattr(_cause(error), "sqlstate", None)
-
-
 def refused_by_last_owner(error: BaseException | None) -> None:
     assert error is not None, "accepted"
-    cause = _cause(error)
-    assert getattr(cause, "sqlstate", None) == "23514", cause
-    assert getattr(cause, "constraint_name", None) == LAST_OWNER, cause
-
-
-async def _blocked(admin: AsyncEngine, pid: int) -> bool:
-    async with admin.connect() as conn:
-        waiting = await conn.scalar(
-            sa.text("SELECT wait_event_type FROM pg_stat_activity WHERE pid = :p"), {"p": pid}
-        )
-    return bool(waiting == "Lock")
-
-
-async def _until_waiting(admin: AsyncEngine, pid: int, task: asyncio.Task[None]) -> bool:
-    """True once the connection waits on a lock; False if the task is done first."""
-    deadline = asyncio.get_running_loop().time() + 10
-    while not task.done() and asyncio.get_running_loop().time() < deadline:
-        if await _blocked(admin, pid):
-            return True
-        await asyncio.sleep(0.05)
-    return False
-
-
-@dataclass
-class Raced:
-    first: BaseException | None = None
-    second: BaseException | None = None
-    second_waited: bool = False
-    second_done_before_commit: bool = False
-
-
-async def race(migrator: AsyncEngine, admin: AsyncEngine, first: Write, second: Write) -> Raced:
-    out = Raced()
-    async with migrator.connect() as one, migrator.connect() as two:
-        await one.begin()
-        await first(one)
-        await two.begin()
-        pid = int(await two.scalar(sa.text("SELECT pg_backend_pid()")))
-        later = asyncio.create_task(second(two))
-        out.second_waited = await _until_waiting(admin, pid, later)
-        out.second_done_before_commit = later.done()
-        try:
-            await one.commit()
-        except DBAPIError as error:
-            out.first = error
-            await one.rollback()
-        try:
-            await later
-            await two.commit()
-        except DBAPIError as error:
-            out.second = error
-            await two.rollback()
-    return out
+    found = cause(error)
+    assert getattr(found, "sqlstate", None) == "23514", found
+    assert getattr(found, "constraint_name", None) == LAST_OWNER, found
 
 
 # ---- K1: a membership moved to P beside P's suspension ------------------------------
@@ -301,30 +240,7 @@ async def test_k2_a_suspension_between_the_handovers_two_statements_aborts_exact
     async with migrator.begin() as conn:
         co, p, p_membership, q_assignment = await _k2(conn)
     to_p, _ = handover(co, p_membership, q_assignment)
-    errors: list[BaseException] = []
-    async with migrator.connect() as a, migrator.connect() as s:
-        await a.begin()
-        await to_p(a)
-        await s.begin()
-        pid = int(await s.scalar(sa.text("SELECT pg_backend_pid()")))
-
-        async def suspend() -> None:
-            try:
-                await suspender(co, p)(s)
-                await s.commit()
-            except DBAPIError as error:
-                errors.append(error)
-                await s.rollback()
-
-        task = asyncio.create_task(suspend())
-        assert await _until_waiting(admin, pid, task)
-        try:
-            await revoker(q_assignment)(a)
-            await a.commit()
-        except DBAPIError as error:
-            errors.append(error)
-            await a.rollback()
-        await task
+    errors = await interleaved(migrator, admin, to_p, suspender(co, p), revoker(q_assignment))
     assert len(errors) == 1, errors
     assert sqlstate(errors[0]) in {"23514", "40P01"}, errors[0]
     assert await active_owners(migrator, co) == 1
@@ -354,28 +270,10 @@ async def test_k3_two_owner_suspensions_waiting_on_a_third_removal_queue_without
         co = await company(conn)
         q1, q2 = (await owner(conn, co))[0], (await owner(conn, co))[0]
         _, _, q3_assignment = await owner(conn, co)
-    errors: list[BaseException] = []
-    async with migrator.connect() as c, migrator.connect() as s1, migrator.connect() as s2:
-        await c.begin()
-        await revoker(q3_assignment)(c)
-
-        async def suspend(conn: AsyncConnection, person: uuid.UUID) -> None:
-            try:
-                await suspender(co, person)(conn)
-                await conn.commit()
-            except DBAPIError as error:
-                errors.append(error)
-                await conn.rollback()
-
-        tasks = []
-        for conn, person in ((s1, q1), (s2, q2)):
-            await conn.begin()
-            pid = int(await conn.scalar(sa.text("SELECT pg_backend_pid()")))
-            task = asyncio.create_task(suspend(conn, person))
-            assert await _until_waiting(admin, pid, task)
-            tasks.append(task)
-        await c.commit()
-        await asyncio.gather(*tasks)
+    found = await waiting_pair(
+        migrator, admin, revoker(q3_assignment), suspender(co, q1), suspender(co, q2)
+    )
+    errors = [e for e in found if e is not None]
     assert len(errors) == 1, errors
     refused_by_last_owner(errors[0])
     assert await active_owners(migrator, co) == 1

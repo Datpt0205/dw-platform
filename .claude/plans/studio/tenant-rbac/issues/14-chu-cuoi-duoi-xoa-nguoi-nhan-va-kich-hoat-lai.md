@@ -1,6 +1,6 @@
 # 14 — Chủ sở hữu cuối dưới lần xóa người nhận và lần kích hoạt lại đồng thời
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 13
 Area: studio
 Yêu cầu: R6.7, RB20
@@ -215,7 +215,7 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
 
 ## Tiêu chí chấp nhận
 
-- [ ] R6.7 (RB20): K1, lần xóa dòng công ty của P và lần trao chủ hai câu (gán P, gỡ Q) đồng thời, ở tenant `active` và
+- [x] R6.7 (RB20): K1, lần xóa dòng công ty của P và lần trao chủ hai câu (gán P, gỡ Q) đồng thời, ở tenant `active` và
       `locked`, cho đúng bên thứ hai bị từ chối ở cả hai thứ tự (23514 `ck_role_assignments_last_owner` cho lần xóa ở thứ
       tự (i), ca (iii), ca ba bên (iv) và ca xen giữa), không `40P01`; biến thể xóa dòng người dùng thứ tự (i) cho
       23514; hai ca
@@ -223,19 +223,19 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
       trong ba đột biến của K1 vẫn xanh. Ở commit gốc (sau ticket 13) thứ tự (i), ca (iii), (iv) và ca xen giữa nhận cả hai bên
       và tenant còn 0 chủ `active`; biến thể người dùng có thể đã đóng ở commit gốc (thứ tự trigger khóa ngoại trên
       `users`), kết quả đo ghi ở Comments và ca giữ làm hồi quy.
-- [ ] R6.7 (RB20): K2, lần gỡ lần gán `tenant_owner` của Q `suspended` và giao dịch kích hoạt lại Q rồi đình chỉ chủ cuối
+- [x] R6.7 (RB20): K2, lần gỡ lần gán `tenant_owner` của Q `suspended` và giao dịch kích hoạt lại Q rồi đình chỉ chủ cuối
       X đồng thời, ở tenant `active` và (thứ tự (i)) `locked`, cho đúng bên thứ hai 23514 ở cả hai thứ tự, không `40P01`;
       biến thể (iii) (A đổi M của Q sang P rồi đình chỉ X, B gỡ lần gán trên M) cho B 23514; ở ca xen giữa đúng một bên bị hủy; biến thể
       đổi người M_Q thứ tự (i) cho 23514; sai nếu một ca kết thúc với 0 chủ `active`, ca đối chứng bị từ chối, hay một
       trong ba đột biến của K2 vẫn xanh. Ở commit gốc thứ tự (i), hai biến thể và ca xen giữa nhận cả hai bên.
-- [ ] R6.7 (RB20): K3, ở hai ca ba bên đúng một trong hai lần mất chủ bị từ chối với 23514 sau lần commit của C, không
+- [x] R6.7 (RB20): K3, ở hai ca ba bên đúng một trong hai lần mất chủ bị từ chối với 23514 sau lần commit của C, không
       `40P01`; sai nếu một bên `40P01` hay cả hai nhận, hay đột biến của K3 vẫn xanh.
-- [ ] R6.7 (RB20): K4, lần xóa dòng công ty người không phải chủ và lần gỡ lần gán `tenant_owner` của người
+- [x] R6.7 (RB20): K4, lần xóa dòng công ty người không phải chủ và lần gỡ lần gán `tenant_owner` của người
       `suspended` đang mở không chặn lần INSERT có khóa ngoại tới tenant, và cạnh lần gỡ hạ người giữ
       `platform.roles.write` xuống dưới hai cả hai được nhận, 0 `40P01`, đúng một sự kiện
       `platform.tenant.owner_coverage_low`; sai nếu bên thứ hai chờ ở (i), có `40P01` ở (ii), hay một trong hai đột biến
       của K4 vẫn xanh.
-- [ ] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_owner_count_races.py packages/python/dw_platform/tests/integration/test_last_owner_races.py packages/python/dw_platform/tests/integration/test_role_administration_db.py packages/python/dw_platform/tests/integration/test_membership_change_of_person.py packages/python/dw_platform/tests/integration/test_role_write_races.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py` xanh.
+- [x] Xong: `uv run python -m pytest packages/python/dw_platform/tests/integration/test_owner_count_races.py packages/python/dw_platform/tests/integration/test_last_owner_races.py packages/python/dw_platform/tests/integration/test_role_administration_db.py packages/python/dw_platform/tests/integration/test_membership_change_of_person.py packages/python/dw_platform/tests/integration/test_role_write_races.py packages/python/dw_platform/tests/integration/test_rls_coverage.py packages/python/dw_platform/tests/integration/test_privileges.py packages/python/dw_platform/tests/integration/test_offboarding_coverage.py` xanh.
 
 ## Nguồn
 
@@ -306,3 +306,21 @@ Kiểm soát của ticket này (mã K chỉ dùng trong ticket):
   lượt này không được người đọc mới đọc lại (hai lượt chạy lại mỗi phiên bản đã dùng); người dựng đọc bước 1 (a), K1
   (iv) và K3 trước.
 - 2026-11-06 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
+- 2026-11-06 (agent, theo ủy quyền 31/10/2026): dựng xong, `resolved`. Revision `a6b8f3702570` (trên `596062dfa2d0`):
+  (a) `remove_owner_assignments_first()` từ `_OWNERS_FIRST` của `d2b57239ef50` (`CREATE OR REPLACE`), khóa các membership
+  của người trên dòng công ty `FOR UPDATE` theo `id` trước câu `DELETE`; (b) phần chung của `refuse_losing_the_last_owner()`
+  từ thân ticket 13, câu con "người giữ `active`" và câu đọc người của membership lấy một lần trong Python và dùng hai
+  chỗ; downgrade dựng lại hai thân. Harness: `packages/python/dw_platform/src/dw_platform/testing/races.py` (`race`,
+  `waiting_pair` ba bên, `interleaved`, `until_waiting`, `sqlstate`), tệp test của ticket 13 nay import từ đó, không còn
+  bản thứ hai. Test: `packages/python/dw_platform/tests/integration/test_owner_count_races.py`, 22 ca. Số đo cần ghi:
+  K1 (ii) (lần trao sau lần xóa) bị từ chối ở câu 1 với SQLSTATE 23503 (khóa ngoại của lần gán), đo được như phân tích;
+  biến thể xóa dòng người dùng đã đóng ở commit gốc: dưới đột biến K1 (a) (bỏ khóa membership) test của nó vẫn xanh, vì
+  dây chuyền thẳng `users` → `memberships` chạy trước dây chuyền qua `tenant_members`, nên trigger trên `memberships` xét
+  khi dòng công ty còn; test giữ làm hồi quy. Gate nhanh: ruff, format, mypy (tệp của ticket sạch; 8 lỗi ở hai tệp test
+  của làn khác: `dw_agent_runtime/tests/unit/test_field_security_tools.py`, `dw_studio/tests/unit/test_object_tools.py`),
+  integration của dòng Xong 273 xanh. Phá thử bằng tay cả 9 đột biến của `mutations/14.yaml`: cả 9 đỏ đúng lý do (K1
+  hai bên nhận và 0 chủ; K2 bên thứ hai được nhận; K3 (b) `40P01`; K4 (a) chờ hay `40P01`, (b) `40P01`).
+  `reviewing-feature-security`: ranh giới 1 (khóa đúng membership của người đó trong `v_old.tenant_id`, đúng dòng tenant
+  `v_tenant`; K4 (i) không chặn khóa ngoại), 2 (mọi người ghi kể cả `dw_migrator`), 6 (dây chuyền xóa là lối cuối, test ở
+  tầng database); 3, 5 không áp như ticket ghi; 4 không áp. Độ trễ: P50/P95/P99 của route gỡ lần gán và route xóa
+  membership với một lần gán `tenant_owner` đo lúc đóng hàng đợi như bước 4 ghi. Không khác gì khác so với ticket.

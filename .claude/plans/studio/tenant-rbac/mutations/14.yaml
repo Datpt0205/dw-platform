@@ -1,0 +1,86 @@
+# Mutation check of tenant-rbac ticket 14: scripts/mutate.py runs this file at
+# the queue's close (wave-close.md). One mutation per row of the ticket's
+# "Đột biến" column (K1 a-c, K2 a-c, K3 b, K4 a-b). Each is in the migration,
+# mutated in place.
+mutations:
+  - name: K1 (a) no lock on the person's memberships
+    file: db/migrations/versions/a6b8f3702570_last_owner_under_removal_of_the_recipient_and_reactivation.py
+    old:
+      "        IF TG_TABLE_NAME = 'tenant_members' THEN\n            PERFORM 1 FROM platform.memberships\
+      \ m\n            WHERE m.tenant_id = (v_old->>'tenant_id')::uuid\n              AND m.user_id = (v_old->>'user_id')::uuid\n\
+      \            ORDER BY m.id\n            FOR UPDATE;\n        END IF;\n        DELETE FROM platform.role_assignments\
+      \ a\"\"\""
+    new: '        DELETE FROM platform.role_assignments a"""'
+    tests:
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k1_removing_the_recipient_after_a_handover_is_refused
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k1_removing_an_owner_given_a_second_owner_assignment_is_refused
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k1_a_second_owner_assignment_cannot_slip_past_a_removal_waiting_on_a_row
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k1_a_removal_between_the_handovers_two_statements_waits_and_is_refused
+  - name: K1 (b) the lock after the DELETE
+    file: db/migrations/versions/a6b8f3702570_last_owner_under_removal_of_the_recipient_and_reactivation.py
+    old:
+      "        IF TG_TABLE_NAME = 'tenant_members' THEN\n            PERFORM 1 FROM platform.memberships\
+      \ m"
+    new: "        IF false THEN\n            PERFORM 1 FROM platform.memberships m"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k1_removing_the_recipient_after_a_handover_is_refused
+  - name: K1 (c) FOR SHARE instead of FOR UPDATE
+    file: db/migrations/versions/a6b8f3702570_last_owner_under_removal_of_the_recipient_and_reactivation.py
+    old: "            ORDER BY m.id\n            FOR UPDATE;\n"
+    new: "            ORDER BY m.id\n            FOR SHARE;\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k1_removing_the_recipient_after_a_handover_is_refused
+  - name: K2 (a) no FOR KEY SHARE before reading again
+    file: db/migrations/versions/a6b8f3702570_last_owner_under_removal_of_the_recipient_and_reactivation.py
+    old:
+      "            PERFORM 1 FROM platform.tenants\n            WHERE id = v_tenant AND status IN ('active',\
+      \ 'locked')\n            FOR KEY SHARE;\n"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k2_removing_a_suspended_owner_after_their_reactivation_is_refused
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k2_moving_a_suspended_owners_membership_after_their_reactivation_is_refused
+  - name: "K2 (b) no second read: return after the lock"
+    file: db/migrations/versions/a6b8f3702570_last_owner_under_removal_of_the_recipient_and_reactivation.py
+    old:
+      "            IF v_user IS NULL OR NOT EXISTS (\n                {_ACTIVE_HOLDER}\n            )\
+      \ THEN\n                RETURN NULL;\n            END IF;"
+    new: "            RETURN NULL;"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k2_removing_a_suspended_owner_after_their_reactivation_is_refused
+  - name: K2 (c) the membership's person is not read again
+    file: db/migrations/versions/a6b8f3702570_last_owner_under_removal_of_the_recipient_and_reactivation.py
+    old:
+      "            IF TG_TABLE_NAME = 'role_assignments' THEN\n                {_HOLDER_READ}\n     \
+      \       END IF;"
+    new: ""
+    tests:
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k2_removing_an_assignment_whose_membership_was_just_moved_to_an_active_person
+  - name: K3 (b) the FOR KEY SHARE taken unconditionally before reading the holder
+    file: db/migrations/versions/a6b8f3702570_last_owner_under_removal_of_the_recipient_and_reactivation.py
+    old:
+      "        IF NOT EXISTS (\n            {_ACTIVE_HOLDER}\n        ) THEN\n            -- No company\
+      \ row"
+    new:
+      "        PERFORM 1 FROM platform.tenants\n        WHERE id = v_tenant AND status IN ('active',\
+      \ 'locked')\n        FOR KEY SHARE;\n        IF NOT EXISTS (\n            {_ACTIVE_HOLDER}\n     \
+      \   ) THEN\n            -- No company row"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k3_two_removals_of_the_last_two_owners_queue_behind_a_tenant_lock
+  - name: K4 (a) the tenant row FOR UPDATE instead of the memberships
+    file: db/migrations/versions/a6b8f3702570_last_owner_under_removal_of_the_recipient_and_reactivation.py
+    old:
+      "            PERFORM 1 FROM platform.memberships m\n            WHERE m.tenant_id = (v_old->>'tenant_id')::uuid\n\
+      \              AND m.user_id = (v_old->>'user_id')::uuid\n            ORDER BY m.id\n            FOR\
+      \ UPDATE;"
+    new:
+      "            PERFORM 1 FROM platform.tenants t\n            WHERE t.id = (v_old->>'tenant_id')::uuid\n\
+      \            FOR UPDATE;"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k4_an_open_removal_does_not_hold_up_a_foreign_key_to_the_tenant
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k4_a_removal_beside_a_fall_below_two_adds_no_deadlock
+  - name: K4 (b) FOR NO KEY UPDATE instead of FOR KEY SHARE
+    file: db/migrations/versions/a6b8f3702570_last_owner_under_removal_of_the_recipient_and_reactivation.py
+    old: "            WHERE id = v_tenant AND status IN ('active', 'locked')\n            FOR KEY SHARE;\n"
+    new: "            WHERE id = v_tenant AND status IN ('active', 'locked')\n            FOR NO KEY UPDATE;\n"
+    tests:
+      - packages/python/dw_platform/tests/integration/test_owner_count_races.py::test_k4_a_removal_beside_a_fall_below_two_adds_no_deadlock
