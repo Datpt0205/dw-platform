@@ -1912,6 +1912,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{run_id}/resume-check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Resume Check */
+        post: operations["resume_check_api_v1_runs__run_id__resume_check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/runs/{run_id}/timeline": {
         parameters: {
             query?: never;
@@ -4153,6 +4170,11 @@ export interface components {
             currency_code?: string | null;
             /** Editable */
             editable?: boolean | null;
+            /**
+             * Field Id
+             * @description The field's id, as `field_permissions[].field_id` of `PUT /api/v1/admin/roles/{role_id}/permissions` takes it; absent on a hidden field.
+             */
+            field_id?: string | null;
             /** Filterable */
             filterable?: boolean | null;
             /** Label */
@@ -5735,6 +5757,22 @@ export interface components {
             resource_type: string;
             /** Scope Set Key */
             scope_set_key: string;
+        };
+        /**
+         * ResumeCheckView
+         * @description What the check did: the run queued, or cancelled past its deadline.
+         */
+        ResumeCheckView: {
+            /**
+             * Run Id
+             * Format: uuid
+             */
+            run_id: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "queued" | "cancelled";
         };
         /**
          * ReviveRequestView
@@ -11991,6 +12029,49 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RunView"];
+                };
+            };
+            /** @description The request was refused */
+            "4XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+            /** @description The server failed */
+            "5XX": {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["Problem"];
+                };
+            };
+        };
+    };
+    resume_check_api_v1_runs__run_id__resume_check_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description Required. Retrying with the same key returns the first response instead of acting twice; reusing it for a different request, or another person's key, is a 409. */
+                "Idempotency-Key"?: string | null;
+            };
+            path: {
+                run_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResumeCheckView"];
                 };
             };
             /** @description The request was refused */

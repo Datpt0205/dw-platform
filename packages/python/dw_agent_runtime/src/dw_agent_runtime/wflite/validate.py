@@ -53,8 +53,14 @@ _REFERENCE = re.compile(
 # A config key holding a JSON Schema, which no reference fills. Lane keys are
 # the IR's to name, per step.
 _SCHEMA_KEYS = frozenset({"output_schema"})
-# Two prefixes the compiler names its own nodes with (`compile.py`).
-_RESERVED_PREFIXES = ("join__", "wait__")
+# The prefixes the compiler names its own nodes and a waiting step's channel
+# with (`compile.py`, `node_wrapper.wait_channel`): LangGraph refuses a node
+# named like a channel.
+_RESERVED_PREFIXES = ("join__", "wait__", "waiting__")
+# The annotation of a config field whose value names a binding of the
+# document's `bindings[]` (workflow-engine R2.9), as `x-dw-cel` marks an
+# expression (workflow-nodes).
+BINDING_KEYWORD: Final = "x-dw-binding"
 # A lane a block may leave out under `every_port_lane`: a loop's way out
 # when its cap is reached (R2.2). The error lane is the step's own key.
 _OPTIONAL_PORTS = frozenset({"max_reached"})
@@ -99,6 +105,12 @@ MESSAGES: Mapping[str, tuple[str, str]] = {
         "The input of {detail} is not exactly what was approved",
     ),
     "wf.param_undeclared": ("Tham số chưa khai: {detail}", "Undeclared parameter: {detail}"),
+    # R2.9: a field marked `x-dw-binding` names a binding `bindings[]` does
+    # not declare (a connection's id included).
+    "wf.binding_undeclared": (
+        "Điểm gắn chưa khai trong bindings: {detail}",
+        "A binding the document does not declare: {detail}",
+    ),
     # R2.6: a CEL expression of the wrong type (an `outcomes[]` condition
     # first, workflow-engine/04; every condition with workflow-nodes/03).
     "wf.type_mismatch": (
@@ -195,10 +207,14 @@ def validate(
     tools: ToolSpecLookup,
     work_schemas: Mapping[str, JsonSchema],
     file_key: tuple[str, str] | None = None,
+    declared_bindings: frozenset[str] | None = None,
 ) -> list[Problem]:
     """Every problem of `raw` on the path `rules` describes, empty when it is
     valid. `work_schemas` is the JSON Schema of each declared kind;
-    `file_key` the `(key, version)` the file's name states."""
+    `file_key` the `(key, version)` the file's name states;
+    `declared_bindings` the names the document's `bindings[]` declares, read
+    by the caller's model of them (Studio's, tenant-config/05), or None on a
+    path with no bindings (a pack refuses the key)."""
     try:
         document = WorkflowDocument.model_validate(raw)
     except ValidationError as exc:
@@ -217,7 +233,7 @@ def validate(
                 f"{document.key}@{document.version} ≠ {file_key[0]}@{file_key[1]}",
             )
         )
-    return found + _Check(document, registry, rules, tools, work_schemas).run()
+    return found + _Check(document, registry, rules, tools, work_schemas, declared_bindings).run()
 
 
 def _document_rules(document: WorkflowDocument, rules: PathRules) -> list[Problem]:
@@ -263,8 +279,10 @@ class _Check:
         rules: PathRules,
         tools: ToolSpecLookup,
         work_schemas: Mapping[str, JsonSchema],
+        declared_bindings: frozenset[str] | None = None,
     ) -> None:
         self.document = document
+        self.declared_bindings = declared_bindings
         self.registry = registry
         self.rules = rules
         self.tools = tools
@@ -406,7 +424,27 @@ class _Check:
         found = schema_problems(spec.config_schema, step.config)
         for problem in found:
             self._add(join_path(path, "config"), "wf.config_invalid", problem)
+        if not found:
+            self._bindings(step, spec, path)
         return not found
+
+    def _bindings(self, step: Step, spec: NodeTypeSpec, path: str) -> None:
+        """R2.9: each field the type marks `x-dw-binding` names a binding the
+        document declares; a name it does not, or a connection's id written
+        in its place, is refused at the field."""
+        if self.declared_bindings is None:
+            return
+        properties = spec.config_schema.get("properties")
+        if not isinstance(properties, Mapping):
+            return
+        for field, schema in properties.items():
+            if not isinstance(schema, Mapping) or schema.get(BINDING_KEYWORD) is not True:
+                continue
+            if field not in step.config:
+                continue
+            value = step.config[field]
+            if not isinstance(value, str) or value not in self.declared_bindings:
+                self._add(join_path(path, "config", field), "wf.binding_undeclared", value)
 
     def _tool_fields(self, step: Step) -> set[str]:
         """The output fields a `tool.call` step's tool declares (`output_fields`)."""

@@ -203,3 +203,59 @@ mutations:
     new: "        if False:\n            await self._release(run, run_id, \"paused\")\n"
     tests:
       - packages/python/dw_agent_runtime/tests/unit/test_run_waits.py::test_a_principal_gone_or_a_broken_port_holds_the_run
+  # ---- R6.39, R6.22, R6.23, R6.25: the resume check ------------------------------------
+  - name: R6.22 the run is read whatever the caller's reach
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/studio_runs.py
+    old: "            if row is None or row.workspace_id not in await self._reach(\n"
+    new: "            if row is None or False and row.workspace_id not in await self._reach(\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_22_another_company_or_a_run_out_of_reach_is_not_found
+  - name: R6.23 the key is not asked
+    file: packages/python/dw_studio/src/dw_studio/core/application/resume_check.py
+    old: "        if not found.may_check:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_23_reading_the_run_without_the_key_is_forbidden
+  - name: R6.25 the switches are not asked
+    file: packages/python/dw_studio/src/dw_studio/core/application/resume_check.py
+    old: "        await self.runtime.require_open(found.run)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_25_a_frozen_company_refuses_the_check_and_keeps_the_run_blocked
+  - name: R6.39 a run past its deadline is queued
+    file: packages/python/dw_studio/src/dw_studio/core/application/resume_check.py
+    old: "        if found.deadline_at is not None and self.clock.now() >= found.deadline_at:\n"
+    new: "        if False:\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_39_past_its_deadline_the_run_is_cancelled_never_queued
+  - name: R6.39 the checks are not run again
+    file: packages/python/dw_studio/src/dw_studio/core/application/resume_check.py
+    old: "        if failed:\n            # An empty resume"
+    new: "        if False:\n            # An empty resume"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_39_a_build_that_reads_the_run_again_queues_it_with_one_audit
+  - name: R6.39 the requeue is unconditional
+    file: packages/python/dw_studio/src/dw_studio/core/adapters/studio_runs.py
+    old: "                    worker_runs.c.status == RunStatus.BLOCKED.value,\n                    STUDIO_RUN,\n"
+    new: "                    STUDIO_RUN,\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_39_two_concurrent_checks_queue_the_run_once
+  - name: R6.39 an empty-resume block is checked again
+    file: packages/python/dw_studio/src/dw_studio/core/application/resume_check.py
+    old: "        if found.status != \"blocked\" or found.error_code != INCOMPATIBLE_RESUME:\n"
+    new: "        if found.status != \"blocked\":\n"
+    tests:
+      - packages/python/dw_studio/tests/integration/test_run_waits_db.py::test_r6_39_a_run_blocked_with_nothing_to_resume_is_not_checked_again
+  - name: R6.39 the route takes no Idempotency-Key requirement
+    file: apps/api/src/dw_api/routes/v1/runs.py
+    old: "    idempotent(_may_check, operation=\"POST /runs/{run_id}/resume-check\", required=True),\n"
+    new: "    idempotent(_may_check, operation=\"POST /runs/{run_id}/resume-check\"),\n"
+    tests:
+      - apps/api/tests/integration/test_resume_check_api.py::test_r6_39_the_check_requires_an_idempotency_key
+  # ---- R2.9: a binding field names a declared binding -----------------------------------
+  - name: R2.9 the binding fields are not checked
+    file: packages/python/dw_agent_runtime/src/dw_agent_runtime/wflite/validate.py
+    old: "        if not found:\n            self._bindings(step, spec, path)\n"
+    new: ""
+    tests:
+      - packages/python/dw_studio/tests/workflows/test_binding_fields.py::test_an_undeclared_binding_is_refused_at_its_field

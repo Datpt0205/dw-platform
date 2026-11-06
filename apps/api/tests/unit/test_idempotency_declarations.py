@@ -34,6 +34,7 @@ from dw_api.routes.v1 import admin_roles as role_routes
 from dw_api.routes.v1 import admin_service_principals as service_principal_routes
 from dw_api.routes.v1 import connections as connection_routes
 from dw_api.routes.v1 import digital_workers as digital_workers_routes
+from dw_api.routes.v1 import runs as runs_routes
 from dw_api.routes.v1 import studio_agents as agents_routes
 from dw_api.routes.v1 import studio_artifacts as studio_routes
 from dw_api.routes.v1 import studio_bindings as bindings_routes
@@ -96,6 +97,9 @@ DECLARED: dict[tuple[str, str], object] = {
     # A tenant-depth key (agent-lifecycle R7.10).
     ("POST", "/api/v1/admin/freeze"): control_switches.LIFECYCLE_FREEZE,
     ("POST", "/api/v1/admin/unfreeze"): control_switches.LIFECYCLE_FREEZE,
+    # The resume check of a blocked Studio run: its service's own check, on
+    # the run the path names (workflow-engine R6.39).
+    ("POST", "/api/v1/runs/{run_id}/resume-check"): runs_routes._may_check,
     ("POST", "/api/v1/support/grants"): support_access.check_request,
     ("POST", "/api/v1/support/grants/{grant_id}/approve"): support_access.check_approve,
     ("POST", "/api/v1/support/grants/{grant_id}/reject"): support_access.check_close,

@@ -1,17 +1,30 @@
-"""Run status + timeline API."""
+"""Run status + timeline API, and the resume check of a blocked Studio run.
+
+`POST /runs/{run_id}/resume-check` (workflow-engine R6.39, R6.22, R6.23,
+R6.25; WE53): `Idempotency-Key` required. A Studio run `blocked`
+`incompatible_resume` is checked again (`ResumeCheckService`): 404 for a run
+of another company or out of the caller's `runs.read` reach, 403 without
+`studio.workflows.resume_check` at its workspace, 409 `run_not_resumable` for
+any other run, 409 with the switch's reason under a freeze or a kill, 409
+`incompatible_resume` while a check still fails; 200 `queued` with one audit
+`run.unblocked`, or 200 `cancelled` past its deadline. Nothing is pinned
+again.
+"""
 
 from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from dw_api.dependencies.auth import RequireAccessContext
+from dw_api.dependencies.idempotency import CheckInput, IdempotentOperation, idempotent
 from dw_api.dependencies.services import RequireContainer
 from dw_kernel.errors import InfrastructureError, NotFoundError
+from dw_studio.core.application.resume_check import ResumeCheckService
 from dw_usage.presentation.views import RunUsageView, run_usage_view
 
 
@@ -155,3 +168,57 @@ async def cancel_thread(
     ):
         raise NotFoundError("thread not found", details={"thread_id": str(thread_id)})
     return CancelResult(cancelled=await container.runner.cancel_thread(thread_id))
+
+
+# ---- workflow-engine R6.39: the resume check of a blocked Studio run ------------------
+
+
+class ResumeCheckView(BaseModel):
+    """What the check did: the run queued, or cancelled past its deadline."""
+
+    run_id: uuid.UUID
+    status: Literal["queued", "cancelled"]
+
+
+def _resume_checks(container: Any) -> ResumeCheckService:
+    studio = container.studio
+    if studio is None or studio.resume_checks is None:
+        raise InfrastructureError("Studio runs are not configured")
+    checks: ResumeCheckService = studio.resume_checks
+    return checks
+
+
+async def _may_check(check: CheckInput) -> None:
+    """The service's own check, on the run the path names, before any key row."""
+    run_id = uuid.UUID(check.request.path_params["run_id"])
+    await _resume_checks(check.container).authorize(check.context, run_id)
+
+
+ResumeCheckIdempotency = Annotated[
+    IdempotentOperation,
+    idempotent(_may_check, operation="POST /runs/{run_id}/resume-check", required=True),
+]
+
+
+@router.post("/{run_id}/resume-check", response_model=ResumeCheckView)
+async def resume_check(
+    run_id: uuid.UUID,
+    context: RequireAccessContext,
+    container: RequireContainer,
+    idempotency: ResumeCheckIdempotency,
+) -> ResumeCheckView:
+    service = _resume_checks(container)
+
+    async def run(effect: Any) -> ResumeCheckView:
+        result = await service.check(context, run_id, effect=effect)
+        return ResumeCheckView(run_id=result.run_id, status=result.status)
+
+    async def reread(found: str) -> ResumeCheckView:
+        record = await service.authorize(context, uuid.UUID(found))
+        status: Literal["queued", "cancelled"] = (
+            "cancelled" if record.status == "cancelled" else "queued"
+        )
+        return ResumeCheckView(run_id=record.run_id, status=status)
+
+    view = await idempotency.once(status=200, run=run, reread=reread)
+    return await idempotency.record(view)

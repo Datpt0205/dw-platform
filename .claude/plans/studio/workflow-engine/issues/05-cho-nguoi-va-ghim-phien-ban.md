@@ -1,6 +1,6 @@
 # 05 — Bước chờ người: run_waits, quyết định trong giao dịch, resume theo interrupt id, ghim phiên bản
 
-Status: ready-for-agent
+Status: resolved (2026-11-06, main)
 Blocked by: 04, .claude/plans/studio/tenant-config/issues/05-lien-ket-va-phien-ban-cau-hinh.md, .claude/plans/studio/tenant-rbac/issues/02-vai-la-du-lieu-tenant.md
 Area: studio
 Yêu cầu: R2.9, R6.1, R6.2, R6.3, R6.4, R6.5, R6.6, R6.7, R6.8, R6.9, R6.10, R6.11, R6.12, R6.13, R6.14, R6.15, R6.16, R6.22, R6.23, R6.25, R6.37, R6.39, R6.40, R7.1, WE9, WE10, WE11, WE12, WE15, WE16, WE22, WE23, WE45, WE53, WE54, G1
@@ -102,3 +102,47 @@ Cho một lượt chạy chờ người tại chỗ nhiều ngày rồi tiếp t
 - 2026-11-04 (agent): checking-plan-readiness ĐẠT; ready-for-agent.
 - 2026-11-04 (agent, theo ủy quyền 31/10/2026): `checking-plan-consistency` của vùng studio (I:workflow-engine/08~ADR-0112 (Accepted), CRITICAL): cột `platform.run_waits.detail` và tham số `detail` của `RunWaitPort.open` dời về ticket này từ ticket 07, để ticket 08 (lõi W1, thí điểm chờ nó) không chờ ticket 07 (phần đuôi); ticket 07, 08, 09 ghi cột mà không nối nhau, như CHECK `kind`. Nếu sai thì: ticket 08 chờ ticket 07 và ADR-0112 (Accepted) quyết 2 ghi ngoại lệ.
 - 2026-11-04 (agent, discovery/14 S-RT, T4, `db/bench/srt/RESULTS.md`): lượt đỗ ở node chờ resume qua compiler kế tiếp được cả hai chiều khi tên node giữ nguyên (thêm kênh, thêm node khác); compiler đổi tên node chờ thì lượt resume thành `completed` mà mọi Bước sau không chạy, không lỗi nào. Phép kiểm resume của ticket này là chốt duy nhất cho ca đó: đề xuất thêm một fixture lượt đỗ với tên node chờ đổi và khẳng định bị từ chối.
+- 2026-11-06 (agent): dựng xong (hai commit: `50ea56d5` phần lõi, và phần route/R2.9).
+    - Đã làm: revision `25e271c4c20a` (`platform.run_waits` với cột `iteration_path`, CHECK `kind`, `status`,
+      `ck_run_waits_resolved`, `ck_run_waits_interrupt_id`, UNIQUE một dòng `open` mỗi `(run, node, iteration)`,
+      trigger `guard_run_wait_transition` cả INSERT lẫn UPDATE, trigger `cancel_run_waits` SECURITY DEFINER trên
+      `worker_runs`, quyền `studio.workflows.resume_check`); `RunWaitPort`/`SqlRunWaits`, `StepWaitLookupPort`,
+      `LiveScopesPort`/`SqlLiveScopes`, `StepRecorderPort.step_waiting(uow, …)` với bảng `WAIT_REASONS` ở bộ bọc
+      nút; `NodeTypeSpec.wait` (`WaitSpec`: `kind`, `resume`, `opener`) biên dịch thành node mở và node
+      `wait__<id>` có `interrupt()` là câu đầu; `ApproveAndResumeService.decided_handlers` theo tiền tố, nối
+      `StudioStepDecisions` ở cả hai composition root (lookup `UnwiredStepWaitLookup` tới workflow-nodes/06);
+      `wflite/resume.py` (năm sự kiện `engine_facts` và `check_resume`), `RunManifestBuilder` nhận
+      `EngineFactsPort` (`WorkflowEngineFacts`); `run_studio`: hạn chót trước dispatch, năm kiểm, `blocked`
+      `incompatible_resume`/`empty_resume` có audit, `park` có nén checkpoint (`checkpoint_compaction`),
+      `consumed` ở lần đỗ/kết thúc kế tiếp; `ResumeCheckService` + `SqlResumeCheckStore` + route
+      `POST /runs/{run_id}/resume-check`; R2.9 qua `declared_bindings` của bộ kiểm lõi.
+    - (agent, theo ủy quyền 31/10/2026) `open` trả cả dòng `resolved` chưa dùng của cặp, không chỉ dòng `open`:
+      Bước chạy lại sau khi worker chết giữa lúc mở và lúc checkpoint, mà quyết định đã tới, gặp lại đúng dòng đã
+      quyết, nên quyết định không mất. Nếu sai thì: bỏ `resolved` khỏi `_UNUSED` của `SqlRunWaits`.
+    - (agent, theo ủy quyền 31/10/2026) bảng thêm cột `iteration_path` (công thức id đếm theo `(node_id,
+      iteration_path)`), và tên nút lấy từ giá trị interrupt (`node`) cùng `wait_node` của bộ bọc nút để kiểm (b)
+      đọc checkpoint mà không biên dịch đồ thị (route chạy ở API). Nếu sai thì: kiểm (b) biên dịch đồ thị ở API.
+    - (agent, theo ủy quyền 31/10/2026) scope sống được hỏi ở mọi lần nhận, kể cả lần đầu (lượt Studio trước đây
+      không có scope nào); port không nối → không scope; port lỗi hay chủ thể không `active` → giữ `queued` 60
+      giây. Nếu sai thì: chỉ hỏi khi tiếp tục.
+    - (agent, theo ủy quyền 31/10/2026) `resume-check` quá hạn trả 200 `{status: cancelled}` (đã ghi), audit
+      `run.deadline_exceeded` đứng tên người gọi; lượt `blocked` mà kiểm thấy rỗng (empty) cũng 409. Nhãn
+      `run.blocked`, `run.unblocked` vào `workflow-engine.yaml` 1.2.0, manifest phát hành sinh lại.
+    - (agent) tiền tố `waiting__` thêm vào tên dành riêng của bộ kiểm (kênh của Bước chờ trùng tên nút thì
+      LangGraph từ chối).
+    - Test: `test_run_waits.py` 40, `test_studio_step_decisions.py` 5, 3 ca mới ở `test_approval_flow.py`,
+      `test_binding_fields.py` 4 (unit); `test_run_waits_db.py` 42 trên Postgres (bảng, trigger, chéo tenant,
+      lane chéo tenant không `app.tenant_id`, hai quyết định đồng thời với `pg_locks`, đỗ/tiếp tục, nén, hạn chót,
+      R6.14, R6.12 với `SqlLiveScopes`, golden trace hủy lượt, `resume-check`); `test_resume_check_api.py` 2;
+      G1 `test_resume_after_restart.py` 6 xanh; `test_privileges`, `test_rls_coverage`, `test_offboarding_coverage` xanh; các suite Studio integration bị
+      chạm (165) xanh; unit toàn gói chạm xanh; mypy Windows và Linux 3.12.16 sạch.
+    - `mutations/05.yaml` 38 đột biến, chưa chạy `mutate.py`; chạy tay 2 (bỏ kiểm (b), park bỏ quyết định đến
+      trước), đều đỏ.
+    - MEDIUM: (M1) R6.5 theo đúng spec: worker chết giữa checkpoint có interrupt và lần đỗ để lại lượt `running`
+      với dòng chờ `open`; reaper xếp lại, lần nhận đặt `blocked` `empty_resume`, không đường gỡ ngoài hạn chót.
+      Đề xuất: đỗ lại khi mọi interrupt treo khớp một dòng `open`. (M2) R6.10 chưa có đường nào đưa bí mật kết
+      nối vào lượt Studio ở W1; test canh các dòng cho tới khi cửa kết nối nối vào. (M3) `test_run_waits_db.py`
+      dùng lại world của `test_studio_runs.py` qua `importlib` (thư mục test không trong `mypy_path`).
+    - Còn ở lúc đóng hàng đợi: `mutate.py` cho `mutations/05.yaml`; `make test-integration` toàn bộ;
+      P50/P95/P99 của `run_studio` một lượt có Bước chờ (mở, đỗ, nhận lại, tiếp tục), `decide` một
+      `studio.step.`, `RunRequestService.request` (bản kê thêm năm sự kiện) và `POST /runs/{id}/resume-check`.

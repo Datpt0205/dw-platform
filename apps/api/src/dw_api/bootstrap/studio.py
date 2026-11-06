@@ -75,8 +75,10 @@ from typing import TYPE_CHECKING
 from fastapi import APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
+from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.model_stack import build_model_resolver
-from dw_agent_runtime.adapters.studio_resume import WorkflowEngineFacts
+from dw_agent_runtime.adapters.studio_resume import StudioResumeChecks, WorkflowEngineFacts
 from dw_agent_runtime.ports import RunManifestPort
 from dw_agent_runtime.wflite.catalog import ShippedToolSpecs
 from dw_agent_runtime.wflite.registry import NodeTypeSpec, build_node_registry
@@ -106,6 +108,7 @@ from dw_studio.core.adapters.cel.engine import CelCppEngine
 from dw_studio.core.adapters.field_security_inputs import SqlFieldSecurityInputs
 from dw_studio.core.adapters.run_bindings import SqlRunBindings
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestEngines, SqlRunManifestStore
+from dw_studio.core.adapters.studio_runs import SqlResumeCheckStore
 from dw_studio.core.application.bindings import (
     BindingConnectionDependents,
     BindingPins,
@@ -117,6 +120,7 @@ from dw_studio.core.application.bindings import (
 from dw_studio.core.application.boundaries import ActorBoundaryPort
 from dw_studio.core.application.field_access import FieldAccessService
 from dw_studio.core.application.registry import ArtifactKindEntry, ArtifactKindRegistry
+from dw_studio.core.application.resume_check import ResumeCheckService
 from dw_studio.core.application.run_manifests import RunManifestBuilder
 from dw_studio.core.application.run_request import RunLaneRegistry, RunRequestService
 from dw_studio.core.application.service import ArtifactService
@@ -224,6 +228,8 @@ class StudioContainer:
     # request reaches it through.
     records: RecordService
     record_door: Callable[[AccessContext], RecordDoor]
+    # workflow-engine 05: `POST /runs/{run_id}/resume-check` (R6.39).
+    resume_checks: ResumeCheckService
 
 
 def build_studio(
@@ -396,4 +402,16 @@ def build_studio(
         actor_boundaries=actor_boundaries,
         records=records,
         record_door=record_door,
+        # workflow-engine 05: the resume check of a blocked Studio run, its
+        # five checks read from the run's checkpoint with this process's step
+        # registry, its switches the container's.
+        resume_checks=ResumeCheckService(
+            SqlResumeCheckStore(sessions, ids, clock),
+            StudioResumeChecks(
+                SqlAlchemyCheckpointSaver(sessions, checkpoint_serializer()),
+                node_types,
+                container.run_control,
+            ),
+            clock,
+        ),
     )

@@ -30,7 +30,8 @@ from dw_agent_runtime.adapters.checkpoint import (
     READABLE_CHECKPOINT_FORMATS,
     SqlAlchemyCheckpointSaver,
 )
-from dw_agent_runtime.ports import StudioRun
+from dw_agent_runtime.ports import RunControlPort, StudioRun
+from dw_agent_runtime.run_control import RunControlDoor
 from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_agent_runtime.wflite.resume import (
     BuildFacts,
@@ -117,10 +118,19 @@ async def parked_interrupts(
 @dataclass(frozen=True)
 class StudioResumeChecks:
     """The five checks of a Studio run, run where no graph is compiled (the
-    API's `resume-check`): its checkpoint read through the saver."""
+    API's `resume-check`): its checkpoint read through the saver; and its
+    switches at the door `resume`, asked on the run's own context."""
 
     saver: SqlAlchemyCheckpointSaver
     registry: Mapping[str, NodeTypeSpec]
+    run_control: RunControlPort
+
+    async def require_open(self, run: StudioRun) -> None:
+        # The runner's own projection of a run into its context, one owner;
+        # imported here because the runner imports this module.
+        from dw_agent_runtime.adapters.langgraph_runner import _studio_run_context
+
+        await self.run_control.require_open(_studio_run_context(run), door=RunControlDoor.RESUME)
 
     async def verdict(self, run: StudioRun) -> ResumeVerdict:
         parked = await parked_interrupts(
@@ -130,3 +140,9 @@ class StudioResumeChecks:
             workspace_id=run.workspace_id,
         )
         return check_resume(run.engine, run.document, build_facts(self.registry), parked, run.waits)
+
+    async def failed_checks(self, run: StudioRun) -> tuple[str, ...]:
+        """What the resume check refuses on: the failing checks, or an empty
+        resume, which would only block the run again (R6.5)."""
+        found = await self.verdict(run)
+        return found.failed or (("empty_resume",) if found.empty else ())

@@ -8,7 +8,9 @@ on every step, and a lane, `[]` at least, for every port a step's type lists.
 `WorkflowValidator` is the `validate` of the kind's registry entry: the core's
 function with these rules, each problem at a JSON pointer, and the core's
 check of the document's `outcomes[]` conditions through the one
-`ExpressionEngine` (workflow-engine R1.9, R2.5, R2.6).
+`ExpressionEngine` (workflow-engine R1.9, R2.5, R2.6), and of each field a
+type marks `x-dw-binding` against the names the document's `bindings[]`
+declares (R2.9).
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from dw_agent_runtime.wflite.registry import NodeTypeSpec
 from dw_agent_runtime.wflite.validate import PathRules, Problem, ToolSpecLookup, validate
 from dw_kernel.expressions import ExpressionEngine
 from dw_studio.core.domain.artifacts import DocumentProblem
+from dw_studio.core.domain.bindings import parse_declarations
 
 STUDIO_RULES: Final = PathRules(
     required_document_keys=frozenset(),
@@ -69,6 +72,11 @@ class WorkflowValidator:
             rules=STUDIO_RULES,
             tools=self.tools,
             work_schemas={},
+            # R2.9: the names `bindings[]` declares, by tenant-config/05's one
+            # model of it, so the core keeps no second schema of the key.
+            declared_bindings=frozenset(
+                decl.name for decl in parse_declarations(dict(document)).items
+            ),
         )
         try:
             parsed = WorkflowDocument.model_validate(document)

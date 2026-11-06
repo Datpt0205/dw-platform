@@ -38,9 +38,9 @@
       "version": "1.1.0"
     },
     {
-      "checksum": "fc229b16779e65fce795ee379916be3fe9e093993f1fd9325aa6710865358606",
+      "checksum": "2b13dff428b65c5dc850809e3116e3cb4e575cd3a41922dcbc82573cc05c7e2c",
       "copy_id": "platform.audit_actions.workflow_engine",
-      "version": "1.1.0"
+      "version": "1.2.0"
     },
     {
       "checksum": "157df89d9b16a646120c67b8ade1fb7cf6087424aec00a4d1e03e4fe1265554c",
@@ -110,7 +110,7 @@
       "version": "1.0.0"
     }
   ],
-  "git_sha": "055263bb2df220c9a71e4161dc76c026429d91f2",
+  "git_sha": "ee83b2921e38e212fc8e3b7e0fc653ac822040a6",
   "knowledge_index_version": "2026-07-25.structure-1",
   "memory_policy_version": "2.0.0",
   "model_profiles": [

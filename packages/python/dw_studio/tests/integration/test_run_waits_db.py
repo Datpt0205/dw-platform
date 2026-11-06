@@ -34,15 +34,20 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.pool import NullPool
 from studio_run_stack import build_runner, run_claimed
 
+from dw_agent_runtime.adapters import studio_resume
+from dw_agent_runtime.adapters.checkpoint import SqlAlchemyCheckpointSaver
+from dw_agent_runtime.adapters.checkpoint_serde import checkpoint_serializer
 from dw_agent_runtime.adapters.run_store import RunStatus
 from dw_agent_runtime.adapters.run_waits import SqlRunWaits
+from dw_agent_runtime.adapters.studio_resume import StudioResumeChecks
 from dw_agent_runtime.approval_flow import ApproveAndResumeService
+from dw_agent_runtime.run_control import HaltReason, RunHaltedError
 from dw_agent_runtime.studio_step_decisions import STUDIO_STEP_PREFIX, StudioStepDecisions
 from dw_agent_runtime.testing.run_control import OpenRunControl
 from dw_agent_runtime.testing.studio_runs import ScriptedDoor
 from dw_agent_runtime.testing.workflow_types import FIXTURE_WAIT, fixture_node_registry
 from dw_agent_runtime.wflite.registry import WaitOpening, WaitSpec
-from dw_kernel.errors import ConflictError
+from dw_kernel.errors import ConflictError, NotFoundError, PermissionDeniedError
 from dw_kernel.http_conditions import ExpectedVersion
 from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import SystemClock, Uuid7Generator
@@ -53,9 +58,12 @@ from dw_platform.application.authorization import ScopeAuthorizationService
 from dw_platform.application.ports import PlatformUnitOfWork
 from dw_platform.domain.approval import ApprovalRequest
 from dw_platform.domain.audit import system_actor
+from dw_platform.testing.rbac import assign, plant_role
 from dw_studio.core.adapters.artifact_store import SqlArtifactStore
+from dw_studio.core.adapters.studio_runs import SqlResumeCheckStore
+from dw_studio.core.application.resume_check import ResumeCheckService
 from dw_studio.core.application.service import ArtifactService
-from dw_studio.testing.workflows import studio_step
+from dw_studio.testing.workflows import plant_holder, studio_step
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="module")]
 
@@ -1098,15 +1106,18 @@ async def test_r6_12_a_tool_scope_revoked_while_waiting_is_gone_at_the_resume(
     take: the door, like the executor, refuses a call its run lacks the scope
     for, and a principal who lost the role while the run waited has it no
     more."""
-    (key,) = await rows(
-        migrator,
-        "SELECT permission_key AS k FROM platform.tenant_role_permissions p"
-        " JOIN platform.role_assignments a ON a.role_id = p.role_id AND a.tenant_id = p.tenant_id"
-        " JOIN platform.memberships m ON m.id = a.membership_id"
-        " WHERE m.user_id = :u AND p.tenant_id = :t LIMIT 1",
-        u=world.tester.id,
-        t=world.tenant,
-    )
+    # A key of a role of its own, so revoking it touches nothing else the
+    # tester holds.
+    key = "studio.workflows.resume_check"
+    async with migrator.begin() as conn:
+        role = await plant_role(
+            conn, world.tenant, f"probe_{uuid.uuid4().hex[:10]}", {key: "workspace"}
+        )
+        membership = await conn.scalar(
+            sa.text("SELECT id FROM platform.memberships WHERE user_id = :u AND workspace_id = :w"),
+            {"u": world.tester.id, "w": world.tester.workspace_id},
+        )
+        await assign(conn, world.tenant, world.tester.workspace_id, membership, role)
     seen: list[frozenset[str]] = []
 
     class ScopedDoor:
@@ -1117,20 +1128,15 @@ async def test_r6_12_a_tool_scope_revoked_while_waiting_is_gone_at_the_resume(
     run_id = await a_waiting_run(store, service, migrator, world, source)
     runner, _ = build_runner(sessions, {"tool": ScopedDoor()}, live_scopes=SqlLiveScopes(sessions))
     await run_claimed(runner, sessions, world.tenant, run_id)
-    assert key.k in seen[0]
+    assert key in seen[0]
     async with migrator.begin() as conn:
         await conn.execute(sa.text("SET CONSTRAINTS ALL IMMEDIATE"))
         await conn.execute(
-            sa.text(
-                "DELETE FROM platform.tenant_role_permissions p USING platform.role_assignments a,"
-                " platform.memberships m WHERE a.role_id = p.role_id AND a.tenant_id = p.tenant_id"
-                " AND m.id = a.membership_id AND m.user_id = :u AND p.permission_key = :k"
-            ),
-            {"u": world.tester.id, "k": key.k},
+            sa.text("DELETE FROM platform.role_assignments WHERE role_id = :r"), {"r": role}
         )
     await resolve(sessions, world, run_id, "wait:cho::0")
     await run_claimed(runner, sessions, world.tenant, run_id)
-    assert key.k not in seen[-1]
+    assert key not in seen[-1]
 
 
 async def test_r6_12_a_principal_no_longer_a_member_holds_the_run_queued(
@@ -1210,3 +1216,261 @@ async def test_r7_1_the_golden_trace_of_a_run_cancelled_while_it_waits(
         waits=tuple(w.status for w in await waits_of(migrator, run_id)),
     )
     assert compare(case.expected, observed) == []
+
+
+# ---- R6.39, R6.22, R6.23, R6.25: the resume check of a blocked run --------------------
+
+
+@dataclasses.dataclass
+class Switches:
+    """`RunControlPort` by its contract: open, or a freeze of the company."""
+
+    frozen: bool = False
+
+    async def require_open(self, run_context: Any, *, door: Any, artifacts: Any = ()) -> None:
+        if self.frozen:
+            raise RunHaltedError(HaltReason.TENANT_FROZEN, door=door)
+
+    async def admission_state(self, tenant_id: Any, artifacts: Any = ()) -> Any:
+        raise NotImplementedError("not exercised by the resume check")
+
+
+def resume_checks(
+    sessions: async_sessionmaker[AsyncSession], switches: Switches
+) -> ResumeCheckService:
+    clock, ids = SystemClock(), Uuid7Generator()
+    return ResumeCheckService(
+        SqlResumeCheckStore(sessions, ids, clock),
+        StudioResumeChecks(
+            SqlAlchemyCheckpointSaver(sessions, checkpoint_serializer()), REGISTRY, switches
+        ),
+        clock,
+    )
+
+
+async def holder(migrator: AsyncEngine, world: World, keys: tuple[str, ...]) -> AccessContext:
+    async with migrator.begin() as conn:
+        person = await plant_holder(
+            conn, world.studio.tenant, keys, workspace=world.tester.workspace_id
+        )
+    return AccessContext(
+        tenant_id=person.tenant_id,
+        workspace_id=person.workspace_id,
+        principal_id=person.id,
+        roles=frozenset(),
+        scopes=frozenset(keys),
+        plan_id="professional",
+    )
+
+
+async def a_blocked_run(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> uuid.UUID:
+    """A run decided at its wait, then blocked by check (d): this build's
+    LangGraph is another minor. The caller undoes the monkeypatch to stand
+    for a build that reads the run again."""
+    run_id = await a_waiting_run(store, service, migrator, world, source)
+    runner, _ = build_runner(sessions, {"tool": ScriptedDoor()})
+    await run_claimed(runner, sessions, world.tenant, run_id)
+    await resolve(sessions, world, run_id, "wait:cho::0")
+    monkeypatch.setattr(studio_resume, "langgraph_version", lambda: "1.99.0")
+    assert await run_claimed(runner, sessions, world.tenant, run_id) == RunStatus.BLOCKED
+    return run_id
+
+
+KEYS = ("runs.read", "studio.workflows.resume_check")
+_MANIFEST = "SELECT run_manifest_hash FROM platform.worker_runs WHERE id = :r"
+_UNBLOCKED = "SELECT actor_id FROM platform.audit_events WHERE run_id = :r AND action = :a"
+
+
+async def test_r6_39_a_build_that_reads_the_run_again_queues_it_with_one_audit(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = await a_blocked_run(store, service, sessions, migrator, world, source, monkeypatch)
+    caller = await holder(migrator, world, KEYS)
+    checks = resume_checks(sessions, Switches())
+    with pytest.raises(ConflictError) as still:
+        await checks.check(caller, run_id)
+    assert still.value.details["reason_code"] == "incompatible_resume"
+    (before,) = await rows(migrator, _MANIFEST, r=run_id)
+    monkeypatch.undo()
+    result = await checks.check(caller, run_id)
+    assert result.status == "queued" and await status_of(migrator, run_id) == "queued"
+    audits = await rows(migrator, _UNBLOCKED, r=run_id, a="run.unblocked")
+    assert [a.actor_id for a in audits] == [caller.principal_id]
+    (after,) = await rows(migrator, _MANIFEST, r=run_id)
+    assert after.run_manifest_hash == before.run_manifest_hash
+    # Not blocked any more: a second check is 409, and the worker runs it on.
+    with pytest.raises(ConflictError) as again:
+        await checks.check(caller, run_id)
+    assert again.value.details["reason_code"] == "run_not_resumable"
+    runner, _ = build_runner(sessions, {"tool": ScriptedDoor()})
+    assert await run_claimed(runner, sessions, world.tenant, run_id) == RunStatus.COMPLETED
+
+
+async def test_r6_39_two_concurrent_checks_queue_the_run_once(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = await a_blocked_run(store, service, sessions, migrator, world, source, monkeypatch)
+    monkeypatch.undo()
+    caller = await holder(migrator, world, KEYS)
+    checks = resume_checks(sessions, Switches())
+    found = await asyncio.gather(
+        checks.check(caller, run_id), checks.check(caller, run_id), return_exceptions=True
+    )
+    assert sorted(type(f).__name__ for f in found) == ["ConflictError", "ResumeCheckResult"]
+    assert len(await rows(migrator, _UNBLOCKED, r=run_id, a="run.unblocked")) == 1
+
+
+async def test_r6_39_past_its_deadline_the_run_is_cancelled_never_queued(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = await a_blocked_run(store, service, sessions, migrator, world, source, monkeypatch)
+    monkeypatch.undo()
+    await rows(
+        migrator,
+        "UPDATE platform.worker_runs SET deadline_at = now() - interval '1 s' WHERE id = :r",
+        r=run_id,
+    )
+    caller = await holder(migrator, world, KEYS)
+    result = await resume_checks(sessions, Switches()).check(caller, run_id)
+    assert result.status == "cancelled"
+    (row,) = await rows(
+        migrator, "SELECT status, error FROM platform.worker_runs WHERE id = :r", r=run_id
+    )
+    assert (row.status, row.error) == ("cancelled", {"code": "deadline_exceeded"})
+
+
+async def test_r6_22_another_company_or_a_run_out_of_reach_is_not_found(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = await a_blocked_run(store, service, sessions, migrator, world, source, monkeypatch)
+    monkeypatch.undo()
+    checks = resume_checks(sessions, Switches())
+    outsider = world.studio["outsider"]
+    stranger = AccessContext(
+        tenant_id=outsider.tenant_id,
+        workspace_id=outsider.workspace_id,
+        principal_id=outsider.id,
+        roles=frozenset(),
+        scopes=frozenset(KEYS),
+        plan_id="professional",
+    )
+    without_read = await holder(migrator, world, ("studio.workflows.resume_check",))
+    for caller in (stranger, without_read):
+        with pytest.raises(NotFoundError):
+            await checks.check(caller, run_id)
+    assert await status_of(migrator, run_id) == "blocked"
+
+
+async def test_r6_23_reading_the_run_without_the_key_is_forbidden(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = await a_blocked_run(store, service, sessions, migrator, world, source, monkeypatch)
+    monkeypatch.undo()
+    caller = await holder(migrator, world, ("runs.read",))
+    with pytest.raises(PermissionDeniedError):
+        await resume_checks(sessions, Switches()).check(caller, run_id)
+    assert await status_of(migrator, run_id) == "blocked"
+
+
+async def test_r6_25_a_frozen_company_refuses_the_check_and_keeps_the_run_blocked(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_id = await a_blocked_run(store, service, sessions, migrator, world, source, monkeypatch)
+    monkeypatch.undo()
+    caller = await holder(migrator, world, KEYS)
+    with pytest.raises(RunHaltedError) as halted:
+        await resume_checks(sessions, Switches(frozen=True)).check(caller, run_id)
+    assert halted.value.details["reason_code"] == "tenant_frozen"
+    assert await status_of(migrator, run_id) == "blocked"
+
+
+async def test_r6_14_a_draft_still_changed_keeps_the_check_refused(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+) -> None:
+    body = (send("truoc"), waits_for(), send("sau"))
+    artifact, version, row_version = await a_draft(service, world, doc(source, *body))
+    run_id = (await door_of(store).request(ask(world, version))).run_id
+    runner, _ = build_runner(sessions, {"tool": ScriptedDoor()})
+    await run_claimed(runner, sessions, world.tenant, run_id)
+    await service.save_draft(
+        world.tester.context(),
+        artifact,
+        ExpectedVersion(row_version),
+        doc(source, *body, send("x")),
+    )
+    await resolve(sessions, world, run_id, "wait:cho::0")
+    assert await run_claimed(runner, sessions, world.tenant, run_id) == RunStatus.BLOCKED
+    caller = await holder(migrator, world, KEYS)
+    with pytest.raises(ConflictError) as refused:
+        await resume_checks(sessions, Switches()).check(caller, run_id)
+    assert refused.value.details["checks"] == ["draft_changed"]
+
+
+async def test_r6_39_a_run_blocked_with_nothing_to_resume_is_not_checked_again(
+    store: SqlArtifactStore,
+    service: ArtifactService,
+    sessions: async_sessionmaker[AsyncSession],
+    migrator: AsyncEngine,
+    world: World,
+    source: uuid.UUID,
+) -> None:
+    run_id = await a_waiting_run(store, service, migrator, world, source)
+    runner, _ = build_runner(sessions, {"tool": ScriptedDoor()})
+    await run_claimed(runner, sessions, world.tenant, run_id)
+    await rows(
+        migrator, "UPDATE platform.worker_runs SET status = 'queued' WHERE id = :r", r=run_id
+    )
+    assert await run_claimed(runner, sessions, world.tenant, run_id) == RunStatus.BLOCKED
+    caller = await holder(migrator, world, KEYS)
+    with pytest.raises(ConflictError) as refused:
+        await resume_checks(sessions, Switches()).check(caller, run_id)
+    assert refused.value.details["reason_code"] == "run_not_resumable"

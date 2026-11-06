@@ -30,6 +30,13 @@ resumed are `consumed` by the write that parks or ends it, never before, so a
 worker that dies mid-pass loses no decision. `block` and a draft changed since
 it was pinned leave the run `blocked` with audit `run.blocked` as
 `system:studio_runs` (R6.5, R6.8, R6.14).
+
+`SqlResumeCheckStore` is the resume check's (R6.39): the run read under the
+caller's tenant and only in a workspace `platform.workspace_reach` gives the
+caller with `runs.read`, whether the caller holds `studio.workflows.
+resume_check` there, and the run as `take` would build it; the requeue and the
+cancel past the deadline are conditional writes on `blocked`, each with its
+effect key first and its audit in the caller's name, one transaction.
 """
 
 from __future__ import annotations
@@ -50,15 +57,24 @@ from dw_agent_runtime.pinned import PinnedResolver
 from dw_agent_runtime.ports import RunWait, StudioLeaseLostError, StudioRun, StudioRunBlocked
 from dw_agent_runtime.studio_lane import LANE
 from dw_kernel.errors import ConfigError
-from dw_kernel.ids import TenantId, WorkspaceId
+from dw_kernel.ids import TenantId, UserId, WorkspaceId
 from dw_kernel.ports import IdGenerator, UtcClock
 from dw_kernel.residency import parse_route_class
+from dw_platform.adapters.persistence.effect_key_store import SqlEffectKeyWriter
 from dw_platform.adapters.persistence.repositories import SqlAuditRepository
 from dw_platform.adapters.persistence.tenant_session import TenantScope, tenant_session
-from dw_platform.domain.audit import lane_audit_event
+from dw_platform.application.access_context import AccessContext
+from dw_platform.application.effect_keys import PendingEffect
+from dw_platform.domain.audit import AuditEvent, lane_audit_event
 from dw_studio.core.adapters.run_intake import tenant_plan
 from dw_studio.core.adapters.run_manifest_store import SqlRunManifestStore
 from dw_studio.core.adapters.tables import artifacts
+from dw_studio.core.application.resume_check import (
+    RESUME_CHECK,
+    RUNS_READ,
+    UNBLOCKED,
+    BlockedRun,
+)
 
 DEADLINE_EXCEEDED: Final = "run.deadline_exceeded"
 BLOCKED: Final = "run.blocked"
@@ -104,36 +120,7 @@ class SqlStudioRunStore:
                     session, tenant_id, run_id, lease_token, INCOMPATIBLE_RESUME, None
                 )
                 return StudioRunBlocked(run_id, INCOMPATIBLE_RESUME)
-            plan = await tenant_plan(session)
-            root = resolver.root.artifact
-            assert root is not None  # `load` refuses a root it cannot read
-            return StudioRun(
-                run_id=row.id,
-                thread_id=row.thread_id,
-                tenant_id=tenant_id,
-                workspace_id=row.workspace_id,
-                artifact_kind=row.artifact_kind,
-                artifact_id=row.artifact_id,
-                artifact_version_id=row.artifact_version_id,
-                pinned_hash=str(resolver.root.content_hash),
-                run_mode=row.run_mode,
-                requested_by=row.requested_by,
-                run_as_principal_id=row.run_as_principal_id,
-                run_manifest_hash=str(row.run_manifest_hash),
-                plan_id=plan or "",
-                deadline_at=row.deadline_at,
-                input=dict(row.input or {}),
-                pinned_results=row.pinned_results,
-                document=root.document,
-                engine=dict(resolver.body.get("engine") or {}),
-                version_no=root.version_no,
-                trace_id=row.trace_id or str(run_id),
-                # As admitted; NULL is a row admitted before the column.
-                data_route_class=parse_route_class(row.data_route_class or "vn_only"),
-                trigger_kind=row.trigger_kind or "",
-                root_run_id=None if row.root_run_id == row.id else row.root_run_id,
-                waits=await _unused_waits(session, run_id),
-            )
+            return await _studio_run(session, tenant_id, row, resolver)
 
     async def admitted(
         self, tenant_id: uuid.UUID, run_id: uuid.UUID, *, lease_token: str, deadline: timedelta
@@ -369,6 +356,162 @@ class SqlStudioRunStore:
             .returning(worker_runs.c.workspace_id)
         )
         return found
+
+
+_REACH = sa.text("SELECT platform.workspace_reach(CAST(:t AS uuid), CAST(:u AS uuid), :k) AS w")
+
+
+@dataclass(frozen=True)
+class SqlResumeCheckStore:
+    """`ResumeCheckStorePort` (workflow-engine R6.39): one transaction of
+    `dw_app` per call under the caller's tenant (RLS), the reach of each key
+    `platform.workspace_reach`'s, nothing recomputed."""
+
+    session_factory: async_sessionmaker[AsyncSession]
+    ids: IdGenerator
+    clock: UtcClock
+
+    async def _reach(self, session: AsyncSession, context: AccessContext, key: str) -> set[Any]:
+        rows = await session.execute(
+            _REACH, {"t": str(context.tenant_id), "u": str(context.principal_id), "k": key}
+        )
+        return {row.w for row in rows}
+
+    async def read(self, context: AccessContext, run_id: uuid.UUID) -> BlockedRun | None:
+        async with tenant_session(
+            self.session_factory, TenantScope.from_access_context(context)
+        ) as session:
+            row = (
+                await session.execute(
+                    sa.select(worker_runs).where(worker_runs.c.id == run_id, STUDIO_RUN)
+                )
+            ).one_or_none()
+            if row is None or row.workspace_id not in await self._reach(
+                session, context, RUNS_READ
+            ):
+                return None
+            may_check = row.workspace_id in await self._reach(session, context, RESUME_CHECK)
+            run: StudioRun | None = None
+            if may_check and row.run_manifest_hash is not None:
+                try:
+                    resolver = await PinnedResolver.load(
+                        SqlRunManifestStore(session), str(row.run_manifest_hash)
+                    )
+                except ConfigError as exc:
+                    if exc.details.get("reason") != "pinned_version_changed":
+                        raise
+                else:
+                    run = await _studio_run(session, context.tenant_id, row, resolver)
+            error = row.error if isinstance(row.error, dict) else {}
+            return BlockedRun(
+                run_id=row.id,
+                workspace_id=row.workspace_id,
+                status=row.status,
+                error_code=error.get("code"),
+                deadline_at=row.deadline_at,
+                may_check=may_check,
+                run=run,
+            )
+
+    async def _move(
+        self,
+        context: AccessContext,
+        run_id: uuid.UUID,
+        effect: PendingEffect | None,
+        values: dict[str, Any],
+        action: str,
+    ) -> bool:
+        async with tenant_session(
+            self.session_factory, TenantScope.from_access_context(context)
+        ) as session:
+            if effect is not None:
+                await SqlEffectKeyWriter(session).claim(effect.of(run_id))
+            workspace = await session.scalar(
+                sa.update(worker_runs)
+                .where(
+                    worker_runs.c.id == run_id,
+                    worker_runs.c.status == RunStatus.BLOCKED.value,
+                    STUDIO_RUN,
+                )
+                .values(**values, updated_at=sa.func.now())
+                .returning(worker_runs.c.workspace_id)
+            )
+            if workspace is None:
+                return False
+            await SqlAuditRepository(session).append(
+                AuditEvent(
+                    id=self.ids.new_uuid(),
+                    tenant_id=TenantId(context.tenant_id),
+                    workspace_id=WorkspaceId(workspace),
+                    actor_id=UserId(context.principal_id),
+                    action=action,
+                    resource_type="worker_run",
+                    resource_id=str(run_id),
+                    occurred_at=self.clock.now(),
+                    run_id=run_id,
+                    details={"route": "resume-check"},
+                )
+            )
+            return True
+
+    async def unblock(
+        self, context: AccessContext, run_id: uuid.UUID, *, effect: PendingEffect | None
+    ) -> bool:
+        return await self._move(
+            context,
+            run_id,
+            effect,
+            {"status": RunStatus.QUEUED.value, "available_at": sa.func.now(), "error": None},
+            UNBLOCKED,
+        )
+
+    async def cancel_overdue(
+        self, context: AccessContext, run_id: uuid.UUID, *, effect: PendingEffect | None
+    ) -> bool:
+        return await self._move(
+            context,
+            run_id,
+            effect,
+            {"status": RunStatus.CANCELLED.value, "error": {"code": "deadline_exceeded"}},
+            DEADLINE_EXCEEDED,
+        )
+
+
+async def _studio_run(
+    session: AsyncSession, tenant_id: uuid.UUID, row: Any, resolver: PinnedResolver
+) -> StudioRun:
+    """The run as its row, its manifest and its pinned document say: what
+    `take` hands the runner and what the resume check checks."""
+    plan = await tenant_plan(session)
+    root = resolver.root.artifact
+    assert root is not None  # `load` refuses a root it cannot read
+    return StudioRun(
+        run_id=row.id,
+        thread_id=row.thread_id,
+        tenant_id=tenant_id,
+        workspace_id=row.workspace_id,
+        artifact_kind=row.artifact_kind,
+        artifact_id=row.artifact_id,
+        artifact_version_id=row.artifact_version_id,
+        pinned_hash=str(resolver.root.content_hash),
+        run_mode=row.run_mode,
+        requested_by=row.requested_by,
+        run_as_principal_id=row.run_as_principal_id,
+        run_manifest_hash=str(row.run_manifest_hash),
+        plan_id=plan or "",
+        deadline_at=row.deadline_at,
+        input=dict(row.input or {}),
+        pinned_results=row.pinned_results,
+        document=root.document,
+        engine=dict(resolver.body.get("engine") or {}),
+        version_no=root.version_no,
+        trace_id=row.trace_id or str(row.id),
+        # As admitted; NULL is a row admitted before the column.
+        data_route_class=parse_route_class(row.data_route_class or "vn_only"),
+        trigger_kind=row.trigger_kind or "",
+        root_run_id=None if row.root_run_id == row.id else row.root_run_id,
+        waits=await _unused_waits(session, row.id),
+    )
 
 
 async def _unused_waits(session: AsyncSession, run_id: uuid.UUID) -> tuple[RunWait, ...]:
