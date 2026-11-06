@@ -25,9 +25,9 @@ from dataclasses import dataclass
 from typing import Annotated, Any, Final, Literal
 
 from fastapi import Depends, Query, Request
+from fastapi.exceptions import RequestValidationError
 
 from dw_api.dependencies.auth import RequireAccessContext
-from dw_kernel.errors import DomainError
 from dw_kernel.filters import (
     ListQuery,
     QueryError,
@@ -152,15 +152,16 @@ def queryable(schema_for: SchemaFor) -> Any:
 
 
 _BODY_MEMBERS: Final = frozenset({"filter", "order_by", "fields", "cursor", "limit"})
-_BODY_SHAPE: Final = (
-    "the body is one JSON object of filter, order_by, fields, cursor and limit, each named once"
-)
+_TEXT_MEMBERS: Final = ("order_by", "fields", "cursor")
 
 
-_COUNTED_SHAPE: Final = (
-    "the body is one JSON object of filter, order_by, fields, cursor, limit and count"
-    " (none or exact), each named once"
-)
+def _body_refused(code: str, *member: str) -> RequestValidationError:
+    """A body that does not meet its shape, located as FastAPI locates the
+    error of a body a route declares, so it answers through the same handler
+    as every other wrong body: a pointer, the error's type and the platform's
+    fixed sentence, never a value or a member the caller made up (ADR 0108,
+    point 1; `dw_api.exception_handlers._located`)."""
+    return RequestValidationError([{"type": code, "loc": ("body", *member), "msg": code}])
 
 
 @dataclass(frozen=True)
@@ -197,26 +198,31 @@ class RawListQuery:
 async def read_query_body(request: Request, *, route: str, counts: bool = False) -> RawListQuery:
     """A `POST <list>/query` body, its shape checked (``route`` is the list's
     own path, so the cursor is `GET <list>`'s); with ``counts``, `count` too."""
-    shape = _COUNTED_SHAPE if counts else _BODY_SHAPE
     members = _BODY_MEMBERS | {"count"} if counts else _BODY_MEMBERS
+    # The body itself, not the filter in it: refused at the root, not at
+    # `/filter`, which is where `loads` would point.
     try:
         body = loads(await request.body())
     except QueryError:
-        body = None
-    # The body itself, not the filter in it: refused without a pointer.
-    if type(body) is not dict or not set(body) <= members:
-        raise DomainError(shape)
+        raise _body_refused("json_invalid") from None
+    if not isinstance(body, dict):
+        raise _body_refused("model_attributes_type")
+    if type(body) is not dict:
+        # `loads` keeps an object that named a key twice visible as a dict
+        # subclass: at the root, a member sent twice.
+        raise _body_refused("json_invalid")
+    if not set(body) <= members:
+        raise _body_refused("extra_forbidden")
+    for name in _TEXT_MEMBERS:
+        if body.get(name) is not None and not isinstance(body[name], str):
+            raise _body_refused("string_type", name)
     order_by, fields, cursor = body.get("order_by"), body.get("fields"), body.get("cursor")
     limit = body.get("limit", DEFAULT_PAGE_SIZE)
-    if any(
-        value is not None and not isinstance(value, str) for value in (order_by, fields, cursor)
-    ):
-        raise DomainError(shape)
     if not isinstance(limit, int) or isinstance(limit, bool):
         raise QueryError(QueryProblem(ReasonCode.LIMIT_OUT_OF_RANGE, parameter="limit"))
     count = body.get("count", "none") if counts else None
     if count is not None and count not in COUNTS:
-        raise DomainError(shape)
+        raise _body_refused("literal_error", "count")
     return RawListQuery(
         route=route,
         filter=body.get("filter"),

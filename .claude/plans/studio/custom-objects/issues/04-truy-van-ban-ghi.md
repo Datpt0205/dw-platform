@@ -215,3 +215,10 @@ dịch này qua `RecordService`.
 
     Soak 300 s, 50 phiên nhắm 200 lần sửa/s qua `RecordService.update`: đạt 53,0 lần/s (19 lần 412 do hai phiên sửa cùng
     bản ghi), WAL 0,28 MB/s. Bản ghi chạy và báo cáo: `real_path.md`, `real_path.json` dưới `--out`.
+
+- 2026-11-06 (agent, lane CI-fix `_ci3`): `read_query_body` từ chối thân sai hình bằng `DomainError` không có
+  `errors`, nên `test_error_envelope.py::test_every_operation_answers_a_wrong_body_with_a_problem` đỏ từ `d5303d15`
+  (đỏ ngay ở `d5303d15`, export sạch); CI xanh vì không bước nào chạy `-m contract`. Sửa: mỗi lời từ chối hình thân là
+  lỗi lược đồ có vị trí như thân FastAPI tự kiểm (`model_attributes_type`, `json_invalid`, `extra_forbidden` ở gốc
+  không lặp tên thành viên, `string_type` ở `/order_by|/fields|/cursor`, `literal_error` ở `/count`), `limit` vẫn
+  `limit_out_of_range`; `test_query_body_refusals.py` mới; CI thêm bước `pytest -m contract`.
