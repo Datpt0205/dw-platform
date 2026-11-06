@@ -9,35 +9,33 @@ git: every slice's commit message, and the pre-split narrative at
 
 ## Areas
 
-| Area                               | File                                | State                                                             |
-| ---------------------------------- | ----------------------------------- | ----------------------------------------------------------------- |
-| Ops hardening                      | `.claude/plans/ops-hardening.md`    | Done; numbers owed                                                |
-| Agent runtime and memory (Mốc 0–6) | `.claude/plans/platform-runtime.md` | Named gaps; docgen sessions isolated (ADR 0025)                   |
-| Web UI shell (Ant Design v6)       | `.claude/plans/web-ui.md`           | antd everywhere, CSP done                                         |
-| Chat channels (Zalo)               | `.claude/plans/channels.md`         | Upstreamed; live run owed                                         |
-| Studio → Digital Workers (D15)     | `.claude/plans/studio.md`           | skeleton/01, telemetry/01, app-standards/01-04, foundations/01-02 |
+| Area                                 | File                                | State                                                             |
+| ------------------------------------ | ----------------------------------- | ----------------------------------------------------------------- |
+| Ops hardening                        | `.claude/plans/ops-hardening.md`    | Done; numbers owed                                                |
+| Agent runtime and memory (Mốc 0–6)   | `.claude/plans/platform-runtime.md` | Named gaps; docgen sessions isolated (ADR 0025)                   |
+| Web UI shell (Ant Design v6)         | `.claude/plans/web-ui.md`           | antd everywhere, CSP done                                         |
+| Chat channels (Zalo)                 | `.claude/plans/channels.md`         | Upstreamed; live run owed                                         |
+| **Go-live: production, first payer** | `.claude/plans/go-live.md`          | Priority one since 2026-11-06; specs written, not gated           |
+| Studio → Digital Workers (D15)       | `.claude/plans/studio.md`           | skeleton/01, telemetry/01, app-standards/01-04, foundations/01-02 |
 
 After working in an area, update its file. Update this index only when an area's state, the next
 step or a decision owed changes. A new area gets its own file and a row here.
 
-## Now (2026-10-29)
+## Now (2026-11-06)
 
-- **Platform seed, no bounded context.** Products live in their own repos (first: `https://github.com/Datpt0205/platform-bidding`);
-  the removed Supply Chain context left its platform pieces, listed in `platform-runtime.md`.
-- **Digital Workers first (D15, 2026-10-29).** Studio turns to the CASANOS
-  Digital Worker: agentic within bounds, owning a queue, never a chat
-  assistant; the Marketing pilot becomes a lead-care DW at A2, and a thin DW
-  slice that really runs (with screens) comes before the rest of Studio.
-  D17/D18 (2026-10-29): path C, a DW core plus a minimal `dw.workflow/v1` engine running
-  a shipped lead-care pack (YC118-YC125, ADR-0128 Proposed), built. D19 (2026-11-04):
-  HITL drops by evidence per decision class (ADR-0129 Proposed, spec `autonomy-evidence`
-  needs-info until Q1-Q3 are measured on lead-care's 200 synthetic leads, queue item 16).
-  **Next:** queue item 15 in `studio.md` (two lanes; CI red again after `fba70dc6`, 2026-11-06: `studio.md` "Ngắt lần năm"); heavy checks at its close.
+- **Production first (Đạt, 2026-11-06).** The goal is real production where businesses subscribe and
+  run DWs, not test or demo: area `go-live`, ahead of the rest of Studio's queue. Real personal data stays behind gate E3.
+- **Platform seed, no bounded context.** Products live in their own repos (first: `https://github.com/Datpt0205/platform-bidding`).
+- **Digital Workers first (D15, 2026-10-29).** Agentic within bounds, owning a queue, never a chat assistant. D17/D18: a DW
+  core plus a minimal `dw.workflow/v1` engine running a shipped lead-care pack, built (ADR-0128 Proposed). D19: HITL drops
+  by evidence per decision class (ADR-0129 Proposed, `autonomy-evidence` needs-info, queue item 16).
+  **Next:** `studio.md`, queue item 14b (go-live), then 15; CI red again after `fba70dc6` ("Ngắt lần năm"); heavy checks at the close.
 
 ## Decisions Đạt owes
 
 Since 2026-10-31 the agent decides all of these itself (`studio.md` "Ủy quyền toàn phần"), but real keys and secrets.
 
+- **Go-live:** eight tasks only Đạt can do (customer, lawyer, host, model route): `go-live/operator-tasks`.
 - **Runtime:**
     - a plan quota on direct model calls (`runs_per_day`/`spend_usd_per_day`
       are enforced only in the runner);
